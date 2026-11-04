@@ -504,15 +504,3 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .cable-section>.cable-accent .cable-accent-line{stroke-width:4}
 }
 
-/* Branded mobile enquiry action: official plug artwork cropped from the logo. */
-.floating-plug-cta{display:none}
-@media(max-width:760px){
- .mobile-action-bar{justify-content:flex-start!important;width:calc(50% - 5px)!important;right:auto!important}
- .mobile-action-bar>a:not(:first-child){display:none!important}
- .floating-plug-cta{position:fixed;z-index:51;bottom:calc(10px + env(safe-area-inset-bottom));right:10px;width:calc(50% - 15px);height:44px;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 7px 0 25px;background:#102635;color:#fff;font-size:9px;font-weight:800;letter-spacing:.045em;white-space:nowrap;box-shadow:0 5px 17px rgba(0,20,38,.25);border:1px solid #1689ed;transition:transform .2s,background .2s}
- .floating-plug-cta:active{transform:translateY(2px);background:#1689ed}
- .floating-plug-cta svg{flex:none;width:14px}
- .floating-plug-icon{position:absolute;left:-9px;top:50%;transform:translateY(-50%);width:37px;height:37px;overflow:hidden;pointer-events:none}
- .floating-plug-icon img{position:absolute;width:137px;max-width:none;height:auto;left:-2px;top:50%;transform:translateY(-50%)}
-}
-@media(max-width:360px){.floating-plug-cta{font-size:8px;letter-spacing:0;padding-left:23px}.floating-plug-cta svg{width:12px}}
