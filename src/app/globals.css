@@ -185,3 +185,24 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .review-preview p{font-size:14px;line-height:1.8;color:#657b8d;max-width:370px;margin:0 0 32px}
 .review-preview-footer{display:flex;justify-content:space-between;align-items:center;color:#168af2;gap:12px}
 @media(max-width:760px){.review-preview{min-height:270px;padding:28px}.review-preview-divider{margin:23px 0}}
+
+/* Genuine customer feedback */
+.reviews-heading{display:flex;justify-content:space-between;align-items:end;gap:48px;margin-bottom:38px}
+.reviews-heading h2{font:800 clamp(34px,3.3vw,54px)/1.18 Manrope,sans-serif;letter-spacing:-.05em;margin:22px 0 0}
+.reviews-heading h2 span{color:#91a0ad}
+.reviews-heading>p{max-width:420px;color:#697681;line-height:1.9;margin:0 0 6px;font-size:14px}
+.testimonials-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.testimonial-card{margin:0;background:#fff;border:1px solid #d9e4ec;padding:clamp(24px,2.6vw,38px);display:flex;flex-direction:column;min-height:300px}
+.testimonial-card>svg{color:#168af2;flex-shrink:0}
+.testimonial-card>p{font-size:clamp(15px,1.2vw,18px);line-height:1.75;color:#172b3b;flex:1;margin:28px 0}
+.testimonial-card footer{border-top:1px solid #e4ebf0;padding-top:18px;display:flex;flex-direction:column;gap:5px}
+.testimonial-card footer strong{font-size:13px;color:#122638}
+.testimonial-card footer span{font-size:11px;color:#778c9e}
+.testimonials-more{margin-top:26px}
+.testimonials-more>summary{cursor:pointer;list-style:none;display:flex;gap:12px;align-items:center;justify-content:center;color:#147ed9;font-size:11px;letter-spacing:.12em;font-weight:800;padding:18px}
+.testimonials-more>summary::-webkit-details-marker{display:none}
+.testimonials-more[open]>summary svg{transform:rotate(180deg)}
+.testimonials-extra{margin-top:20px}
+.testimonials-extra .testimonial-card{min-height:240px}
+@media(max-width:900px){.testimonials-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.reviews-heading{align-items:start;flex-direction:column;gap:12px}}
+@media(max-width:600px){.reviews-section{padding:76px 0}.testimonials-grid{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding-bottom:12px}.testimonial-card{flex:0 0 min(84vw,320px);scroll-snap-align:start;min-height:280px}.reviews-heading{margin-bottom:25px}.testimonials-extra{display:grid;grid-template-columns:1fr;overflow:visible}.testimonials-extra .testimonial-card{min-height:0}}
