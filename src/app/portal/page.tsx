@@ -1,0 +1,2 @@
+import Link from 'next/link';
+export default function PortalLanding(){return <main style={{minHeight:'100vh',background:'#0c1520',color:'white',padding:'min(10vw,90px)',fontFamily:'Arial,sans-serif'}}><p style={{letterSpacing:3,color:'#62aaf7'}}>EXCEPTIONAL ELECTRICAL / CLIENT PORTAL</p><h1 style={{fontSize:'clamp(2rem,6vw,4rem)'}}>A dedicated space for your projects.</h1><p style={{color:'#aebdca'}}>The client portal is a future release. No customer information is available here.</p><Link style={{color:'#62aaf7'}} href="/">← Back to website</Link></main>;}
