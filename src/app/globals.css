@@ -459,3 +459,10 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .reviews-section .testimonials-more{margin-top:9px}
 }
 @media(prefers-reduced-motion:reduce){.review-carousel-track{transition:none}}
+
+
+/* Keep the same downlight-installation hero image at every breakpoint. */
+@media(max-width:760px){
+ .hero-image{background-image:url('https://cdn.prod.website-files.com/68b1b748302981c0afacdaa2/68bf1b38cbe0d9354bec476b_LEDLighting-min.jpg')!important;background-size:cover!important;background-position:58% 42%!important;opacity:.88!important;filter:saturate(.85) contrast(1.06)!important}
+ .hero-shade{background:linear-gradient(90deg,rgba(6,26,43,.94),rgba(6,26,43,.70) 58%,rgba(6,26,43,.45)),linear-gradient(0deg,#061a2b 0%,rgba(6,26,43,.4) 25%,transparent 65%)!important}
+}
