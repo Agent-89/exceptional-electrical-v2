@@ -393,3 +393,35 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .project-placeholder-grid .project-placeholder:nth-child(4){display:block}
  .project-placeholder-grid .project-placeholder:nth-child(4) .project-placeholder-art{aspect-ratio:2.1;min-height:0}
 }
+
+
+/* Contact conversion polish: stronger hierarchy, comfortable form controls, mobile-first flow. */
+.contact{background:radial-gradient(ellipse at 15% 24%,rgba(18,84,127,.2),transparent 45%),#0b1d2c;padding:90px 0 96px}
+.contact-layout{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(45px,6vw,100px);align-items:center}
+.contact h2{margin:24px 0 27px}
+.contact-intro>p{max-width:400px}
+.contact-location{margin-top:34px}
+.enquiry-form{padding:35px clamp(24px,3vw,43px) 38px;box-shadow:0 24px 60px rgba(0,0,0,.12)}
+.enquiry-form input,.enquiry-form select{min-height:46px}
+.enquiry-form textarea{min-height:112px}
+.enquiry-form input:focus-visible,.enquiry-form select:focus-visible,.enquiry-form textarea:focus-visible{border-color:#1689ed;box-shadow:0 0 0 3px rgba(22,137,237,.14)}
+.enquiry-form .button-blue{min-height:52px}
+@media(max-width:760px){
+ .contact{padding:62px 0 70px}
+ .contact-layout{grid-template-columns:minmax(0,1fr);gap:30px;align-items:stretch}
+ .contact h2{font-size:clamp(37px,9vw,55px);margin:19px 0 18px;line-height:1.12}
+ .contact-intro>p{font-size:14px;line-height:1.7}
+ .contact-location{margin-top:23px}
+ .enquiry-form{padding:25px 20px 29px}
+ .form-head{margin-bottom:22px;padding-bottom:19px}
+ .form-row{grid-template-columns:1fr 1fr;gap:12px}
+ .enquiry-form label{font-size:10px;gap:8px;margin-bottom:17px}
+ .enquiry-form input,.enquiry-form select,.enquiry-form textarea{font-size:16px;padding:12px;min-width:0}
+ .form-bottom{gap:17px}
+}
+@media(max-width:600px){
+ .form-row{grid-template-columns:1fr;gap:0}
+ .enquiry-form{padding:24px 18px 27px}
+ .form-head{font-size:9px;letter-spacing:.1em}
+ .form-bottom .button{width:100%}
+}
