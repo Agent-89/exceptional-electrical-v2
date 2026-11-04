@@ -317,3 +317,8 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .about-neil-photo::before{z-index:1;background:linear-gradient(0deg,#061a2b 0%,rgba(6,26,43,.68) 6%,rgba(6,26,43,.13) 20%,transparent 35%)}
  .about-photo-caption{z-index:2}
 }
+
+
+/* Fix clipping introduced by 112% background width: preserve Neil's full head and trailer lid. */
+@media(min-width:761px){.about-neil-photo{background-size:contain;background-position:center bottom}}
+@media(max-width:760px){.about-neil-photo{background-size:contain;background-position:center bottom}}
