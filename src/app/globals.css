@@ -224,3 +224,11 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .hero-shade{z-index:1;background:linear-gradient(90deg,#061a2b 0%,#061a2b 31%,rgba(6,26,43,.92) 49%,rgba(6,26,43,.52) 75%,rgba(6,26,43,.55) 100%),linear-gradient(0deg,rgba(4,15,27,.8),transparent 35%)}
 .hero-content,.hero-bottom{z-index:2}
 @media(max-width:760px){.hero-image{inset:0 0 36% 23%;background-size:cover;background-position:center;opacity:.32}.hero::before{right:-12%;top:5%;width:72vw;height:42%;background-size:385% auto;opacity:.22}.hero-shade{background:linear-gradient(90deg,rgba(6,26,43,.94),rgba(6,26,43,.77)),linear-gradient(0deg,#061a2b,transparent 55%)}}
+
+
+/* V3: hands-only downlight installation with authentic plug watermark. */
+.hero{background:#061a2b}
+.hero-image{inset:0 0 0 48%;background-image:url('https://cdn.prod.website-files.com/68b1b748302981c0afacdaa2/68bf1b38cbe0d9354bec476b_LEDLighting-min.jpg');background-size:cover;background-position:50% 45%;opacity:.82;filter:saturate(.68) contrast(1.04)}
+.hero-shade{background:linear-gradient(90deg,#061a2b 0%,#061a2b 33%,rgba(6,26,43,.94) 46%,rgba(6,26,43,.45) 72%,rgba(6,26,43,.36) 100%),linear-gradient(0deg,rgba(4,15,27,.75),transparent 38%)}
+.hero::before{right:18%;top:13%;width:min(29vw,430px);height:58%;background-image:url('/exceptional-electrical-logo.png');background-size:385% auto;background-position:left center;opacity:.19;filter:grayscale(1) brightness(0) saturate(100%) invert(62%) sepia(58%) saturate(1518%) hue-rotate(169deg) brightness(108%) contrast(98%)}
+@media(max-width:760px){.hero-image{inset:0 0 30% 20%;background-position:center;opacity:.35}.hero-shade{background:linear-gradient(90deg,rgba(6,26,43,.96),rgba(6,26,43,.7)),linear-gradient(0deg,#061a2b,transparent 60%)}.hero::before{right:-6%;top:7%;width:58vw;height:32%;opacity:.15}}
