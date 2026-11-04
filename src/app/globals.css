@@ -425,3 +425,17 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .form-head{font-size:9px;letter-spacing:.1em}
  .form-bottom .button{width:100%}
 }
+
+
+/* Mobile hero photograph visibility, service-card legibility and native select sizing. */
+@media(max-width:760px){
+ .hero{isolation:isolate;background:#061a2b}
+ .hero-image{inset:0!important;background-image:url('https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1200&q=85')!important;background-size:cover!important;background-position:65% 30%!important;opacity:.85!important;filter:saturate(.9) contrast(1.06)!important;-webkit-mask-image:none!important;mask-image:none!important}
+ .hero-shade{background:linear-gradient(90deg,rgba(6,26,43,.92) 0%,rgba(6,26,43,.77) 48%,rgba(6,26,43,.46) 100%),linear-gradient(0deg,#061a2b 0%,rgba(6,26,43,.65) 16%,transparent 58%)!important}
+ .hero-content,.hero-bottom{position:relative;z-index:2}
+ .service-card{min-height:255px;padding:17px 15px}
+ .service-card p{font-size:12px;line-height:1.55}
+ .enquiry-form,.enquiry-form label,.enquiry-form select{min-width:0;max-width:100%}
+ .enquiry-form select{display:block;width:100%;box-sizing:border-box;text-overflow:ellipsis}
+}
+@media(max-width:420px){.service-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.service-card{min-height:275px;padding:15px 12px}.service-card h3{font-size:17px}.service-card p{font-size:11px}.service-tag{font-size:9px}}
