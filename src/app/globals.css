@@ -261,3 +261,19 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .service-card>a{margin-top:16px}
 @media(max-width:760px){.intro{padding-top:70px;padding-bottom:78px}.service-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.service-card{min-height:260px;padding:20px}.service-card h3{font-size:19px}.service-card p{font-size:12px}.service-card>a{width:35px;height:35px}.service-card-top svg{width:25px;height:25px}}
 @media(max-width:380px){.service-grid{grid-template-columns:1fr}.service-card{min-height:220px}.service-card h3{font-size:21px}}
+
+
+/* Meet Neil — image slot uses his original photo when added to /public/neil-about.jpg */
+.about-neil{grid-template-columns: minmax(0,1.04fr) minmax(0,.96fr);min-height:680px;background:#061a2b}
+.about-neil-photo{position:relative;min-height:680px;background-image:linear-gradient(90deg,rgba(4,20,35,.05) 35%,#061a2b 100%),linear-gradient(0deg,rgba(4,20,35,.76),transparent 35%),url('/neil-about.jpg');background-color:#102d49;background-size:cover;background-position:center 37%;background-repeat:no-repeat}
+.about-neil-photo:after{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 80% 60%,rgba(22,137,237,.19),transparent 55%)}
+.about-photo-caption{position:absolute;z-index:1;bottom:35px;left:clamp(25px,5vw,80px);font-size:10px;font-weight:800;letter-spacing:.18em;color:#dcefff}
+.about-neil-copy{padding:80px clamp(30px,5vw,85px) 80px 25px;background:radial-gradient(ellipse at 0% 45%,rgba(15,95,169,.24),transparent 55%),#061a2b}
+.about-neil-copy h2{font-size:clamp(36px,3.1vw,56px);margin:25px 0 23px}
+.about-neil-copy>p{font-size:14px;line-height:1.8;margin:0 0 16px;color:#c4d1dc}
+.about-neil-highlights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;width:100%;border-top:1px solid #ffffff2a;padding-top:23px;margin-top:18px}
+.about-neil-highlights>div{display:flex;flex-direction:column;gap:8px}
+.about-neil-highlights strong{font:800 12px Manrope,sans-serif;color:#fff}
+.about-neil-highlights span{font-size:9px;letter-spacing:.08em;line-height:1.5;color:#84bce6}
+.about-neil-copy .text-link{margin-top:30px}
+@media(max-width:760px){.about-neil{grid-template-columns:1fr}.about-neil-photo{min-height:370px;background-image:linear-gradient(0deg,#061a2b 0%,transparent 35%),url('/neil-about.jpg');background-position:center 35%}.about-neil-copy{padding:34px 25px 72px;min-height:0}.about-neil-copy h2{font-size:clamp(35px,8vw,49px)}.about-neil-highlights{gap:8px}.about-neil-highlights strong{font-size:10px}.about-neil-highlights span{font-size:8px}.about-photo-caption{left:25px;bottom:22px}}
