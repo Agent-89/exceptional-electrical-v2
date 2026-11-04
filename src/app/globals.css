@@ -492,3 +492,14 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .cable-section>.cable-accent .cable-accent-line{stroke-width:3}
  .cable-accent--approach .cable-accent-plug{opacity:.85}
 }
+
+
+/* Cable v3: slightly stronger stroke, with the line constrained to outer margins
+   and lower whitespace. Do not let decorative artwork capture clicks. */
+.cable-section>.cable-accent{opacity:.9;pointer-events:none}
+.cable-section>.cable-accent .cable-accent-line{stroke-width:6;opacity:.82}
+.cable-section>.cable-accent .cable-accent-plug{opacity:1}
+@media(max-width:760px){
+ .cable-section>.cable-accent{opacity:.45}
+ .cable-section>.cable-accent .cable-accent-line{stroke-width:4}
+}
