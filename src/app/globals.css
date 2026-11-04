@@ -206,3 +206,13 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .testimonials-extra .testimonial-card{min-height:240px}
 @media(max-width:900px){.testimonials-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.reviews-heading{align-items:start;flex-direction:column;gap:12px}}
 @media(max-width:600px){.reviews-section{padding:76px 0}.testimonials-grid{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding-bottom:12px}.testimonial-card{flex:0 0 min(84vw,320px);scroll-snap-align:start;min-height:280px}.reviews-heading{margin-bottom:25px}.testimonials-extra{display:grid;grid-template-columns:1fr;overflow:visible}.testimonials-extra .testimonial-card{min-height:0}}
+
+
+/* Electrical craftsmanship hero — actual brand asset, not an AI-drawn plug. */
+.hero{background:#061a2b;isolation:isolate}
+.hero-image{background-image:linear-gradient(90deg,#061a2b 0%,rgba(6,26,43,.88) 23%,rgba(6,26,43,.15) 70%),url('https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1800&q=85');background-position:center,right center;background-size:cover,60% auto;background-repeat:no-repeat;transform:none;opacity:.85}
+.hero::before{content:'';position:absolute;z-index:0;right:19%;top:10%;width:clamp(330px,50vw,850px);height:80%;background:url('/exceptional-electrical-logo.png') left center/contain no-repeat;opacity:.075;filter:grayscale(1) sepia(1) saturate(6) hue-rotate(168deg) brightness(1.8);pointer-events:none}
+.hero-shade{background:linear-gradient(90deg,#061a2b 0%,rgba(6,26,43,.98) 28%,rgba(6,26,43,.64) 54%,rgba(6,26,43,.14) 100%),linear-gradient(0deg,rgba(4,15,27,.7),transparent 32%)}
+.hero-content{z-index:2}
+.hero-bottom{z-index:2}
+@media(max-width:760px){.hero-image{background-size:cover,auto 66%;background-position:center,right top;opacity:.42}.hero::before{width:95%;right:-28%;top:5%;height:55%;opacity:.055}.hero-shade{background:linear-gradient(90deg,rgba(6,26,43,.94),rgba(6,26,43,.78)),linear-gradient(0deg,#061a2b,transparent 55%)}.hero-content{z-index:2}}
