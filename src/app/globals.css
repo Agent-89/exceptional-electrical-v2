@@ -478,3 +478,17 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 @media(max-width:760px){.cable-section>.cable-accent{width:100%;right:-4%;opacity:.43}.cable-section>.cable-accent .cable-accent-line{stroke-width:3.5}.cable-accent--approach .cable-accent-plug{opacity:1}}
 @media(prefers-reduced-motion:reduce){.cable-section>.cable-accent .cable-accent-line{animation:none;stroke-dashoffset:0}}
 @supports not (animation-timeline:view()){.cable-section>.cable-accent .cable-accent-line{animation:none;stroke-dashoffset:0}}
+
+
+/* Cable v2: wide, flowing path; content stays legible and plug has a clear landing zone. */
+.cable-section>.cable-accent{left:0;right:0;width:100%;height:100%;overflow:hidden;opacity:.75}
+.cable-section>.cable-accent .cable-accent-line{opacity:.66;stroke-width:4;stroke-dasharray:none;stroke-dashoffset:0;animation:none}
+.cable-section>.section-heading,.cable-section>.approach-header{position:relative;z-index:1}
+.cable-section>.section-heading>p,.cable-section>.approach-header>p{background:rgba(255,255,255,.95);box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.cable-section .service-card,.cable-section .project-placeholder{background:#fff}
+.cable-accent--approach .cable-accent-plug{opacity:1}
+@media(max-width:760px){
+ .cable-section>.cable-accent{left:0;right:0;width:100%;opacity:.32}
+ .cable-section>.cable-accent .cable-accent-line{stroke-width:3}
+ .cable-accent--approach .cable-accent-plug{opacity:.85}
+}
