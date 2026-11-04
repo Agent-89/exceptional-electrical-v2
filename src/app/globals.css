@@ -290,3 +290,11 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .about-neil-highlights{margin-top:16px;padding-top:19px}
 .about-neil-copy .text-link{margin-top:23px}
 @media(max-width:760px){.about-neil{display:grid;grid-template-columns:1fr;min-height:0}.about-neil-photo{min-height:390px;background-position:30% 33%;-webkit-mask-image:linear-gradient(0deg,transparent 0%,#000 24%,#000 100%);mask-image:linear-gradient(0deg,transparent 0%,#000 24%,#000 100%)}.about-neil-photo:before{background:linear-gradient(0deg,#061a2b,transparent 40%)}.about-neil-copy{padding:8px 25px 66px}.about-neil-copy h2{margin-top:20px}}
+
+
+/* Approved Neil-and-trailer transparent cutout; maintain authentic photograph fallback. */
+.about-neil{background:radial-gradient(ellipse 38% 67% at 27% 52%,rgba(0,154,255,.21),transparent 75%),#061a2b}
+.about-neil-photo{background-image:url('/neil-cutout.webp'),url('/neil-about.jpg');background-size:contain,cover;background-position:center bottom,29% 35%;background-repeat:no-repeat;mask-image:none;-webkit-mask-image:none}
+.about-neil-photo:before{background:linear-gradient(90deg,transparent 55%,#061a2b 100%),linear-gradient(0deg,#061a2b 0%,transparent 17%)}
+@supports (background-image:url('/neil-cutout.webp')){.about-neil-photo{background-color:transparent}}
+@media(max-width:760px){.about-neil-photo{background-size:contain,cover;background-position:center bottom,30% 33%;min-height:390px}.about-neil-photo:before{background:linear-gradient(0deg,#061a2b,transparent 22%)}}
