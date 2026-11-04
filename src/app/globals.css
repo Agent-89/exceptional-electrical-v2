@@ -174,3 +174,14 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .hero-actions{gap:11px}
  .hero-actions .button,.hero-actions .hero-call-cta{width:100%;min-height:50px;justify-content:center;padding:14px 18px}
 }
+
+/* Testimonial editorial preview: no fictional reviews or ratings */
+.reviews-editorial{align-items:center}
+.review-preview{background:#fff;border:1px solid #d9e4ec;padding:clamp(28px,4vw,58px);min-height:310px;display:flex;flex-direction:column;justify-content:center;box-shadow:0 14px 45px rgba(10,30,48,.035)}
+.review-preview-top{display:flex;justify-content:space-between;align-items:center;gap:16px;color:#168af2}
+.review-preview-top span,.review-preview-footer{font-size:10px;font-weight:800;letter-spacing:.17em;color:#71879a}
+.review-preview-divider{height:1px;background:#dce6ed;margin:28px 0}
+.review-preview h3{font-size:clamp(26px,3vw,42px);line-height:1.12;letter-spacing:-.045em;color:#102333;margin:0 0 18px}
+.review-preview p{font-size:14px;line-height:1.8;color:#657b8d;max-width:370px;margin:0 0 32px}
+.review-preview-footer{display:flex;justify-content:space-between;align-items:center;color:#168af2;gap:12px}
+@media(max-width:760px){.review-preview{min-height:270px;padding:28px}.review-preview-divider{margin:23px 0}}
