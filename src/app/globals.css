@@ -277,3 +277,16 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .about-neil-highlights span{font-size:9px;letter-spacing:.08em;line-height:1.5;color:#84bce6}
 .about-neil-copy .text-link{margin-top:30px}
 @media(max-width:760px){.about-neil{grid-template-columns:1fr}.about-neil-photo{min-height:370px;background-image:linear-gradient(0deg,#061a2b 0%,transparent 35%),url('/neil-about.jpg');background-position:center 35%}.about-neil-copy{padding:34px 25px 72px;min-height:0}.about-neil-copy h2{font-size:clamp(35px,8vw,49px)}.about-neil-highlights{gap:8px}.about-neil-highlights strong{font-size:10px}.about-neil-highlights span{font-size:8px}.about-photo-caption{left:25px;bottom:22px}}
+
+
+/* About section: unified navy canvas, stronger subject and softer photo edges. */
+.about-neil{position:relative;isolation:isolate;grid-template-columns:minmax(0,1.06fr) minmax(0,.94fr);min-height:610px;background:radial-gradient(ellipse 40% 75% at 28% 56%,rgba(0,154,255,.19),transparent 80%),#061a2b;overflow:hidden}
+.about-neil-photo{min-height:610px;background-color:transparent;background-image:url('/neil-about.jpg');background-size:cover;background-position:29% 35%;-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 52%,rgba(0,0,0,.82) 69%,transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 52%,rgba(0,0,0,.82) 69%,transparent 100%)}
+.about-neil-photo:before{content:'';position:absolute;inset:0;background:linear-gradient(0deg,#061a2b 0%,rgba(6,26,43,.2) 24%,transparent 58%),linear-gradient(90deg,rgba(6,26,43,.16),transparent 45%,#061a2b 100%);pointer-events:none}
+.about-neil-photo:after{background:radial-gradient(ellipse at 65% 55%,rgba(0,154,255,.13),transparent 60%)}
+.about-neil-copy{position:relative;z-index:1;padding:62px clamp(30px,4.5vw,75px) 62px 0;background:transparent}
+.about-neil-copy h2{margin-top:19px;margin-bottom:19px}
+.about-neil-copy>p{margin-bottom:13px}
+.about-neil-highlights{margin-top:16px;padding-top:19px}
+.about-neil-copy .text-link{margin-top:23px}
+@media(max-width:760px){.about-neil{display:grid;grid-template-columns:1fr;min-height:0}.about-neil-photo{min-height:390px;background-position:30% 33%;-webkit-mask-image:linear-gradient(0deg,transparent 0%,#000 24%,#000 100%);mask-image:linear-gradient(0deg,transparent 0%,#000 24%,#000 100%)}.about-neil-photo:before{background:linear-gradient(0deg,#061a2b,transparent 40%)}.about-neil-copy{padding:8px 25px 66px}.about-neil-copy h2{margin-top:20px}}
