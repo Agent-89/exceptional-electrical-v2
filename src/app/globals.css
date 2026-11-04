@@ -298,3 +298,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .about-neil-photo:before{background:linear-gradient(90deg,transparent 55%,#061a2b 100%),linear-gradient(0deg,#061a2b 0%,transparent 17%)}
 @supports (background-image:url('/neil-cutout.webp')){.about-neil-photo{background-color:transparent}}
 @media(max-width:760px){.about-neil-photo{background-size:contain,cover;background-position:center bottom,30% 33%;min-height:390px}.about-neil-photo:before{background:linear-gradient(0deg,#061a2b,transparent 22%)}}
+
+/* Do not show the suburban photo behind transparent pixels. */
+.about-neil-photo{background-image:url('/neil-cutout.webp');background-size:contain;background-position:center bottom}
+@media(max-width:760px){.about-neil-photo{background-image:url('/neil-cutout.webp');background-size:contain;background-position:center bottom}}
