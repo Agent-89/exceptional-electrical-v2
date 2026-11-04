@@ -345,3 +345,12 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .project-placeholder-footer .text-link{white-space:nowrap}
 @media(max-width:760px){.project-placeholder-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:28px}.project-placeholder-feature{grid-column:1/-1}.project-placeholder-art,.project-placeholder-feature .project-placeholder-art{aspect-ratio:1.3}.project-placeholder-info{padding:18px}.project-placeholder-info h3{font-size:18px}.project-placeholder-info p{font-size:12px}.project-placeholder-status{left:14px;top:14px;font-size:8px}.project-placeholder-footer{display:block}.project-placeholder-footer .text-link{display:inline-flex;margin-top:18px}}
 @media(max-width:390px){.project-placeholder-grid{grid-template-columns:1fr}.project-placeholder-feature{grid-column:auto}}
+
+
+/* Photographic project placeholders (illustrative imagery, not completed jobs). */
+.project-placeholder-art{background-size:cover;background-position:center;background-repeat:no-repeat;isolation:isolate}
+.project-placeholder-art::before{content:'';position:absolute;inset:0;width:auto;aspect-ratio:auto;border:0;border-radius:0;box-shadow:none;background:linear-gradient(180deg,rgba(4,22,37,.53) 0%,transparent 40%,rgba(4,22,37,.23) 100%);z-index:0}
+.project-placeholder-lighting{background-image:url('https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1400&q=85')}
+.project-placeholder-residential{background-image:url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1100&q=85')}
+.project-placeholder-commercial{background-image:url('https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1100&q=85')}
+.project-placeholder-status{background:rgba(5,28,46,.67);border:1px solid rgba(255,255,255,.3);padding:8px 10px;backdrop-filter:blur(8px);color:#fff}
