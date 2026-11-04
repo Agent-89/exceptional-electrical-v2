@@ -1,22 +1,25 @@
-/** Decorative cable routed as three matching segments through the white sections.
- *  Section boundaries intentionally alternate sides, so it reads as one cable
- *  passing behind the dark About section. No pointer or keyboard interaction.
+/** Decorative cable, routed around content rather than across headings or cards.
+ * The endpoint reuses the real brand logo artwork (cropped to its plug),
+ * rather than approximating its distinctive shape with SVG primitives.
  */
 export function CableAccent({ variant }: { variant: 'services' | 'projects' | 'approach' }) {
  const paths = {
-  services: 'M 1120 -12 C 1110 95 1120 125 1070 175 C 1015 240 1130 275 1090 350 C 1030 460 805 430 625 490 C 430 555 240 565 95 665 C 60 690 52 745 52 860',
-  projects: 'M 52 -12 C 52 100 95 125 105 205 C 120 305 58 365 75 455 C 98 565 375 570 590 605 C 790 640 1105 630 1120 755 L 1120 860',
-  approach: 'M 1120 -12 C 1120 105 1105 145 1045 210 C 955 300 1070 350 1020 435 C 955 535 730 510 555 575 C 410 625 395 695 510 735 C 560 753 595 753 640 753'
+  // Enter along right margin, cross the bottom whitespace below service cards.
+  services: 'M 1168 -20 C 1168 140 1170 310 1168 465 C 1166 625 1070 740 860 770 C 630 810 320 800 42 840',
+  // Reappear on left edge; sweep through the lower white area.
+  projects: 'M 42 -20 C 38 175 36 350 42 540 C 46 690 115 765 340 792 C 550 818 880 798 1165 840',
+  // Follow right margin, then turn across below the three process steps.
+  approach: 'M 1165 -20 C 1165 165 1163 320 1160 470 C 1155 650 1030 770 820 782 C 700 790 595 790 525 790'
  };
- const path = paths[variant];
  return <svg className={`cable-accent cable-accent--${variant}`} viewBox="0 0 1200 850" preserveAspectRatio="none" fill="none" aria-hidden="true" focusable="false">
-  <path className="cable-accent-line" d={path} stroke="#102b40" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
-  {variant === 'approach' && <g className="cable-accent-plug" transform="translate(640 753)">
-    {/* Plug enters from left, prongs face right, forming a compact letter E silhouette. */}
-    <path d="M 0 0 H 10" stroke="#102b40" strokeWidth="5" strokeLinecap="round"/>
-    <path d="M 10 -12 Q 10 -16 15 -16 H 36 Q 41 -16 41 -11 V 11 Q 41 16 36 16 H 15 Q 10 16 10 12 Z" fill="#102b40"/>
-    <path d="M 18 -8 H 32" stroke="#238de6" strokeWidth="2.5" strokeLinecap="round"/>
-    <path d="M 41 -11 H 58 M 41 0 H 61 M 41 11 H 58" stroke="#102b40" strokeWidth="5" strokeLinecap="round"/>
+  <path className="cable-accent-line" d={paths[variant]} stroke="#102b40" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+  {variant === 'approach' && <g className="cable-accent-plug" transform="translate(520 755)">
+    {/* Use the genuine logo plug. Mirroring makes the plug face right. */}
+    <svg x="-4" y="-16" width="92" height="76" viewBox="0 0 620 724" preserveAspectRatio="xMinYMid meet" overflow="hidden">
+      <g transform="translate(620 0) scale(-1 1)">
+        <image href="/exceptional-electrical-logo.png" x="0" y="0" width="2172" height="724" preserveAspectRatio="xMinYMid meet"/>
+      </g>
+    </svg>
   </g>}
  </svg>;
 }
