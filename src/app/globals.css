@@ -302,3 +302,18 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 /* Do not show the suburban photo behind transparent pixels. */
 .about-neil-photo{background-image:url('/neil-cutout.webp');background-size:contain;background-position:center bottom}
 @media(max-width:760px){.about-neil-photo{background-image:url('/neil-cutout.webp');background-size:contain;background-position:center bottom}}
+
+
+/* About final polish: 12% larger cutout and feathered photo-to-copy transition. */
+@media(min-width:761px){
+ .about-neil-photo{background-size:112% auto;background-position:47% bottom;overflow:visible}
+ .about-neil-photo::before{z-index:1;background:linear-gradient(90deg,transparent 53%,rgba(6,26,43,.08) 64%,rgba(6,26,43,.42) 80%,#061a2b 100%),linear-gradient(0deg,#061a2b 0%,rgba(6,26,43,.7) 5%,rgba(6,26,43,.12) 17%,transparent 28%)}
+ .about-neil-photo::after{z-index:0}
+ .about-neil-copy{background:linear-gradient(90deg,rgba(6,26,43,.06),#061a2b 12%)}
+ .about-photo-caption{z-index:2}
+}
+@media(max-width:760px){
+ .about-neil-photo{background-size:112% auto;background-position:center bottom}
+ .about-neil-photo::before{z-index:1;background:linear-gradient(0deg,#061a2b 0%,rgba(6,26,43,.68) 6%,rgba(6,26,43,.13) 20%,transparent 35%)}
+ .about-photo-caption{z-index:2}
+}
