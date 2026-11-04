@@ -70,3 +70,12 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .enquiry-form{padding:24px 17px}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important}}
+
+
+/* Official Exceptional Electrical identity */
+.wordmark{display:inline-flex;align-items:center;flex-shrink:0}
+.company-logo{display:block;width:clamp(210px,18vw,275px);height:70px;object-fit:contain;object-position:left center}
+.footer-logo{width:255px;height:88px;filter:brightness(0) invert(1)}
+.footer-brand{min-width:0}
+@media(max-width:760px){.company-logo{width:185px;height:60px}.footer-logo{width:225px;height:78px}}
+@media(max-width:360px){.company-logo{width:165px}}
