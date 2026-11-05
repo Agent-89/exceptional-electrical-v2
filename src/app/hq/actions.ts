@@ -24,7 +24,7 @@ export async function logoutAction(){
  jar.delete('ee_hq_access');jar.delete('ee_hq_refresh');
  redirect('/hq/login');
 }
-const allowed=['new','contacted','quoted','won','lost'] as const;
+const allowed=['new','contacted','qualified','scheduled','closed','spam'] as const;
 export async function updateEnquiryAction(form:FormData){
  const user=await requireHqUser();
  if(!['owner','admin','office'].includes(user.role))throw new Error('Insufficient permissions');
