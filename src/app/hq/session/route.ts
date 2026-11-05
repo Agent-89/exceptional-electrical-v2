@@ -9,13 +9,13 @@ export async function GET(request:NextRequest){
  const {data,error}=await db.auth.refreshSession({refresh_token:refresh});
  if(error||!data.session||!data.user){
   const response=NextResponse.redirect(login);
-  response.cookies.delete('ee_hq_access');response.cookies.delete('ee_hq_refresh');
+  response.cookies.set('ee_hq_access','',{path:'/hq',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
   return response;
  }
  const {data:staff}=await db.from('staff_profiles').select('active').eq('user_id',data.user.id).eq('active',true).maybeSingle();
  if(!staff){
   const response=NextResponse.redirect(login);
-  response.cookies.delete('ee_hq_access');response.cookies.delete('ee_hq_refresh');
+  response.cookies.set('ee_hq_access','',{path:'/hq',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
   return response;
  }
  const response=NextResponse.redirect(new URL('/hq',request.url));
