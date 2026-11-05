@@ -58,3 +58,32 @@ export async function addEnquiryNoteAction(form:FormData){
  revalidatePath('/hq/enquiries/'+id);
  redirect('/hq/enquiries/'+id);
 }
+
+type MutationResult={ok:boolean;message:string;status?:string;activity?:{id:string;actor_id:string|null;action:string;note:string|null;created_at:string;actor_name:string}};
+export async function saveEnquiryStatus(id:string,status:string):Promise<MutationResult>{
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!/^[0-9a-f-]{36}$/i.test(id)||!allowed.some(x=>x===status))return {ok:false,message:'Invalid status'};
+ const db=dbAdmin();
+ const {data:previous,error:readError}=await db.from('enquiries').select('status').eq('id',id).single();
+ if(readError||!previous)return {ok:false,message:'Enquiry not found'};
+ if(previous.status===status)return {ok:true,message:'Already up to date',status};
+ const {error}=await db.from('enquiries').update({status,updated_at:new Date().toISOString()}).eq('id',id).eq('status',previous.status).select('id').single();
+ if(error)return {ok:false,message:'Unable to save. Refresh and try again.'};
+ const {data:activity,error:auditError}=await db.from('enquiry_activity').insert({enquiry_id:id,actor_id:user.id,action:'status_changed',note:previous.status+' → '+status}).select('id,actor_id,action,note,created_at').single();
+ if(auditError)console.error('Audit insert failed',auditError.code);
+ revalidatePath('/hq');
+ return {ok:true,message:'Status saved',status,activity:activity?{...activity,actor_name:user.name}:undefined};
+}
+export async function saveEnquiryNote(id:string,noteInput:string):Promise<MutationResult>{
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ const note=noteInput.trim();
+ if(!/^[0-9a-f-]{36}$/i.test(id)||note.length<2||note.length>3000)return {ok:false,message:'Enter a note between 2 and 3000 characters'};
+ const db=dbAdmin();
+ const {data:existing}=await db.from('enquiries').select('id').eq('id',id).maybeSingle();
+ if(!existing)return {ok:false,message:'Enquiry not found'};
+ const {data:activity,error}=await db.from('enquiry_activity').insert({enquiry_id:id,actor_id:user.id,action:'note_added',note}).select('id,actor_id,action,note,created_at').single();
+ if(error||!activity)return {ok:false,message:'Could not save note. Please try again.'};
+ return {ok:true,message:'Note added',activity:{...activity,actor_name:user.name}};
+}
