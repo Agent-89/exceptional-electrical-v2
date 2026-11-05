@@ -15,7 +15,7 @@ export async function hqUser() {
  if(!token)return null;
  const db=dbAdmin();
  const {data:{user},error}=await db.auth.getUser(token);
- if(error||!user)return null;
+ if(error||!user){if(jar.get('ee_hq_refresh')?.value)redirect('/hq/session');return null;}
  const {data:staff}=await db.from('staff_profiles').select('user_id,full_name,role,active').eq('user_id',user.id).eq('active',true).maybeSingle();
  if(!staff)return null;
  return {id:user.id,email:user.email??'',name:staff.full_name,role:staff.role};
