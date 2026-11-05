@@ -31,8 +31,30 @@ export async function updateEnquiryAction(form:FormData){
  const id=String(form.get('id')??'');
  const status=String(form.get('status')??'');
  if(!/^[0-9a-f-]{36}$/i.test(id)||!allowed.some(x=>x===status))throw new Error('Invalid enquiry update');
- const {error}=await dbAdmin().from('enquiries').update({status,updated_at:new Date().toISOString()}).eq('id',id);
- if(error)throw new Error('Unable to update enquiry');
+ const db=dbAdmin();
+ const {data:previous,error:readError}=await db.from('enquiries').select('status').eq('id',id).single();
+ if(readError||!previous)throw new Error('Enquiry not found');
+ if(previous.status!==status){
+  const {error}=await db.from('enquiries').update({status,updated_at:new Date().toISOString()}).eq('id',id);
+  if(error)throw new Error('Unable to update enquiry');
+  const {error:activityError}=await db.from('enquiry_activity').insert({enquiry_id:id,actor_id:user.id,action:'status_changed',note:previous.status+' → '+status});
+  if(activityError)console.error('Enquiry status audit insert failed',activityError.code);
+ }
  revalidatePath('/hq');revalidatePath('/hq/enquiries/'+id);
+ redirect('/hq/enquiries/'+id);
+}
+
+export async function addEnquiryNoteAction(form:FormData){
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))throw new Error('Insufficient permissions');
+ const id=String(form.get('id')??'');
+ const note=String(form.get('note')??'').trim();
+ if(!/^[0-9a-f-]{36}$/i.test(id)||note.length<2||note.length>3000)throw new Error('Please enter a note between 2 and 3000 characters');
+ const db=dbAdmin();
+ const {data:existing}=await db.from('enquiries').select('id').eq('id',id).maybeSingle();
+ if(!existing)throw new Error('Enquiry not found');
+ const {error}=await db.from('enquiry_activity').insert({enquiry_id:id,actor_id:user.id,action:'note_added',note});
+ if(error)throw new Error('Unable to save note');
+ revalidatePath('/hq/enquiries/'+id);
  redirect('/hq/enquiries/'+id);
 }
