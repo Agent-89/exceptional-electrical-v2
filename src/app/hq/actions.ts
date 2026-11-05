@@ -87,3 +87,32 @@ export async function saveEnquiryNote(id:string,noteInput:string):Promise<Mutati
  if(error||!activity)return {ok:false,message:'Could not save note. Please try again.'};
  return {ok:true,message:'Note added',activity:{...activity,actor_name:user.name}};
 }
+
+export async function convertEnquiryToCustomer(id:string):Promise<{ok:boolean;message:string;customerId?:string}>{
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!/^[0-9a-f-]{36}$/i.test(id))return {ok:false,message:'Invalid enquiry'};
+ const db=dbAdmin();
+ const {data:e,error}=await db.from('enquiries').select('id,name,email,phone,customer_id').eq('id',id).single();
+ if(error||!e)return {ok:false,message:'Enquiry not found'};
+ if(e.customer_id)return {ok:true,message:'Already linked to a customer',customerId:e.customer_id};
+ const phone=String(e.phone??'').replace(/[^0-9+]/g,'');
+ const email=String(e.email??'').trim().toLowerCase();
+ const {data:existing,error:lookupError}=await db.from('customers').select('id,name,email,phone').limit(500);
+ if(lookupError)return {ok:false,message:'Unable to check existing customers'};
+ const matches=(existing??[]).filter(c=>(phone.length>=8&&String(c.phone??'').replace(/[^0-9+]/g,'')===phone)||(email&&String(c.email??'').trim().toLowerCase()===email));
+ if(matches.length>1)return {ok:false,message:'Multiple matching customers found. Review them before linking.'};
+ let customerId=matches[0]?.id as string|undefined;
+ let created=false;
+ if(!customerId){
+  const {data:createdCustomer,error:createError}=await db.from('customers').insert({name:e.name,email:e.email||null,phone:e.phone||null}).select('id').single();
+  if(createError||!createdCustomer)return {ok:false,message:'Could not create customer'};
+  customerId=createdCustomer.id;created=true;
+ }
+ const {data:linked,error:linkError}=await db.from('enquiries').update({customer_id:customerId,updated_at:new Date().toISOString()}).eq('id',id).is('customer_id',null).select('id').maybeSingle();
+ if(linkError||!linked)return {ok:false,message:created?'Customer created, but enquiry linking failed. Refresh before retrying.':'Enquiry was updated elsewhere. Refresh and try again.'};
+ const {error:auditError}=await db.from('enquiry_activity').insert({enquiry_id:id,actor_id:user.id,action:'customer_linked',note:created?'Customer profile created':'Linked to existing customer'});
+ if(auditError)console.error('Customer linking audit failed',auditError.code);
+ revalidatePath('/hq');revalidatePath('/hq/customers');revalidatePath('/hq/enquiries/'+id);
+ return {ok:true,message:created?'Customer created and linked':'Existing customer linked',customerId};
+}
