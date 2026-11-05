@@ -21,7 +21,7 @@ export async function loginAction(form:FormData){
 }
 export async function logoutAction(){
  const jar=await cookies();
- jar.delete('ee_hq_access');jar.delete('ee_hq_refresh');
+ jar.set('ee_hq_access','',{path:'/hq',maxAge:0});jar.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
  redirect('/hq/login');
 }
 const allowed=['new','contacted','qualified','scheduled','closed','spam'] as const;
