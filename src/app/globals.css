@@ -504,3 +504,20 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
  .cable-section>.cable-accent .cable-accent-line{stroke-width:4}
 }
 
+
+
+/* Branded WA suburb combobox: replaces the browser-controlled datalist popup. */
+.suburb-field{position:relative;min-width:0;display:flex;flex-direction:column}
+.suburb-field>label{display:block}
+.suburb-combobox{position:relative;min-width:0}
+.suburb-combobox>input{width:100%;padding-right:44px}
+.suburb-toggle{position:absolute;right:1px;top:1px;bottom:1px;width:42px;display:grid;place-items:center;border:0;background:transparent;color:#061a2b;font-size:22px;cursor:pointer}
+.suburb-toggle:focus-visible{outline:2px solid #168df2;outline-offset:-4px}
+.suburb-suggestions{position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:60;max-height:248px;overflow-y:auto;overscroll-behavior:contain;background:#fff;border:1px solid #d5e2ed;box-shadow:0 14px 34px rgba(6,26,43,.17);padding:5px}
+.suburb-option{width:100%;min-height:43px;padding:10px 12px;border:0;background:#fff;color:#102637;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;font:inherit}
+.suburb-option span:last-child{color:#5f7689;font-size:11px;white-space:nowrap}
+.suburb-option:hover,.suburb-option.is-active{background:#eaf5ff;color:#075dba}
+.suburb-option:focus-visible{outline:2px solid #168df2;outline-offset:-2px}
+.suburb-no-results{margin:0;padding:12px;color:#536a7e;font-size:12px;line-height:1.5}
+.suburb-field .suburb-help{display:block;margin-top:6px}
+@media(max-width:760px){.suburb-suggestions{max-height:210px}.suburb-option{min-height:46px}}
