@@ -16,7 +16,7 @@ export function EnquiryForm(){
  const suburbMatches=waSuburbs.filter(([name,postcode])=>`${name} ${postcode}`.toLowerCase().includes(suburb.trim().toLowerCase())).slice(0,8);
  useEffect(()=>{function closeOutside(event:PointerEvent){if(suburbRef.current&&!suburbRef.current.contains(event.target as Node))setSuburbOpen(false);}document.addEventListener('pointerdown',closeOutside);return()=>document.removeEventListener('pointerdown',closeOutside);},[]);
  function chooseSuburb(name:string,postcode:string){setSuburb(`${name}, WA ${postcode}`);setSuburbOpen(false);setActiveSuburb(0);}
- function suburbKeyDown(event:KeyboardEvent<HTMLInputElement>){if(event.key==='Escape'){setSuburbOpen(false);return;}if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setSuburbOpen(true);setActiveSuburb(i=>event.key==='ArrowDown'?Math.min(i+1,suburbMatches.length-1):Math.max(i-1,0));}else if(event.key==='Enter'&&suburbOpen&&suburbMatches.length){event.preventDefault();chooseSuburb(...suburbMatches[activeSuburb]??suburbMatches[0]);}}
+ function suburbKeyDown(event:KeyboardEvent<HTMLInputElement>){if(event.key==='Escape'){setSuburbOpen(false);return;}if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setSuburbOpen(true);setActiveSuburb(i=>event.key==='ArrowDown'?Math.min(i+1,suburbMatches.length-1):Math.max(i-1,0));}else if(event.key==='Enter'&&suburbOpen&&suburbMatches.length){event.preventDefault();const match=suburbMatches[activeSuburb]??suburbMatches[0];chooseSuburb(match[0],match[1]);}}
 
  const [service,setService]=useState(validServices.includes(initialService)?initialService:'');
  const [status,setStatus]=useState<'idle'|'sending'|'success'|'error'>('idle');
