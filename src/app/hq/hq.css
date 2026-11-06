@@ -179,3 +179,6 @@
  .hq-detail-original{order:4}
  .hq-detail-grid>.hq-activity{order:5}
 }
+
+/* Stage C enquiry intelligence */
+.hq-attention-filters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.hq-attention-filters button{border:1px solid #dbe5ed;background:#fff;border-radius:8px;padding:9px 12px;color:#4e697d;font-size:12px;font-weight:750;cursor:pointer}.hq-attention-filters button.active{background:#e7f3ff;color:#076ab5;border-color:#9bcbf4}.hq-attention-tag{display:inline-block;margin:4px 5px 2px 0;padding:4px 7px;background:#fff1dc;color:#8b5b18;border-radius:6px;font-size:10px;font-weight:800;white-space:nowrap}.hq-attention-urgent{background:#ffe9e8;color:#a02d2a}.hq-card-tags:empty{display:none}.hq-detail-flags{display:flex;gap:4px;flex-wrap:wrap;margin-top:20px}.hq-follow-up{padding-top:20px;margin-top:20px;border-top:1px solid #e5edf2}.hq-follow-up label{margin-top:12px}.hq-follow-up .hq-follow-checkbox{display:flex;align-items:center;gap:9px}.hq-follow-checkbox input{width:17px;height:17px}.hq-follow-up .hq-primary{margin-top:12px}
