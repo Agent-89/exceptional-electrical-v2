@@ -116,3 +116,18 @@ export async function convertEnquiryToCustomer(id:string):Promise<{ok:boolean;me
  revalidatePath('/hq');revalidatePath('/hq/customers');revalidatePath('/hq/enquiries/'+id);
  return {ok:true,message:created?'Customer created and linked':'Existing customer linked',customerId};
 }
+
+export async function saveEnquiryFollowUp(id:string,required:boolean,dueDate:string):Promise<MutationResult>{
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!/^[0-9a-f-]{36}$/i.test(id)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)&&dueDate!=='')return {ok:false,message:'Invalid follow-up details'};
+ const due=required&&dueDate?new Date(dueDate+'T09:00:00+08:00'):null;
+ if(due&&Number.isNaN(due.getTime()))return {ok:false,message:'Invalid follow-up date'};
+ const db=dbAdmin();
+ const {data:updated,error}=await db.from('enquiries').update({follow_up_required:required,follow_up_due_at:due?.toISOString()??null,updated_at:new Date().toISOString()}).eq('id',id).select('id').maybeSingle();
+ if(error||!updated)return {ok:false,message:'Could not save follow-up'};
+ const {data:activity,error:auditError}=await db.from('enquiry_activity').insert({enquiry_id:id,actor_id:user.id,action:'follow_up_updated',note:required?'Follow-up required'+(dueDate?' · due '+dueDate:''):'Follow-up cleared'}).select('id,actor_id,action,note,created_at').single();
+ if(auditError)console.error('Follow-up audit insert failed',auditError.code);
+ revalidatePath('/hq');revalidatePath('/hq/enquiries/'+id);
+ return {ok:true,message:'Follow-up saved',activity:activity?{...activity,actor_name:user.name}:undefined};
+}
