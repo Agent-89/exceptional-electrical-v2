@@ -2,7 +2,7 @@
 import {useMemo,useState} from 'react';
 import Link from 'next/link';
 type Enquiry={id:string;name:string;service:string;service_category:string|null;enquiry_type:string|null;issue_tags:string[]|null;urgency:string|null;follow_up_required:boolean|null;intake_needs_review:boolean|null;requested_date:string|null;status:string;suburb:string|null;created_at:string;email:string};
-const serviceLabel=(e:Enquiry)=>e.service_category&&e.service_category!=='other'?e.service_category.replaceAll('_',' '):e.service||'General enquiry';
+const serviceLabel=(e:Enquiry)=>{const labels:Record<string,string>={ev_charger:'EV charger installation',power_points:'Power points',fault_finding:'Fault finding',solar_battery:'Solar & battery',safety_inspection:'Safety inspection'};const value=e.service_category&&e.service_category!=='other'?e.service_category:e.service;return labels[value]||value?.replaceAll('_',' ')||'General enquiry'};
 const needsFollowUp=(e:Enquiry)=>e.follow_up_required===true||e.issue_tags?.includes('customer_concern')||e.issue_tags?.includes('complaint');
 const statuses=['all','new','contacted','qualified','scheduled','closed','spam'];
 const label=(v:string)=>v==='all'?'All':v.charAt(0).toUpperCase()+v.slice(1);
