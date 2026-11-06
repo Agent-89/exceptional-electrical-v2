@@ -164,3 +164,18 @@
  .hq-fact-grid strong{font-size:12px}
  .hq-detail .hq-activity{grid-column:auto}
 }
+
+/* Phase 2 refinements */
+.hq-detail-type{display:inline-flex;align-items:center;padding:6px 10px;margin-top:12px;border-radius:999px;background:#e8f2fc;color:#17649a;font-size:11px;font-weight:800}
+.hq-detail-head h1{margin-top:7px}
+.hq-saved-indicator{display:inline-flex;align-items:center;color:#3a7c62;font-size:12px;font-weight:700;margin-top:12px}
+@media(max-width:760px){
+ .hq-detail-grid{display:grid;grid-template-columns:minmax(0,1fr)}
+ .hq-detail-main{display:contents}
+ .hq-detail-alert{order:0}
+ .hq-detail-summary{order:1}
+ .hq-detail-facts{order:2}
+ .hq-detail-management{order:3}
+ .hq-detail-original{order:4}
+ .hq-detail-grid>.hq-activity{order:5}
+}
