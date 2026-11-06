@@ -13,7 +13,7 @@ function messageSummary(message:string){
  const lines=message.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
  const content=lines.filter(s=>!(/^(call id|urgency|time preference|unverified preferred date|preferred date):/i.test(s)));
  const first=content[0]||'';
- return [first,...content.slice(1).filter(s=>!(/^(customer prefers|original date wording)/i.test(s))&&!first.toLowerCase().includes(s.toLowerCase()))].filter(Boolean).join(' ');
+ return first;
 }
 function formattedDate(value:string|null){
  if(!value)return null;
