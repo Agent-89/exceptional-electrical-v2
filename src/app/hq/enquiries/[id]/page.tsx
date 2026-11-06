@@ -21,6 +21,7 @@ function formattedDate(value:string|null){
  const date=new Date(value+'T12:00:00+08:00');
  return Number.isNaN(date.getTime())?value:new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Perth',weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(date);
 }
+function serviceName(value:string){const names:Record<string,string>={ev_charger:'EV charger installation',power_points:'Power points',fault_finding:'Fault finding',safety_inspection:'Safety inspection',solar_battery:'Solar & battery',switchboard:'Switchboard',lighting:'Lighting',commercial:'Commercial electrical',maintenance:'Maintenance'};return names[value]||value.replaceAll('_',' ')}
 function pretty(value:string|null|undefined){return value?value.charAt(0).toUpperCase()+value.slice(1):'Not provided'}
 export default async function EnquiryDetail({params}:{params:Promise<{id:string}>}){
  const user=await requireHqUser();
@@ -46,12 +47,13 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
  const phone=String(e.phone||'').trim();
  const email=String(e.email||'').trim();
  const isEv=/\b(?:ev|av|electric vehicle) charger\b/i.test(msg);
- const serviceDisplay=e.service_category&&e.service_category!=='other'?String(e.service_category).replaceAll('_',' '):isEv?'EV charger installation':pretty(e.service);
- const requestLabel=(complaintStructured||complaint)&&complaintTags.includes('quote_request')?'Quote request + customer concern':complaintStructured||complaint?'Customer concern':serviceDisplay+' enquiry';
+ const serviceDisplay=e.service_category&&e.service_category!=='other'?serviceName(String(e.service_category)):isEv?'EV charger installation':pretty(e.service);
+ const hasSecondaryConcern=complaintStructured||complaint;
+ const requestLabel=complaintTags.includes('quote_request')||e.enquiry_type==='new_job'?'Quote request':e.enquiry_type==='complaint'?'Customer concern':serviceDisplay+' enquiry';
  const received=new Date(e.created_at).toLocaleString('en-AU',{timeZone:'Australia/Perth',dateStyle:'medium',timeStyle:'short'});
  return <main className="hq-detail"><div className="hq-detail-inner">
   <Link href="/hq#enquiries" className="hq-back">← Back to enquiries</Link>
-  <div className="hq-detail-head"><div><div className="hq-kicker">CUSTOMER ENQUIRY</div><div className="hq-detail-type">{requestLabel}</div><h1>{e.name||'Unknown caller'}</h1><p>{serviceDisplay}{e.suburb?' · '+e.suburb:''} · Received {received}</p></div><span className={'hq-status hq-status-'+e.status}>{pretty(e.status)}</span></div>
+  <div className="hq-detail-head"><div><div className="hq-kicker">CUSTOMER ENQUIRY</div><div className="hq-detail-labels"><span className="hq-detail-type">{requestLabel}</span>{hasSecondaryConcern&&<span className="hq-detail-type hq-detail-type-warning">Customer concern</span>}</div><h1>{e.name||'Unknown caller'}</h1><p>{serviceDisplay}{e.suburb?' · '+e.suburb:''} · Received {received}</p></div><span className={'hq-status hq-status-'+e.status}>{pretty(e.status)}</span></div>
   <div className="hq-detail-actions">{phone&&<a className="hq-detail-action-primary" href={'tel:'+phone}>Call customer</a>}{email&&<a className="hq-detail-action-secondary" href={'mailto:'+email}>Send email</a>}<div className="hq-detail-convert"><ConvertCustomer enquiryId={e.id} initialCustomerId={e.customer_id??null}/></div></div>
   <div className="hq-detail-grid">
    <div className="hq-detail-main">
@@ -66,9 +68,9 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
      <div><span>Urgency</span><strong>{pretty(e.urgency||urgency)}</strong></div>
      <div><span>Requested date</span><strong>{formattedDate(e.requested_date||requestedDate)||'Not specified'}</strong>{(e.requested_date||requestedDate)&&<small>Staff confirmation required — not a booking</small>}</div>
      <div><span>Preferred time</span><strong>{pretty(e.preferred_time_window||timePreference)}</strong></div>
-     <div><span>Enquiry type</span><strong>{pretty(String(e.enquiry_type||'').replaceAll('_',' '))}</strong></div>
-     <div><span>Booking</span><strong>{pretty(String(e.booking_status||'Not confirmed').replaceAll('_',' '))}</strong></div>
-    </div>{(e.intake_needs_review||e.follow_up_required||complaintTags.length>0)&&<div className="hq-detail-flags">{e.follow_up_required&&<span className="hq-attention-tag">Follow-up required</span>}{e.intake_needs_review&&<span className="hq-attention-tag">Intake needs review</span>}{complaintTags.filter(t=>t!=='other').map(t=><span key={t} className="hq-attention-tag">{t.replaceAll('_',' ')}</span>)}</div>}</section>
+     <div><span>Request type</span><strong>{requestLabel}</strong></div>
+     <div><span>Booking</span><strong>{e.booking_status==='pending_confirmation'||e.booking_status==='requested'?'Pending staff confirmation':e.booking_status==='confirmed'?'Confirmed':e.requested_date||requestedDate?'Pending staff confirmation':'Not booked'}</strong></div>
+    </div>{(e.intake_needs_review||e.follow_up_required)&&<div className="hq-detail-flags">{e.follow_up_required&&<span className="hq-attention-tag">Follow-up required</span>}{e.intake_needs_review&&<span className="hq-attention-tag">Verify call details</span>}</div>}</section>
     <details className="hq-panel hq-detail-original"><summary>Original enquiry record</summary><p className="hq-message">{msg||'No message provided.'}</p></details>
    </div>
    <EnquiryWorkspace id={e.id} initialStatus={e.status} initialFollowUp={e.follow_up_required===true} initialDueDate={e.follow_up_due_at?String(e.follow_up_due_at).slice(0,10):''} initialActivity={(activity??[]).map(item=>({...item,actor_name:item.actor_id?actorNames.get(item.actor_id)||'Staff member':'System'}))}/>
