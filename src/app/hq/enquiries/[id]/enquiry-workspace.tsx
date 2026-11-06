@@ -4,13 +4,13 @@ import {saveEnquiryStatus,saveEnquiryNote,saveEnquiryFollowUp} from '../../actio
 type Activity={id:string;actor_id:string|null;action:string;note:string|null;created_at:string;actor_name:string};
 const statuses=['new','contacted','qualified','scheduled','closed','spam'];
 export default function EnquiryWorkspace({id,initialStatus,initialActivity,initialFollowUp,initialDueDate,initialReceivedAt,initialNeedsReview,initialHasConcern,initialRequestedDate}:{id:string;initialStatus:string;initialActivity:Activity[];initialFollowUp:boolean;initialDueDate:string;initialReceivedAt:string;initialNeedsReview:boolean;initialHasConcern:boolean;initialRequestedDate:string}){
- const nextAction=status==='closed'||status==='spam'?'No further action required':status==='scheduled'?'Review the scheduled work and keep the customer informed':status==='qualified'?'Prepare the next step for this qualified enquiry':initialNeedsReview?'Verify the call details, then contact the customer':initialHasConcern?'Contact the customer about the request and previous-work concern':initialRequestedDate?'Contact the customer to confirm the requested date and requirements':'Contact the customer to confirm their requirements';
  const perthTime=(value:string)=>new Date(value).toLocaleString('en-AU',{timeZone:'Australia/Perth',day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'});
  const [followUp,setFollowUp]=useState(initialFollowUp);
  const [dueDate,setDueDate]=useState(initialDueDate);
  const [followUpMessage,setFollowUpMessage]=useState('');
  const [followUpPending,startFollowUp]=useTransition();
  const [status,setStatus]=useState(initialStatus);
+ const nextAction=status==='closed'||status==='spam'?'No further action required':status==='scheduled'?'Review the scheduled work and keep the customer informed':status==='qualified'?'Prepare the next step for this qualified enquiry':initialNeedsReview?'Verify the call details, then contact the customer':initialHasConcern?'Contact the customer about the request and previous-work concern':initialRequestedDate?'Contact the customer to confirm the requested date and requirements':'Contact the customer to confirm their requirements';
  const [savedStatus,setSavedStatus]=useState(initialStatus);
  const [note,setNote]=useState('');
  const [activity,setActivity]=useState(initialActivity);
