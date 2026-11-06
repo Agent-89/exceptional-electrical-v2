@@ -103,3 +103,64 @@
  .hq-mobile-nav a,.hq-mobile-nav>span{display:flex;flex-direction:column;align-items:center;gap:4px;color:#57748b;text-decoration:none;font-size:18px;min-width:65px}
  .hq-mobile-nav a span,.hq-mobile-nav small{font-size:10px;font-weight:700}
 }
+
+
+/* Phase 2: enquiry workspace */
+.hq-detail{color:#102b40;background:#f4f7fb;padding:34px 20px}
+.hq-detail-inner{max-width:1200px}
+.hq-detail .hq-back{margin:0 0 20px;display:inline-flex;text-decoration:none}
+.hq-detail-head{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.hq-detail-head h1{margin:8px 0 5px;font-size:36px}
+.hq-detail-head p{margin:0;color:#718294;font-size:13px}
+.hq-detail-head>.hq-status{flex-shrink:0}
+.hq-detail-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:23px 0}
+.hq-detail-action-primary,.hq-detail-action-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:10px 17px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:800}
+.hq-detail-action-primary{background:#1689ed;color:#fff}
+.hq-detail-action-secondary{background:#fff;color:#17669e;border:1px solid #d4e2ee}
+.hq-detail-convert{margin-left:auto}
+.hq-detail-convert .hq-convert-customer,.hq-detail-convert .hq-customer-link{margin:0}
+.hq-detail-convert .hq-primary{width:auto;min-height:42px;border:1px solid #d4e2ee;border-radius:9px;background:#fff;color:#17669e;padding:10px 17px;font-size:12px;letter-spacing:0;cursor:pointer}
+.hq-detail-grid{grid-template-columns:minmax(0,1.65fr) minmax(285px,1fr);align-items:start;margin-top:0;gap:18px}
+.hq-detail-main{display:grid;gap:18px;min-width:0}
+.hq-detail .hq-panel{padding:26px;border-radius:14px}
+.hq-detail .hq-panel h2{font-size:20px;margin:8px 0 18px}
+.hq-detail-summary-text{font-size:15px;line-height:1.75;color:#2b465b!important;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.hq-detail-alert{padding:16px 20px;background:#fff6e9;border:1px solid #f1d8ad;border-radius:12px;color:#714915}
+.hq-detail-alert strong{font-size:13px}
+.hq-detail-alert p{font-size:12px;line-height:1.6;margin:6px 0 0;color:#785a35}
+.hq-fact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 18px}
+.hq-fact-grid>div{min-width:0}
+.hq-fact-grid span,.hq-fact-grid strong,.hq-fact-grid small{display:block}
+.hq-fact-grid span{color:#718294;font-size:11px;margin-bottom:6px}
+.hq-fact-grid strong{font-size:13px;line-height:1.5;font-weight:750;overflow-wrap:anywhere}
+.hq-fact-grid strong a{color:#087be2;text-decoration:none}
+.hq-fact-grid small{font-size:10px;line-height:1.5;color:#926a31;margin-top:5px}
+.hq-detail-original summary{cursor:pointer;font-weight:800;font-size:13px}
+.hq-detail-original .hq-message{font-size:12px;color:#4c6476;line-height:1.8;overflow-wrap:anywhere;margin:18px 0 0}
+.hq-call-id{font-size:11px;overflow-wrap:anywhere;color:#718294}
+.hq-detail-management .hq-inline-form label{font-size:12px}
+.hq-detail-management .hq-primary{border-radius:8px;cursor:pointer;letter-spacing:.02em}
+.hq-detail-management .hq-note-editor{margin-top:22px;padding-top:18px}
+.hq-detail-management .hq-note-editor h2{margin-bottom:5px}
+.hq-detail-management .hq-note-editor textarea{border-radius:8px}
+.hq-detail-grid>.hq-activity{grid-column:1/-1}
+.hq-detail .hq-activity{margin-top:0}
+.hq-inbox-tabs{scrollbar-width:none}
+.hq-inbox-tabs::-webkit-scrollbar{display:none}
+@media(max-width:760px){
+ .hq-detail{padding:20px 14px}
+ .hq-detail-head h1{font-size:29px}
+ .hq-detail-head p{font-size:12px;line-height:1.5}
+ .hq-detail-actions{gap:9px;margin:19px 0}
+ .hq-detail-action-primary,.hq-detail-action-secondary{flex:1}
+ .hq-detail-convert{width:100%;margin:0}
+ .hq-detail-convert .hq-primary{width:100%}
+ .hq-detail-grid{grid-template-columns:1fr;gap:14px}
+ .hq-detail-main{gap:14px}
+ .hq-detail .hq-panel{padding:20px 17px}
+ .hq-detail .hq-panel h2{font-size:19px}
+ .hq-detail-summary-text{font-size:14px}
+ .hq-fact-grid{gap:20px 12px}
+ .hq-fact-grid strong{font-size:12px}
+ .hq-detail .hq-activity{grid-column:auto}
+}
