@@ -45,7 +45,7 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
  const displayedPreference=contactPreference==='either'&&phoneOnly?'Phone requested (verify)':pretty(e.contact_preference);
  const phone=String(e.phone||'').trim();
  const email=String(e.email||'').trim();
- const isEv=/\b(ev charger|electric vehicle charger)\b/i.test(msg);
+ const isEv=/\b(?:ev|av|electric vehicle) charger\b/i.test(msg);
  const serviceDisplay=e.service_category&&e.service_category!=='other'?String(e.service_category).replaceAll('_',' '):isEv?'EV charger installation':pretty(e.service);
  const requestLabel=(complaintStructured||complaint)&&complaintTags.includes('quote_request')?'Quote request + customer concern':complaintStructured||complaint?'Customer concern':serviceDisplay+' enquiry';
  const received=new Date(e.created_at).toLocaleString('en-AU',{timeZone:'Australia/Perth',dateStyle:'medium',timeStyle:'short'});
