@@ -18,3 +18,88 @@
 .hq-crm-profile-grid .hq-crm-note{padding:0;margin:20px 0 0;border:0;gap:10px}
 .hq-crm-profile-grid .hq-crm-note textarea{width:100%;min-height:95px}
 @media(max-width:650px){.hq-crm-modal-header{padding:20px 20px 0}.hq-crm-modal-form{padding:16px 20px 20px}.hq-crm-modal-footer{flex-wrap:wrap}}
+
+
+/* HQ shell + enquiry inbox refresh */
+.hq-app{--hq-navy:#091e31;--hq-blue:#087be2;--hq-muted:#667e91;background:#f4f7fb;color:#102b40}
+.hq-sidebar{width:246px;padding:28px 20px;background:#0a2235;position:sticky;top:0;height:100vh;min-height:0}
+.hq-brand{padding:8px 10px 16px;letter-spacing:0}
+.hq-brand img{display:block;width:100%;max-width:190px;height:74px;object-fit:contain;object-position:center;background:#fff;border-radius:9px;padding:9px}
+.hq-brand small{margin-top:12px;color:#91b4ce;letter-spacing:.17em}
+.hq-sidebar nav{margin-top:24px;gap:5px}
+.hq-sidebar nav a{border-radius:9px;padding:13px 15px;transition:background .15s}
+.hq-sidebar nav a:hover{background:#173c56;color:#fff}
+.hq-sidebar nav a.selected{background:#164666}
+.hq-top{height:66px;padding:0 36px}
+.hq-content{padding:36px;max-width:1480px}
+.hq-heading{margin-bottom:28px}
+.hq-heading h1{font-size:34px}
+.hq-stats{gap:14px;margin-bottom:24px}
+.hq-stats>div{border-radius:12px;min-height:116px;padding:23px}
+.hq-stats strong{font-size:32px;margin-top:13px}
+.hq-panel{border-radius:14px;padding:28px;box-shadow:0 6px 28px rgba(10,37,58,.025)}
+.hq-panel-heading{margin-bottom:22px}
+.hq-mobile-nav{display:none}
+.hq-visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.hq-inbox-toolbar{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+.hq-inbox-toolbar label{display:block}
+.hq-search-label{flex:1;max-width:520px}
+.hq-inbox-toolbar input,.hq-inbox-toolbar select{height:46px;width:100%;border:1px solid #d9e4ed;background:#fff;border-radius:9px;padding:0 15px;color:#102b40;font:inherit;font-size:13px}
+.hq-inbox-toolbar input:focus,.hq-inbox-toolbar select:focus{outline:2px solid #80bdff;outline-offset:1px}
+.hq-sort-label{width:166px}
+.hq-inbox-tabs{display:flex;gap:7px;overflow-x:auto;padding-bottom:9px;scrollbar-width:thin}
+.hq-inbox-tabs button{border:1px solid #e1e9ef;background:#f6f9fb;border-radius:999px;padding:9px 13px;color:#557083;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer}
+.hq-inbox-tabs button.active{background:#e6f3ff;border-color:#9dcefa;color:#086bb8}
+.hq-inbox-tabs button span{font-size:10px;margin-left:4px;opacity:.8}
+.hq-inbox-count{color:#718699;font-size:12px;margin:8px 0 12px}
+.hq-inbox-desktop table{width:100%;border-collapse:collapse;text-align:left}
+.hq-inbox-desktop th{padding:14px 12px;font-size:10px;color:#8093a3;text-transform:uppercase;letter-spacing:.09em;border-bottom:1px solid #e6edf2}
+.hq-inbox-desktop td{padding:17px 12px;border-bottom:1px solid #edf1f5;font-size:13px;color:#365267}
+.hq-inbox-desktop tr:hover td{background:#f8fbfe}
+.hq-inbox-desktop td small{display:block;margin-top:5px;color:#8093a3}
+.hq-inbox-name{font-weight:800;color:#123047;text-decoration:none}
+.hq-open-link{font-weight:750;color:#087be2;text-decoration:none;white-space:nowrap}
+.hq-service{text-transform:capitalize}
+.hq-status{border-radius:6px;letter-spacing:.035em}
+.hq-status-contacted{background:#fff4dc;color:#8e6216}
+.hq-status-qualified,.hq-status-scheduled{background:#e3f6e9;color:#1b7844}
+.hq-status-closed{background:#edf0f4;color:#596b7c}
+.hq-inbox-mobile{display:none}
+.hq-inbox-empty{text-align:center;padding:44px 14px;color:#365267}
+.hq-inbox-empty p{font-size:13px;color:#718699}
+.hq-inbox-empty button{border:0;background:#e6f3ff;color:#086bb8;padding:10px 15px;border-radius:7px;cursor:pointer}
+@media(max-width:1100px){.hq-inbox-desktop th,.hq-inbox-desktop td{padding-left:8px;padding-right:8px}.hq-content{padding:26px}}
+@media(max-width:760px){
+ .hq-app{display:block;padding-bottom:78px}
+ .hq-sidebar{position:static;width:100%;height:auto;min-height:0;padding:12px 18px;background:#fff;border-bottom:1px solid #e4ecf2}
+ .hq-brand{padding:0;display:flex;align-items:center;gap:12px}
+ .hq-brand img{width:132px;height:50px;padding:4px;border-radius:6px}
+ .hq-brand small{color:#57738a;margin:0;font-size:9px}
+ .hq-sidebar nav,.hq-sidebar-bottom{display:none}
+ .hq-top{display:none}
+ .hq-content{padding:22px 14px}
+ .hq-heading{margin-bottom:20px}
+ .hq-heading h1{font-size:27px}
+ .hq-heading p{font-size:13px;line-height:1.5}
+ .hq-stats{gap:10px;margin-bottom:18px}
+ .hq-stats>div{padding:16px;min-height:94px;border-radius:11px}
+ .hq-stats span{font-size:9px}
+ .hq-stats strong{font-size:27px;margin-top:9px}
+ .hq-panel{padding:18px 14px;border-radius:12px}
+ .hq-panel-heading h2{font-size:20px}
+ .hq-inbox-toolbar{flex-wrap:wrap}
+ .hq-search-label{max-width:none;flex-basis:100%}
+ .hq-sort-label{width:100%}
+ .hq-inbox-desktop{display:none}
+ .hq-inbox-mobile{display:grid;gap:11px}
+ .hq-inbox-card{display:block;border:1px solid #e1eaf1;border-radius:12px;padding:16px;background:#fff;color:#173348;text-decoration:none}
+ .hq-inbox-card:active{background:#f0f8ff}
+ .hq-card-top{display:flex;justify-content:space-between;gap:10px;align-items:center}
+ .hq-card-top strong{font-size:15px}
+ .hq-card-service{font-size:13px;text-transform:capitalize;margin:10px 0;color:#3b586d}
+ .hq-card-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;color:#8092a0;font-size:11px}
+ .hq-card-open{display:block;margin-top:14px;padding-top:11px;border-top:1px solid #eef2f6;color:#087be2;font-size:12px;font-weight:800}
+ .hq-mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:40;justify-content:space-around;align-items:center;background:#fff;border-top:1px solid #e0e8ee;min-height:70px;padding:8px 8px max(8px,env(safe-area-inset-bottom));box-shadow:0 -6px 25px rgba(10,37,58,.05)}
+ .hq-mobile-nav a,.hq-mobile-nav>span{display:flex;flex-direction:column;align-items:center;gap:4px;color:#57748b;text-decoration:none;font-size:18px;min-width:65px}
+ .hq-mobile-nav a span,.hq-mobile-nav small{font-size:10px;font-weight:700}
+}
