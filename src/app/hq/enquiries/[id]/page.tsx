@@ -5,6 +5,14 @@ import EnquiryWorkspace from './enquiry-workspace';
 import ConvertCustomer from './convert-customer';
 import '../../hq.css';
 export const dynamic='force-dynamic';
+function readMeta(message:string,key:string){
+ const line=message.split(/\r?\n/).find(l=>l.toLowerCase().startsWith(key.toLowerCase()+':'));
+ return line?.slice(key.length+1).trim()||null;
+}
+function messageSummary(message:string){
+ return message.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).filter(s=>!(/^(call id|urgency|time preference|unverified preferred date|preferred date):/i.test(s))).join(' ').trim();
+}
+function pretty(value:string|null|undefined){return value?value.charAt(0).toUpperCase()+value.slice(1):'Not provided'}
 export default async function EnquiryDetail({params}:{params:Promise<{id:string}>}){
  const user=await requireHqUser();
  const {id}=await params;
@@ -15,6 +23,39 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
  const actorIds=[...new Set((activity??[]).map(item=>item.actor_id).filter((value):value is string=>Boolean(value)))];
  const {data:staff}=actorIds.length?await dbAdmin().from('staff_profiles').select('user_id,full_name').in('user_id',actorIds):{data:[] as {user_id:string;full_name:string}[]};
  const actorNames=new Map((staff??[]).map(item=>[item.user_id,item.full_name]));
- return <main className="hq-detail"><div className="hq-detail-inner"><Link href="/hq" className="hq-back">← Back to HQ</Link><div className="hq-kicker">CUSTOMER ENQUIRY</div><h1>{e.name}</h1><ConvertCustomer enquiryId={e.id} initialCustomerId={e.customer_id??null}/><p>Received {new Date(e.created_at).toLocaleString('en-AU',{timeZone:'Australia/Perth'})}</p><div className="hq-detail-grid"><section className="hq-panel"><h2>Enquiry details</h2><dl><dt>Service</dt><dd>{e.service}</dd><dt>Suburb / postcode</dt><dd>{e.suburb||'Not provided'}</dd><dt>Contact preference</dt><dd>{e.contact_preference||'Either'}</dd><dt>Email</dt><dd><a href={'mailto:'+e.email}>{e.email}</a></dd><dt>Phone</dt><dd><a href={'tel:'+e.phone}>{e.phone}</a></dd><dt>Message</dt><dd className="hq-message">{e.message}</dd></dl></section><EnquiryWorkspace id={e.id} initialStatus={e.status} initialActivity={(activity??[]).map(item=>({...item,actor_name:item.actor_id?actorNames.get(item.actor_id)||'Staff member':'System'}))}/>
- </div><div className="hq-footer-user">Signed in as {user.name}</div></div></main>;
+ const msg=String(e.message||'');
+ const summary=messageSummary(msg);
+ const complaint=/\b(complaint|dissatisf|unhappy|concern|feedback|cleanup|clean.up)\b/i.test(summary);
+ const requestedDate=readMeta(msg,'Unverified preferred date (staff review)')||readMeta(msg,'Preferred date');
+ const urgency=readMeta(msg,'Urgency');
+ const timePreference=readMeta(msg,'Time preference');
+ const callId=readMeta(msg,'Call ID');
+ const contactPreference=String(e.contact_preference||'').toLowerCase();
+ const phoneOnly=/\b(phone contact only|prefers phone contact only|phone only)\b/i.test(msg);
+ const displayedPreference=contactPreference==='either'&&phoneOnly?'Phone requested (verify)':pretty(e.contact_preference);
+ const phone=String(e.phone||'').trim();
+ const email=String(e.email||'').trim();
+ const received=new Date(e.created_at).toLocaleString('en-AU',{timeZone:'Australia/Perth',dateStyle:'medium',timeStyle:'short'});
+ return <main className="hq-detail"><div className="hq-detail-inner">
+  <Link href="/hq#enquiries" className="hq-back">← Back to enquiries</Link>
+  <div className="hq-detail-head"><div><div className="hq-kicker">CUSTOMER ENQUIRY</div><h1>{e.name||'Unknown caller'}</h1><p>{pretty(e.service)}{e.suburb?' · '+e.suburb:''} · Received {received}</p></div><span className={'hq-status hq-status-'+e.status}>{pretty(e.status)}</span></div>
+  <div className="hq-detail-actions">{phone&&<a className="hq-detail-action-primary" href={'tel:'+phone}>Call customer</a>}{email&&<a className="hq-detail-action-secondary" href={'mailto:'+email}>Send email</a>}<div className="hq-detail-convert"><ConvertCustomer enquiryId={e.id} initialCustomerId={e.customer_id??null}/></div></div>
+  <div className="hq-detail-grid">
+   <div className="hq-detail-main">
+    {complaint&&<div className="hq-detail-alert"><strong>Customer concern mentioned</strong><p>This enquiry includes feedback or a concern about previous work. Review the details and arrange follow-up where appropriate.</p></div>}
+    <section className="hq-panel hq-detail-summary"><div className="hq-kicker">REQUEST OVERVIEW</div><h2>What the customer needs</h2><p className="hq-detail-summary-text">{summary||'No request summary provided.'}</p></section>
+    <section className="hq-panel hq-detail-facts"><h2>Enquiry information</h2><div className="hq-fact-grid">
+     <div><span>Service</span><strong>{pretty(e.service)}</strong></div>
+     <div><span>Location</span><strong>{e.suburb||'Not provided'}</strong></div>
+     <div><span>Phone</span><strong>{phone?<a href={'tel:'+phone}>{phone}</a>:'Not provided'}</strong></div>
+     <div><span>Email</span><strong>{email?<a href={'mailto:'+email}>{email}</a>:'Not provided'}</strong></div>
+     <div><span>Contact preference</span><strong>{displayedPreference}</strong></div>
+     <div><span>Urgency</span><strong>{pretty(urgency)}</strong></div>
+     <div><span>Requested date</span><strong>{requestedDate||'Not specified'}</strong>{requestedDate&&<small>Staff confirmation required — not a booking</small>}</div>
+     <div><span>Preferred time</span><strong>{pretty(timePreference)}</strong></div>
+    </div></section>
+    <details className="hq-panel hq-detail-original"><summary>Original enquiry record</summary><p className="hq-message">{msg||'No message provided.'}</p>{callId&&<p className="hq-call-id">Call ID: {callId}</p>}</details>
+   </div>
+   <EnquiryWorkspace id={e.id} initialStatus={e.status} initialActivity={(activity??[]).map(item=>({...item,actor_name:item.actor_id?actorNames.get(item.actor_id)||'Staff member':'System'}))}/>
+  </div><div className="hq-footer-user">Signed in as {user.name}</div></div></main>;
 }
