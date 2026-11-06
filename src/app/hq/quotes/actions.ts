@@ -18,13 +18,9 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
  let addressSnapshot={address:v.address.trim()};
  if(v.addressId){const {data:a}=await db.from('customer_addresses').select('address_line1,address_line2,suburb,state,postcode').eq('id',v.addressId).eq('customer_id',v.customerId).maybeSingle();if(!a)return {ok:false,message:'Invalid customer address'};addressSnapshot={...a,address:v.address.trim()||[a.address_line1,a.address_line2,a.suburb,a.state,a.postcode].filter(Boolean).join(', ')}}
  const values={customer_id:v.customerId||null,enquiry_id:v.enquiryId||null,site_address_id:v.addressId||null,site_address_snapshot:addressSnapshot,customer_snapshot:customerSnapshot,title:v.title.trim(),scope_of_work:v.scope.trim(),inclusions:v.inclusions,exclusions:v.exclusions,customer_notes:v.notes,internal_notes:v.internalNotes,customer_display:v.display,pricing_mode:v.mode,updated_at:new Date().toISOString()};
- let id=v.id;
- if(id){const {data:q}=await db.from('quotes').select('status').eq('id',id).maybeSingle();if(!q||!['draft','changes_requested'].includes(q.status))return {ok:false,message:'This quote is locked'};const {error}=await db.from('quotes').update(values).eq('id',id).in('status',['draft','changes_requested']);if(error)return {ok:false,message:'Could not update quote'}}
- else{const {data,error}=await db.from('quotes').insert({...values,created_by:user.id}).select('id').single();if(error||!data)return {ok:false,message:'Could not create quote'};id=data.id}
- const {error:clearError}=await db.from('quote_items').delete().eq('quote_id',id);
- if(clearError)return {ok:false,message:'Quote saved but line items could not be replaced'};
- if(v.lines.length){const {error}=await db.from('quote_items').insert(v.lines.map((l,i)=>({quote_id:id,position:i,description:l.description.trim(),category:l.category,quantity:l.quantity,unit:l.unit||'each',unit_price_cents:l.price,internal_unit_cost_cents:l.cost,gst_applicable:l.gst})));if(error)return {ok:false,message:'Quote saved but line items failed. Please retry'};}
- await db.from('quote_activity').insert({quote_id:id,actor_id:user.id,action:v.id?'draft_updated':'draft_created'});
+ const lines=v.lines.map((l,i)=>({position:i,description:l.description.trim(),category:l.category,quantity:l.quantity,unit:l.unit||'each',unit_price_cents:l.price,internal_unit_cost_cents:l.cost,gst_applicable:l.gst}));
+ const {data:id,error}=await db.rpc('save_quote_draft_atomic',{p_quote_id:v.id||null,p_values:values,p_lines:lines,p_actor:user.id});
+ if(error||!id)return {ok:false,message:'Unable to save draft. No partial changes were made.'};
  revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);
  return {ok:true,message:'Draft saved',id};
 }
