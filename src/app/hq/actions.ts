@@ -131,3 +131,17 @@ export async function saveEnquiryFollowUp(id:string,required:boolean,dueDate:str
  revalidatePath('/hq');revalidatePath('/hq/enquiries/'+id);
  return {ok:true,message:'Follow-up saved',activity:activity?{...activity,actor_name:user.name}:undefined};
 }
+
+export async function verifyEnquiryCallDetails(id:string):Promise<MutationResult>{
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!/^[0-9a-f-]{36}$/i.test(id))return {ok:false,message:'Invalid enquiry'};
+ const db=dbAdmin();
+ const {data:updated,error}=await db.from('enquiries').update({intake_needs_review:false,updated_at:new Date().toISOString()}).eq('id',id).eq('intake_needs_review',true).select('id').maybeSingle();
+ if(error)return {ok:false,message:'Could not verify call details'};
+ if(!updated)return {ok:true,message:'Call details already verified'};
+ const {data:activity,error:auditError}=await db.from('enquiry_activity').insert({enquiry_id:id,actor_id:user.id,action:'call_details_verified',note:'Staff confirmed the receptionist intake details'}).select('id,actor_id,action,note,created_at').single();
+ if(auditError)console.error('Verification audit insert failed',auditError.code);
+ revalidatePath('/hq');revalidatePath('/hq/enquiries/'+id);
+ return {ok:true,message:'Call details verified',activity:activity?{...activity,actor_name:user.name}:undefined};
+}
