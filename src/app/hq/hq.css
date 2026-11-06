@@ -194,3 +194,21 @@
 
 /* Quote workspace */
 .hq-quote-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:25px 0}.hq-quote-heading h1{font-size:32px;margin:5px 0}.hq-quote-button{display:inline-flex;align-items:center;justify-content:center;background:#0875bd;color:#fff!important;border:0;border-radius:10px;padding:12px 17px;text-decoration:none;font-weight:700;cursor:pointer}.hq-quote-button:disabled{opacity:.55}.hq-quote-list{display:grid;gap:10px}.hq-quote-list a{display:flex;justify-content:space-between;gap:12px;padding:14px;border:1px solid var(--hq-border,#dce4ed);border-radius:10px;text-decoration:none;color:inherit}.hq-quote-list span{color:#687989}.hq-quote-editor{display:grid;gap:16px}.hq-quote-editor .hq-panel{display:grid;gap:14px}.hq-quote-editor label{display:grid;gap:6px;font-size:13px;font-weight:650}.hq-quote-editor input:not([type=checkbox]),.hq-quote-editor select,.hq-quote-editor textarea{width:100%;min-width:0;padding:11px;border:1px solid #b7c7d5;border-radius:9px;background:var(--hq-input-bg,#fff);color:inherit;font:inherit}.hq-quote-editor input[type=checkbox]{width:auto}.hq-quote-line{display:grid;gap:10px;border:1px solid #d5e0e9;border-radius:12px;padding:14px}.hq-quote-line-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.hq-quote-line-footer,.hq-quote-totals p{display:flex;justify-content:space-between;align-items:center;gap:12px}.hq-quote-line-footer button{border:0;background:none;color:#a34040;cursor:pointer}.hq-quote-totals{border-top:1px solid #d5e0e9;padding-top:12px}.hq-quote-totals p:last-child{font-size:19px;font-weight:700}.hq-quote-save{display:flex;gap:14px;align-items:center;margin:22px 0 50px}@media(max-width:640px){.hq-quote-heading{align-items:flex-start;flex-direction:column}.hq-quote-line-grid{grid-template-columns:1fr}.hq-quote-list a{flex-direction:column}}
+
+/* Quote editor mobile refinements */
+.hq-quote-line-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;border:0;background:transparent;color:inherit;text-align:left;font-weight:750;font-size:13px;cursor:pointer;padding:4px 0}
+.hq-quote-line-fields{display:grid;gap:12px;border-top:1px solid #dce6ee;padding-top:12px}
+.hq-quote-editor label.hq-quote-gst{display:flex;flex-direction:row;align-items:center;gap:9px}
+.hq-quote-gst input{margin:0;flex:none}
+.hq-quote-add-customer{background:transparent;border:1px solid #1689ed;color:#0875bd;border-radius:9px;padding:11px;font-weight:700;text-align:center}
+.hq-quote-new-customer{display:grid;gap:12px;padding:14px;border:1px solid #dce6ee;border-radius:12px}
+.hq-quote-new-customer button{padding:11px;background:#0875bd;color:white;border:0;border-radius:9px;font-weight:700}
+.hq-quote-list a>div{display:grid;gap:5px;min-width:0}
+.hq-quote-list a>div:last-child{text-align:right;align-content:center}
+.hq-quote-list a p{margin:0;font-size:12px;color:#687989}
+.hq-quote-list a span{display:inline-block;text-transform:capitalize;font-size:11px}
+@media(max-width:640px){
+ .hq-quote-list a>div:last-child{text-align:left}
+ .hq-quote-save-sticky{position:sticky;bottom:64px;z-index:20;background:var(--hq-input-bg,#fff);padding:12px;border:1px solid #dce6ee;border-radius:12px;box-shadow:0 5px 24px #122b4430;margin-bottom:80px}
+ .hq-quote-save-sticky button{flex:1}
+}
