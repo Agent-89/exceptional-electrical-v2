@@ -1,0 +1,1 @@
+export default function QuotesPage(){return <main><h1>Quotes</h1><p>Quote builder coming soon.</p></main>}
