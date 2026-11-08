@@ -1,0 +1,11 @@
+import EnquiryInbox from '../enquiry-inbox';
+import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
+import '../hq.css';
+export const dynamic='force-dynamic';
+type Enquiry={id:string;name:string;service:string;service_category:string|null;enquiry_type:string|null;issue_tags:string[]|null;urgency:string|null;follow_up_required:boolean|null;intake_needs_review:boolean|null;requested_date:string|null;status:string;suburb:string|null;created_at:string;email:string};
+export default async function EnquiriesPage(){
+ await requireHqUser();
+ const {data,error}=await dbAdmin().from('enquiries').select('id,name,service,service_category,enquiry_type,issue_tags,urgency,follow_up_required,intake_needs_review,requested_date,status,suburb,created_at,email').order('created_at',{ascending:false}).limit(100);
+ const enquiries=(data??[]) as Enquiry[];
+ return <main className="hq-detail"><div className="hq-detail-inner"><div className="hq-detail-head"><div><div className="hq-kicker">CUSTOMER ENQUIRIES</div><h1>Enquiries</h1><p>Review new requests, follow-ups and calls needing verification.</p></div></div><section className="hq-panel"><div className="hq-panel-heading"><div><div className="hq-kicker">INBOX</div><h2>All enquiries</h2></div><span>Latest 100</span></div>{error?<p role="alert">Enquiries could not be loaded.</p>:<EnquiryInbox enquiries={enquiries}/>}</section></div></main>;
+}
