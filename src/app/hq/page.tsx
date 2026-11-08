@@ -43,3 +43,4 @@ export default async function HQ(){
   </section>
   <p className="hq-dashboard-footnote">Dashboard figures reflect the latest 100 enquiries and 100 quotes. Follow-up counts represent flagged enquiries, not overdue deadlines.</p>
  </div></main>;
+}
