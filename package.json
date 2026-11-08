@@ -15,7 +15,8 @@
     "next": "15.5.9",
     "react": "19.2.1",
     "react-dom": "19.2.1",
-    "zod": "4.1.12",\n    "sharp": "0.34.5"
+    "zod": "4.1.12",
+    "sharp": "0.34.5"
   },
   "devDependencies": {
     "@types/node": "22.15.30",
