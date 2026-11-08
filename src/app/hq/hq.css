@@ -375,3 +375,14 @@
 .hq-workflow-expanded{padding:0 0 16px}
 .hq-detail-grid-action-first .hq-next-action{margin-bottom:12px}
 @media(max-width:650px){.hq-inbox-compact-row{min-height:60px;padding:9px 10px;gap:8px}.hq-inbox-compact-avatar{height:30px;flex-basis:30px}.hq-inbox-compact-badges{gap:4px}.hq-inbox-compact-badges .hq-status,.hq-inbox-compact-badges .hq-attention-tag{font-size:9px;padding:2px 6px}.hq-inbox-compact-heading strong{font-size:12px}.hq-inbox-compact-subtitle{font-size:10px}.hq-inbox-compact-heading time{font-size:9px}}
+
+/* Enquiry detail: customer information first, management collapsed by default */
+.hq-manage-toggle{display:flex;width:100%;align-items:center;justify-content:space-between;gap:14px;border:0;background:transparent;color:#143349;text-align:left;padding:0;cursor:pointer;font:inherit}
+.hq-manage-toggle>span:first-child{display:flex;flex-direction:column;gap:5px;min-width:0}
+.hq-manage-toggle strong{font-size:18px}
+.hq-manage-toggle small{font-size:12px;font-weight:400;color:#71869a;line-height:1.5}
+.hq-manage-toggle>span:last-child{color:#54758c}
+.hq-manage-body{padding-top:12px}
+.hq-detail-grid-action-first>.hq-detail-main{grid-column:1;grid-row:1}
+.hq-detail-grid-action-first>.hq-detail-management{grid-column:2;grid-row:1}
+@media(max-width:760px){.hq-detail-grid-action-first>.hq-detail-main{order:0}.hq-detail-grid-action-first>.hq-detail-management{order:1}.hq-detail-grid-action-first>.hq-activity{order:2}}
