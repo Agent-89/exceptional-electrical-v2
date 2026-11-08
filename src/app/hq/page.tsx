@@ -17,7 +17,13 @@ export default async function HQ(){
  const followUps=enquiries.filter(e=>e.follow_up_required===true);
  const review=enquiries.filter(e=>e.intake_needs_review===true);
  const pendingQuotes=quotes.filter(q=>['pending_approval','awaiting_approval','submitted_for_approval','ready_for_approval'].includes(q.status));
- const attention=[...newEnquiries.slice(0,3).map(e=>({id:'e'+e.id,href:'/hq/enquiries/'+e.id,title:e.name||'Unknown caller',detail:e.service||'New enquiry',label:'New enquiry'})),...review.filter(e=>!newEnquiries.some(n=>n.id===e.id)).slice(0,2).map(e=>({id:'r'+e.id,href:'/hq/enquiries/'+e.id,title:e.name||'Unknown caller',detail:'Verify call details',label:'Needs review'})),...followUps.filter(e=>!newEnquiries.some(n=>n.id===e.id)&&!review.some(r=>r.id===e.id)).slice(0,2).map(e=>({id:'f'+e.id,href:'/hq/enquiries/'+e.id,title:e.name||'Unknown caller',detail:'Follow-up required',label:'Follow-up'})),...pendingQuotes.slice(0,2).map(q=>({id:'q'+q.id,href:'/hq/quotes/'+q.id,title:q.quote_number,detail:q.title||'Quote awaiting approval',label:'Quote approval'}))].slice(0,6);
+ const seen=new Set<string>();
+ const attention=[
+  ...review.map(e=>({id:e.id,href:'/hq/enquiries/'+e.id,title:e.name||'Unknown caller',detail:'Confirm receptionist intake details',label:'Verify call'})),
+  ...followUps.map(e=>({id:e.id,href:'/hq/enquiries/'+e.id,title:e.name||'Unknown caller',detail:'Customer follow-up required',label:'Follow up'})),
+  ...pendingQuotes.map(q=>({id:'q'+q.id,href:'/hq/quotes/'+q.id,title:q.quote_number,detail:q.title||'Owner review required',label:'Approve quote'})),
+  ...newEnquiries.map(e=>({id:e.id,href:'/hq/enquiries/'+e.id,title:e.name||'Unknown caller',detail:e.service||'Awaiting first contact',label:'New enquiry'}))
+ ].filter(item=>{if(seen.has(item.id))return false;seen.add(item.id);return true}).slice(0,6);
  const hasErrors=Boolean(enquiryResult.error||quoteResult.error);
  return <main className="hq-dashboard"><div className="hq-dashboard-inner">
   <div className="hq-dashboard-heading"><div className="hq-kicker">EXCEPTIONAL ELECTRICAL HQ · OPERATIONS</div><h1>Home</h1><p>Welcome back, {user.name}. Here’s what needs attention.</p></div>
@@ -41,6 +47,6 @@ export default async function HQ(){
   <section className="hq-dashboard-section" aria-labelledby="activity-title"><div className="hq-dashboard-section-head"><div><div className="hq-kicker">BUSINESS ACTIVITY</div><h2 id="activity-title">Recently updated quotes</h2></div><Link href="/hq/quotes">All quotes →</Link></div>
    <div className="hq-dashboard-queue">{quotes.length?quotes.slice(0,4).map(q=><Link key={q.id} href={'/hq/quotes/'+q.id} className="hq-dashboard-queue-item"><div><strong>{q.quote_number} · {q.title||'Untitled quote'}</strong><small>Updated {new Date(q.updated_at).toLocaleDateString('en-AU',{timeZone:'Australia/Perth'})}</small></div><span>{q.status.replaceAll('_',' ')} <b aria-hidden="true">→</b></span></Link>):<p className="hq-dashboard-empty">No quotes yet. Create one to get started.</p>}</div>
   </section>
-  <p className="hq-dashboard-footnote">Dashboard figures reflect the latest 100 enquiries and 100 quotes. Follow-up counts represent flagged enquiries, not overdue deadlines.</p>
+
  </div></main>;
 }
