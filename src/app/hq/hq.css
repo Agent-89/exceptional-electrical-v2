@@ -340,3 +340,30 @@
  .hq-inbox-compact-subtitle{font-size:11px}
  .hq-inbox-compact-heading time{font-size:10px}
 }
+
+/* Phase 2G.3A — enquiry detail: compact header and action-first workflow */
+.hq-detail-grid-action-first{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}
+.hq-detail-grid-action-first>.hq-detail-management{grid-column:1;grid-row:1}
+.hq-detail-grid-action-first>.hq-detail-main{grid-column:2;grid-row:1}
+.hq-detail-grid-action-first>.hq-activity{grid-column:1/-1;grid-row:2}
+.hq-detail-actions-compact{gap:8px;margin:14px 0 20px}
+.hq-detail-actions-compact .hq-detail-action-primary,.hq-detail-actions-compact .hq-detail-action-secondary{min-height:40px;padding:9px 13px;font-size:12px}
+.hq-detail-actions-compact .hq-detail-convert .hq-primary{min-height:40px;padding:9px 13px}
+.hq-detail-grid-action-first .hq-next-action{margin:13px 0 14px}
+.hq-next-action-button{margin-top:12px;min-height:42px}
+.hq-verify-hint{font-size:12px!important;color:#607a8e!important}
+@media(max-width:760px){
+ .hq-detail-grid-action-first{display:flex;flex-direction:column;gap:13px}
+ .hq-detail-grid-action-first>.hq-detail-management,.hq-detail-grid-action-first>.hq-detail-main,.hq-detail-grid-action-first>.hq-activity{width:100%;min-width:0}
+ .hq-detail-grid-action-first>.hq-detail-management{order:0}
+ .hq-detail-grid-action-first>.hq-detail-main{display:flex;flex-direction:column;gap:13px;order:1}
+ .hq-detail-grid-action-first>.hq-activity{order:2}
+ .hq-detail-actions-compact{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:12px 0 16px}
+ .hq-detail-actions-compact .hq-detail-action-primary,.hq-detail-actions-compact .hq-detail-action-secondary{padding:9px 6px;min-height:40px;text-align:center;font-size:11px;line-height:1.25}
+ .hq-detail-actions-compact .hq-detail-convert{grid-column:1/-1;width:100%}
+ .hq-detail-head h1{font-size:28px;margin:5px 0}
+ .hq-detail-head p{font-size:11px}
+ .hq-detail-labels{margin-top:6px}
+ .hq-detail .hq-back{margin-bottom:12px}
+ .hq-detail-grid-action-first .hq-panel{padding:18px 16px}
+}
