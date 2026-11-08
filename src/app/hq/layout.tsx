@@ -8,7 +8,7 @@ export const metadata:Metadata={
  applicationName:'Exceptional Electrical HQ',
  manifest:'/hq/manifest.webmanifest',
  appleWebApp:{capable:true,title:'Electrical HQ',statusBarStyle:'default'},
- icons:{icon:[{url:'/hq/icon.png',type:'image/png',sizes:'512x512'}],apple:[{url:'/hq/icon.png',sizes:'512x512',type:'image/png'}]}
+ icons:{icon:[{url:'/hq/icon.png?v=3',type:'image/png',sizes:'512x512'}],apple:[{url:'/hq/icon.png?v=3',sizes:'512x512',type:'image/png'}]}
 };
 export const viewport:Viewport={themeColor:'#f2f6fb'};
 export default function HQLayout({children}:{children:React.ReactNode}){return <><HQPwaRegister/><HqShell>{children}</HqShell></>}
