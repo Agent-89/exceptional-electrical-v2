@@ -52,10 +52,10 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
  const requestLabel=complaintTags.includes('quote_request')||e.enquiry_type==='new_job'?'Quote request':e.enquiry_type==='complaint'?'Customer concern':serviceDisplay+' enquiry';
  const received=new Date(e.created_at).toLocaleString('en-AU',{timeZone:'Australia/Perth',dateStyle:'medium',timeStyle:'short'});
  return <main className="hq-detail"><div className="hq-detail-inner">
-  <Link href="/hq#enquiries" className="hq-back">← Back to enquiries</Link>
+  <Link href="/hq/enquiries" className="hq-back">← Back to enquiries</Link>
   <div className="hq-detail-head"><div><div className="hq-kicker">CUSTOMER ENQUIRY</div><div className="hq-detail-labels"><span className="hq-detail-type">{requestLabel}</span>{hasSecondaryConcern&&<span className="hq-detail-type hq-detail-type-warning">Customer concern</span>}</div><h1>{e.name||'Unknown caller'}</h1><p>{serviceDisplay}{e.suburb?' · '+e.suburb:''} · Received {received}</p></div><span className={'hq-status hq-status-'+e.status}>{pretty(e.status)}</span></div>
-  <div className="hq-detail-actions"><Link className="hq-detail-action-secondary" href={"/hq/quotes/new?enquiry="+e.id}>+ Create quote</Link>{phone&&<a className="hq-detail-action-primary" href={'tel:'+phone}>Call customer</a>}{email&&<a className="hq-detail-action-secondary" href={'mailto:'+email}>Send email</a>}<div className="hq-detail-convert"><ConvertCustomer enquiryId={e.id} initialCustomerId={e.customer_id??null}/></div></div>
-  <div className="hq-detail-grid">
+  <div className="hq-detail-actions hq-detail-actions-compact"><Link className="hq-detail-action-secondary" href={"/hq/quotes/new?enquiry="+e.id}>+ Create quote</Link>{phone&&<a className="hq-detail-action-primary" href={'tel:'+phone}>Call customer</a>}{email&&<a className="hq-detail-action-secondary" href={'mailto:'+email}>Send email</a>}<div className="hq-detail-convert"><ConvertCustomer enquiryId={e.id} initialCustomerId={e.customer_id??null}/></div></div>
+  <div className="hq-detail-grid hq-detail-grid-action-first"><EnquiryWorkspace id={e.id} initialStatus={e.status} initialReceivedAt={e.created_at} initialNeedsReview={e.intake_needs_review===true} initialHasConcern={hasSecondaryConcern} initialRequestedDate={e.requested_date||requestedDate||''} initialFollowUp={e.follow_up_required===true} initialDueDate={e.follow_up_due_at?String(e.follow_up_due_at).slice(0,10):''} initialActivity={(activity??[]).map(item=>({...item,actor_name:item.actor_id?actorNames.get(item.actor_id)||'Staff member':'System'}))}/>
    <div className="hq-detail-main">
     {(complaintStructured||complaint)&&<div className="hq-detail-alert"><strong>Customer concern mentioned</strong><p>This enquiry includes feedback or a concern about previous work. Review the details and arrange follow-up where appropriate.</p></div>}
     <section className="hq-panel hq-detail-summary"><div className="hq-kicker">REQUEST OVERVIEW</div><h2>What the customer needs</h2><p className="hq-detail-summary-text">{summary||'No request summary provided.'}</p></section>
@@ -73,6 +73,6 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
     </div>{(e.intake_needs_review||e.follow_up_required)&&<div className="hq-detail-flags">{e.follow_up_required&&<span className="hq-attention-tag">Follow-up required</span>}{e.intake_needs_review&&<span className="hq-attention-tag">Verify call details</span>}</div>}</section>
     <details className="hq-panel hq-detail-original"><summary>Original enquiry record</summary><p className="hq-message">{msg||'No message provided.'}</p></details>
    </div>
-   <EnquiryWorkspace id={e.id} initialStatus={e.status} initialReceivedAt={e.created_at} initialNeedsReview={e.intake_needs_review===true} initialHasConcern={hasSecondaryConcern} initialRequestedDate={e.requested_date||requestedDate||''} initialFollowUp={e.follow_up_required===true} initialDueDate={e.follow_up_due_at?String(e.follow_up_due_at).slice(0,10):''} initialActivity={(activity??[]).map(item=>({...item,actor_name:item.actor_id?actorNames.get(item.actor_id)||'Staff member':'System'}))}/>
+   
   </div><div className="hq-footer-user">Signed in as {user.name}</div></div></main>;
 }
