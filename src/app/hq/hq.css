@@ -367,3 +367,11 @@
  .hq-detail .hq-back{margin-bottom:12px}
  .hq-detail-grid-action-first .hq-panel{padding:18px 16px}
 }
+
+/* Phase 2G.3B: compact mobile enquiry workflows */
+.hq-workflow-compact{border-top:1px solid #e0eaf1;padding:0!important;margin:0!important}
+.hq-workflow-expand{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;border:0;background:transparent;color:inherit;text-align:left;font:inherit;font-weight:700;padding:16px 0;cursor:pointer}
+.hq-workflow-expand span:last-child{font-size:12px;color:#6a8090;font-weight:500}
+.hq-workflow-expanded{padding:0 0 16px}
+.hq-detail-grid-action-first .hq-next-action{margin-bottom:12px}
+@media(max-width:650px){.hq-inbox-compact-row{min-height:60px;padding:9px 10px;gap:8px}.hq-inbox-compact-avatar{height:30px;flex-basis:30px}.hq-inbox-compact-badges{gap:4px}.hq-inbox-compact-badges .hq-status,.hq-inbox-compact-badges .hq-attention-tag{font-size:9px;padding:2px 6px}.hq-inbox-compact-heading strong{font-size:12px}.hq-inbox-compact-subtitle{font-size:10px}.hq-inbox-compact-heading time{font-size:9px}}
