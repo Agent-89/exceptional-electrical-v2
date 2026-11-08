@@ -323,3 +323,20 @@
 .hq-inbox-compact-badges .hq-status,.hq-inbox-compact-badges .hq-attention-tag{font-size:10px;padding:3px 7px;margin:0}
 .hq-inbox-compact-chevron{font-size:24px;color:#a0b3c1;flex-shrink:0}
 @media(max-width:650px){.hq-inbox-toolbar-compact{flex-direction:row}.hq-inbox-toolbar-compact input{min-width:0}.hq-inbox-compact-list{display:block}.hq-inbox-primary-tabs{margin-right:-12px}.hq-inbox-extra-filters{grid-template-columns:1fr 1fr}}
+
+/* Phase 2G.2: more usable enquiry inbox on small screens */
+.hq-inbox-toolbar-compact{margin-bottom:9px;gap:8px}
+.hq-inbox-filter-toggle{min-height:43px;padding:0 12px;font-size:12px}
+.hq-inbox-primary-tabs{gap:6px;padding-bottom:9px}
+.hq-inbox-primary-tabs button{padding:9px 12px;min-height:37px}
+.hq-inbox-compact-row:hover{background:#f7fbfe}
+.hq-inbox-compact-row{min-height:72px}
+@media(max-width:650px){
+ .hq-inbox-toolbar-compact input{height:43px!important;min-height:43px!important;padding-top:8px!important;padding-bottom:8px!important;font-size:13px!important}
+ .hq-inbox-filter-toggle{min-height:43px}
+ .hq-inbox-compact-row{padding:11px 10px;gap:9px}
+ .hq-inbox-compact-avatar{flex-basis:33px;height:33px}
+ .hq-inbox-compact-heading strong{font-size:13px}
+ .hq-inbox-compact-subtitle{font-size:11px}
+ .hq-inbox-compact-heading time{font-size:10px}
+}
