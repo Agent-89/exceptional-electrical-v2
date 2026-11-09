@@ -8,9 +8,10 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
  const user=await requireHqUser();
  if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'No permission to edit quotes'};
  if((v.id&&!validId(v.id))||(v.customerId&&!validId(v.customerId))||(v.enquiryId&&!validId(v.enquiryId))||(v.addressId&&!validId(v.addressId)))return {ok:false,message:'Invalid record reference'};
+ if(!v.title.trim())return {ok:false,message:'Enter a quote title'};
  if(v.title.length>200||v.scope.length>12000||v.address.length>1500||v.internalNotes.length>6000||v.lines.length>100)return {ok:false,message:'Quote exceeds field limits'};
  if(!['itemised','total_only'].includes(v.display)||!['fixed','detailed','mixed'].includes(v.mode))return {ok:false,message:'Invalid quote options'};
- for(const line of v.lines)if(!line.description.trim()||line.description.length>500||!['labour','material','equipment','subcontractor','other'].includes(line.category)||!Number.isFinite(line.quantity)||line.quantity<0||line.quantity>100000||!Number.isInteger(line.price)||line.price<0||line.price>1000000000||(line.cost!==null&&(!Number.isInteger(line.cost)||line.cost<0||line.cost>1000000000)))return {ok:false,message:'Check line item values'};
+ for(const line of v.lines)if(!line.description.trim()||line.description.length>500||!['labour','material','equipment','subcontractor','other'].includes(line.category)||!Number.isFinite(line.quantity)||line.quantity<=0||line.quantity>100000||!Number.isInteger(line.price)||line.price<0||line.price>1000000000||(line.cost!==null&&(!Number.isInteger(line.cost)||line.cost<0||line.cost>1000000000)))return {ok:false,message:'Check line item values'};
  const db=dbAdmin();
  let customerSnapshot={};
  if(v.customerId){const {data:c}=await db.from('customers').select('name,email,phone').eq('id',v.customerId).maybeSingle();if(!c)return {ok:false,message:'Customer not found'};customerSnapshot=c}
