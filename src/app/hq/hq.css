@@ -386,3 +386,13 @@
 .hq-detail-grid-action-first>.hq-detail-main{grid-column:1;grid-row:1}
 .hq-detail-grid-action-first>.hq-detail-management{grid-column:2;grid-row:1}
 @media(max-width:760px){.hq-detail-grid-action-first>.hq-detail-main{order:0}.hq-detail-grid-action-first>.hq-detail-management{order:1}.hq-detail-grid-action-first>.hq-activity{order:2}}
+
+/* Quote builder: category shortcuts and private cost review */
+.hq-quote-add-actions{display:flex;flex-wrap:wrap;gap:9px;margin:14px 0}
+.hq-quote-add-actions button:not(.hq-quote-button){border:1px solid #c9d9e7;background:#f5f9fc;border-radius:8px;padding:10px 13px;color:#19435e;font-weight:600;cursor:pointer}
+.hq-quote-add-actions button:focus-visible{outline:3px solid #2689d8;outline-offset:2px}
+.hq-quote-cost-summary{margin-top:14px;padding:14px 16px;border:1px solid #d5e2ed;border-radius:10px;background:#f6f9fc}
+.hq-quote-cost-summary summary{cursor:pointer;font-weight:700;color:#1d4059}
+.hq-quote-cost-summary p{display:flex;justify-content:space-between;gap:12px;margin:10px 0 0}
+.hq-quote-cost-summary .hq-quote-cost-warning{display:block;color:#8b5c17;font-size:12px}
+@media(max-width:600px){.hq-quote-add-actions button{flex:1 1 calc(50% - 9px)}.hq-quote-cost-summary p{flex-wrap:wrap}}
