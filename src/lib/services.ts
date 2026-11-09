@@ -1,3 +1,4 @@
+// Service catalogue for public service pages.
 export const services = {
  residential: { title: 'Residential Electrical', eyebrow: 'HOMES & RENOVATIONS', intro: 'Electrical solutions designed around the way you live.', details: ['Renovation and new-build electrical planning', 'Power points, switches and fittings', 'Indoor and outdoor lighting', 'Fault finding and electrical maintenance'] },
  commercial: { title: 'Commercial Electrical', eyebrow: 'BUSINESS & FIT-OUTS', intro: 'Practical electrical support for workplaces and commercial spaces.', details: ['Commercial fit-outs and alterations', 'Lighting upgrades and installations', 'Electrical maintenance', 'Planning for evolving business needs'] },
