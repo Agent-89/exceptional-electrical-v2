@@ -529,3 +529,22 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .service-card:nth-last-child(-n+3){border-bottom:0}
 @media(max-width:760px){.service-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.service-card:nth-child(3n){border-right:1px solid var(--line)}.service-card:nth-child(2n){border-right:0}.service-card:nth-last-child(-n+3){border-bottom:1px solid var(--line)}.service-card:nth-last-child(-n+2){border-bottom:0}}
 @media(max-width:420px){.service-grid{grid-template-columns:1fr}.service-card,.service-card:nth-child(2n),.service-card:nth-child(3n){border-right:0;border-bottom:1px solid var(--line)}.service-card:last-child{border-bottom:0}}
+
+
+/* Website conversion pass: consistent six-card service layout and form rhythm. */
+.service-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;border:0}
+.service-grid .service-card{min-width:0;min-height:310px;border:1px solid #dfe8f0!important;padding:28px;background:#fff}
+.service-grid .service-card:hover,.service-grid .service-card:focus-within{background:#f5faff}
+.service-grid .service-card>a{display:grid;place-items:center;width:42px;height:42px;border:1px solid #dceaf5}
+@media(max-width:900px){.service-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.service-grid{grid-template-columns:1fr;gap:12px}.service-grid .service-card{min-height:230px;padding:22px}.service-grid .service-card h3{font-size:21px}.service-grid .service-card p{font-size:13px}}
+.enquiry-form .form-row{align-items:start}
+.enquiry-form .suburb-field{margin-bottom:18px}
+.enquiry-form .suburb-field>label{margin-bottom:8px}
+.enquiry-form .suburb-help{font-size:11px;line-height:1.5;color:#657b8c;margin-top:7px}
+.enquiry-form .form-row>label{min-width:0}
+.enquiry-form .form-bottom{align-items:center}
+.enquiry-form .form-success{display:flex;align-items:flex-start;gap:10px;margin:22px 0 0;padding:17px 18px;background:#ecf9f1;border:1px solid #b7e3c8;color:#155e37;line-height:1.55}
+.enquiry-form .form-success svg{flex-shrink:0;margin-top:2px}
+.enquiry-form .form-error{margin-top:18px;padding:14px 16px;background:#fff1f1;border:1px solid #f2bdbd;color:#9b2020}
+@media(max-width:600px){.enquiry-form .suburb-field{margin-bottom:19px}.enquiry-form .form-bottom{flex-direction:column;align-items:stretch}.enquiry-form .form-bottom .button{width:100%}}
