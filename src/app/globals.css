@@ -521,3 +521,11 @@ a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,s
 .suburb-no-results{margin:0;padding:12px;color:#536a7e;font-size:12px;line-height:1.5}
 .suburb-field .suburb-help{display:block;margin-top:6px}
 @media(max-width:760px){.suburb-suggestions{max-height:210px}.suburb-option{min-height:46px}}
+
+/* Six equal-priority service cards */
+.service-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.service-card{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.service-card:nth-child(3n){border-right:0}
+.service-card:nth-last-child(-n+3){border-bottom:0}
+@media(max-width:760px){.service-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.service-card:nth-child(3n){border-right:1px solid var(--line)}.service-card:nth-child(2n){border-right:0}.service-card:nth-last-child(-n+3){border-bottom:1px solid var(--line)}.service-card:nth-last-child(-n+2){border-bottom:0}}
+@media(max-width:420px){.service-grid{grid-template-columns:1fr}.service-card,.service-card:nth-child(2n),.service-card:nth-child(3n){border-right:0;border-bottom:1px solid var(--line)}.service-card:last-child{border-bottom:0}}
