@@ -1,7 +1,9 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ArrowUpRight, Check, Phone } from 'lucide-react';
 import { services, type ServiceKey } from '@/lib/services';
+export async function generateMetadata({params}:{params:Promise<{slug:string}>}):Promise<Metadata>{ const {slug}=await params; if(!(slug in services))return {}; const service=services[slug as ServiceKey]; return {title:`${service.title} Perth | Exceptional Electrical`,description:`${service.intro} Contact Exceptional Electrical to discuss your project.`}; }
 export function generateStaticParams(){ return Object.keys(services).map(slug=>({slug})); }
 export default async function ServicePage({params}:{params:Promise<{slug:string}>}){
  const {slug}=await params;
