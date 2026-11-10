@@ -71,8 +71,10 @@ export async function addJobAppointment(formData:FormData){
  const parse=(s:string)=>/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(s)?new Date(s+':00+08:00'):new Date(NaN);
  const begins=parse(start),ends=parse(end);
  if(!Number.isFinite(begins.getTime())||!Number.isFinite(ends.getTime())||ends<=begins||notes.length>2000)throw new Error('Please enter a valid appointment.');
- const db=dbAdmin();const {error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null});
- if(error)throw new Error('Could not schedule appointment.');
+ const db=dbAdmin();const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();
+ if(error||!visit)throw new Error('Could not schedule appointment.');
+ const {data:jobStaff}=await db.from('job_assignments').select('staff_id').eq('job_id',jobId);
+ if(jobStaff?.length){const {error:staffError}=await db.from('job_appointment_staff').insert(jobStaff.map(a=>({appointment_id:visit.id,staff_id:a.staff_id})));if(staffError)throw new Error('Visit created, but electrician assignment failed. Please assign staff in Scheduling.');}
  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end});
  revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');
 }
