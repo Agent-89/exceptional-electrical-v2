@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import {FilePlus2,UsersRound,Inbox} from 'lucide-react';
 import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
 import './hq.css';
 export const dynamic='force-dynamic';
@@ -46,7 +47,7 @@ export default async function HQ(){
    </div>
   </section>
   <section className="hq-dashboard-section" aria-labelledby="quick-title"><div className="hq-dashboard-section-head"><div><div className="hq-kicker">GET THINGS DONE</div><h2 id="quick-title">Quick actions</h2></div></div>
-   <div className="hq-dashboard-actions"><Link href="/hq/quotes/new"><span aria-hidden="true">＋</span><strong>Create quote</strong><small>Start a new quotation</small></Link><Link href="/hq/customers"><span aria-hidden="true">♙</span><strong>Customers</strong><small>Find or add a customer</small></Link><Link href="/hq/enquiries"><span aria-hidden="true">▤</span><strong>Enquiry inbox</strong><small>Review all requests</small></Link></div>
+   <div className="hq-dashboard-actions"><Link href="/hq/quotes/new"><span aria-hidden="true"><FilePlus2 size={22} strokeWidth={1.9}/></span><strong>Create quote</strong><small>Start a new quotation</small></Link><Link href="/hq/customers"><span aria-hidden="true"><UsersRound size={22} strokeWidth={1.9}/></span><strong>Customers</strong><small>Find or add a customer</small></Link><Link href="/hq/enquiries"><span aria-hidden="true"><Inbox size={22} strokeWidth={1.9}/></span><strong>Enquiry inbox</strong><small>Review all requests</small></Link></div>
   </section>
   <section className="hq-dashboard-section" aria-labelledby="activity-title"><div className="hq-dashboard-section-head"><div><div className="hq-kicker">BUSINESS ACTIVITY</div><h2 id="activity-title">Recently updated quotes</h2></div><Link href="/hq/quotes">All quotes →</Link></div>
    <div className="hq-dashboard-queue">{quotes.length?quotes.slice(0,4).map(q=><Link key={q.id} href={'/hq/quotes/'+q.id} className="hq-dashboard-queue-item"><div><strong>{q.quote_number} · {q.title||'Untitled quote'}</strong><small>Updated {new Date(q.updated_at).toLocaleDateString('en-AU',{timeZone:'Australia/Perth'})}</small></div><span>{q.status.replaceAll('_',' ')} <b aria-hidden="true">→</b></span></Link>):<p className="hq-dashboard-empty">No quotes yet. Create one to get started.</p>}</div>
