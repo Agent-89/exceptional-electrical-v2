@@ -25,3 +25,26 @@ export async function updateScheduledVisit(formData:FormData){
  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:action==='cancel'?'appointment_cancelled':'appointment_rescheduled',note:action==='cancel'?'Visit cancelled':update.starts_at+' – '+update.ends_at});
  revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+visit.job_id);
 }
+
+export async function updateVisitStaff(formData:FormData){
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted to dispatch staff.');
+ const id=String(formData.get('appointment_id')||'');
+ const staffIds=[...new Set(formData.getAll('staff_id').map(String).filter(Boolean))];
+ if(!/^[0-9a-f-]{36}$/i.test(id)||staffIds.some(v=>!/^[0-9a-f-]{36}$/i.test(v)))throw new Error('Invalid visit assignment.');
+ const db=dbAdmin();
+ const {data:visit}=await db.from('job_appointments').select('job_id,status').eq('id',id).maybeSingle();
+ if(!visit||visit.status!=='scheduled')throw new Error('Scheduled visit not found.');
+ if(staffIds.length){
+  const {data:active,error:staffError}=await db.from('staff_profiles').select('user_id').eq('active',true).in('user_id',staffIds);
+  if(staffError||active?.length!==staffIds.length)throw new Error('Choose active staff members.');
+ }
+ const {error:removeError}=await db.from('job_appointment_staff').delete().eq('appointment_id',id);
+ if(removeError)throw new Error('Unable to update visit staff.');
+ if(staffIds.length){
+  const {error:insertError}=await db.from('job_appointment_staff').insert(staffIds.map(staff_id=>({appointment_id:id,staff_id})));
+  if(insertError)throw new Error('Unable to assign visit staff.');
+ }
+ await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'visit_staff_updated',note:staffIds.length+' electrician(s) assigned to visit'});
+ revalidatePath('/hq/schedule');revalidatePath('/hq/jobs/'+visit.job_id);
+}
