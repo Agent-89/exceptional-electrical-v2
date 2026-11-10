@@ -9,7 +9,7 @@ const zone='Australia/Perth';
 const dayLabel=(date:Date)=>new Intl.DateTimeFormat('en-AU',{timeZone:zone,weekday:'short',day:'numeric',month:'short'}).format(date);
 const timeLabel=(s:string)=>new Date(s).toLocaleTimeString('en-AU',{timeZone:zone,hour:'numeric',minute:'2-digit'});
 const inputDate=(s:string)=>new Date(s).toLocaleString('sv-SE',{timeZone:zone,hour12:false}).replace(' ','T').slice(0,16);
-const dayKey=(s:string|Date)=>new Date(s).toLocaleDateString('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'});
+const dayKey=(s:string|Date)=>(typeof s==='string'?new Date(s):s).toLocaleDateString('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'});
 const dateAt=(s:string)=>new Date(s+'T00:00:00+08:00');
 const addDays=(d:Date,n:number)=>new Date(d.getTime()+n*86400000);
 export default async function SchedulePage({searchParams}:{searchParams:Promise<{week?:string;view?:string}>}){
