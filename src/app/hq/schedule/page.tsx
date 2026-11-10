@@ -9,7 +9,7 @@ const zone='Australia/Perth';
 const dayLabel=(date:Date)=>new Intl.DateTimeFormat('en-AU',{timeZone:zone,weekday:'short',day:'numeric',month:'short'}).format(date);
 const timeLabel=(s:string)=>new Date(s).toLocaleTimeString('en-AU',{timeZone:zone,hour:'numeric',minute:'2-digit'});
 const inputDate=(s:string)=>new Date(s).toLocaleString('sv-SE',{timeZone:zone,hour12:false}).replace(' ','T').slice(0,16);
-const dayKey=(s:string)=>new Date(s).toLocaleDateString('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'});
+const dayKey=(s:string|Date)=>new Date(s).toLocaleDateString('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'});
 const dateAt=(s:string)=>new Date(s+'T00:00:00+08:00');
 const addDays=(d:Date,n:number)=>new Date(d.getTime()+n*86400000);
 export default async function SchedulePage({searchParams}:{searchParams:Promise<{week?:string;view?:string}>}){
@@ -20,7 +20,6 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  const selected=/^\d{4}-\d{2}-\d{2}$/.test(params.week??'')&&!Number.isNaN(dateAt(params.week!).getTime())?params.week!:today;
  const selectedDate=dateAt(selected);
  const monday=addDays(selectedDate,-((selectedDate.getUTCDay()+6)%7));
- const mondayKey=dayKey(monday);
  const next=addDays(monday,7),prev=addDays(monday,-7);
  const days=Array.from({length:7},(_,i)=>addDays(monday,i));
  const db=dbAdmin();
