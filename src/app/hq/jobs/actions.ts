@@ -9,10 +9,12 @@ export async function createJob(formData:FormData){
  const customerId=String(formData.get('customer_id')||'').trim();
  const description=String(formData.get('description')||'').trim();
  const priority=String(formData.get('priority')||'normal');
+ const siteAddress=String(formData.get('site_address_text')||'').trim();
+ if(siteAddress.length>500)throw new Error('Site address is too long.');
  if(title.length<2||title.length>200||description.length>5000||!['low','normal','high','urgent'].includes(priority))throw new Error('Please check the job details.');
  const db=dbAdmin();
  if(customerId){const {data:customer}=await db.from('customers').select('id').eq('id',customerId).maybeSingle();if(!customer)throw new Error('Customer not found.');}
- const {data,error}=await db.from('jobs').insert({title,description:description||null,customer_id:customerId||null,priority,created_by:user.id}).select('id').single();
+ const {data,error}=await db.from('jobs').insert({title,description:description||null,customer_id:customerId||null,site_address_text:siteAddress||null,priority,created_by:user.id}).select('id').single();
  if(error||!data)throw new Error('Unable to create job.');
  await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'created'});
  revalidatePath('/hq/jobs');
