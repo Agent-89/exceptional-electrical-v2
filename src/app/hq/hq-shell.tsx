@@ -10,7 +10,7 @@ export default function HqShell({children}:{children:React.ReactNode}){
  const pathname=usePathname();
  const [menu,setMenu]=useState(false);
  const [showStartup,setShowStartup]=useState(false);
- useEffect(()=>{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;try{if(sessionStorage.getItem('ee-hq-startup-seen'))return;sessionStorage.setItem('ee-hq-startup-seen','1')}catch{return}setShowStartup(true);const timer=setTimeout(()=>setShowStartup(false),1050);return()=>clearTimeout(timer)},[]);
+ useEffect(()=>{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;try{if(sessionStorage.getItem('ee-hq-startup-seen'))return;sessionStorage.setItem('ee-hq-startup-seen','1')}catch{return}setShowStartup(true);const timer=setTimeout(()=>setShowStartup(false),1400);return()=>clearTimeout(timer)},[]);
  const [navigating,setNavigating]=useState(false);
  const navigationDelay=useRef<ReturnType<typeof setTimeout>|null>(null);
  const clearNavigation=()=>{if(navigationDelay.current)clearTimeout(navigationDelay.current);navigationDelay.current=null;setNavigating(false)};
@@ -21,7 +21,7 @@ export default function HqShell({children}:{children:React.ReactNode}){
  const active=(href:string)=>href==='/hq'?pathname==='/hq':pathname===href||pathname.startsWith(href+'/');
  return <div className="hq-shell">
   {navigating&&<div className="hq-navigation-progress" role="progressbar" aria-label="Opening page"/>}
-  {showStartup&&<div className="hq-startup" role="status" aria-label="Opening Exceptional Electrical HQ" onClick={()=>setShowStartup(false)}><div className="hq-startup-brand"><div className="hq-startup-mark"><Image src="/exceptional-electrical-logo.png" alt="" width={240} height={88} unoptimized priority/><span className="hq-startup-charge" aria-hidden="true"/><span className="hq-startup-spark" aria-hidden="true">✦</span></div><strong>EXCEPTIONAL ELECTRICAL</strong><span>HQ</span></div></div>}
+  {showStartup&&<div className="hq-startup" role="status" aria-label="Opening Exceptional Electrical HQ" onClick={()=>setShowStartup(false)}><div className="hq-startup-brand"><div className="hq-startup-mark"><Image className="hq-startup-outline" src="/exceptional-electrical-logo.png" alt="" width={240} height={88} unoptimized priority/><div className="hq-startup-fill" aria-hidden="true"><Image src="/exceptional-electrical-logo.png" alt="" width={240} height={88} unoptimized priority/></div><span className="hq-startup-charge" aria-hidden="true"/><span className="hq-startup-spark hq-startup-spark-one" aria-hidden="true">✦</span><span className="hq-startup-spark hq-startup-spark-two" aria-hidden="true">✧</span></div><strong>EXCEPTIONAL ELECTRICAL</strong><span>HQ</span></div></div>}
   <header className="hq-shell-header">
    <button type="button" className="hq-shell-icon-button" aria-label="Open navigation menu" aria-expanded={menu} onClick={()=>setMenu(v=>!v)}><Menu size={23} strokeWidth={2}/></button>
    <Link href="/hq" className="hq-shell-logo" aria-label="Exceptional Electrical HQ home"><Image src="/exceptional-electrical-logo.png" alt="Exceptional Electrical" width={240} height={88} priority unoptimized/></Link>
