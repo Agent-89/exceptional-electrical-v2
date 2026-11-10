@@ -396,3 +396,15 @@
 .hq-quote-cost-summary p{display:flex;justify-content:space-between;gap:12px;margin:10px 0 0}
 .hq-quote-cost-summary .hq-quote-cost-warning{display:block;color:#8b5c17;font-size:12px}
 @media(max-width:600px){.hq-quote-add-actions button{flex:1 1 calc(50% - 9px)}.hq-quote-cost-summary p{flex-wrap:wrap}}
+
+/* Quote builder workflow refinements */
+.hq-quote-field-hint{font-size:12px;line-height:1.5;color:#667c8c;margin:3px 0 17px}
+.hq-quote-optional{font-weight:400;color:#8293a0;font-size:12px}
+.hq-quote-optional-details{border:1px solid #dbe5ed;border-radius:9px;padding:14px 17px;margin-top:17px}
+.hq-quote-optional-details>summary{cursor:pointer;font-weight:700;color:#34546b}
+.hq-quote-optional-details[open]>summary{margin-bottom:16px}
+.hq-quote-line{border:1px solid #d7e3ec;border-left:4px solid #1689ed;border-radius:10px;margin:13px 0;overflow:hidden;background:#fff}
+.hq-quote-line-toggle{width:100%;min-height:58px;padding:14px 18px;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:16px;background:#f4f8fb;border:0;color:#173c54;font-weight:700;cursor:pointer}
+.hq-quote-line-toggle span:first-child{overflow-wrap:anywhere}
+.hq-quote-line-fields{padding:17px 18px 19px}
+@media(max-width:600px){.hq-quote-line-toggle{padding:13px 14px}.hq-quote-line-fields{padding:13px 14px}}
