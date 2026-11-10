@@ -9,7 +9,7 @@ export default async function Login({searchParams}:{searchParams:Promise<{error?
  return <main className="hq-login hq-login-premium hq-login-refined">
   <div className="hq-login-ambient" aria-hidden="true"/>
   <div className="hq-login-layout">
-   <div className="hq-login-brand"><Link href="/" aria-label="Exceptional Electrical website"><Image src="/exceptional-electrical-logo.png" alt="Exceptional Electrical" width={250} height={92} priority unoptimized/></Link><span className="hq-login-brand-tag">HQ</span></div>
+   <div className="hq-login-brand"><Link href="/" aria-label="Exceptional Electrical website"><span className="hq-login-logo-stack"><Image className="hq-login-logo-light" src="/exceptional-electrical-logo.png" alt="Exceptional Electrical" width={250} height={92} priority unoptimized/><Image className="hq-login-logo-blue" src="/exceptional-electrical-logo.png" alt="" aria-hidden="true" width={250} height={92} unoptimized/></span></Link><span className="hq-login-brand-tag">HQ</span></div>
    <section className="hq-login-card" aria-labelledby="hq-login-title">
     <div className="hq-login-card-top"><span className="hq-login-icon"><LockKeyhole size={20} strokeWidth={1.8}/></span><span>STAFF ACCESS</span></div>
     <h1 id="hq-login-title">Welcome back<span>.</span></h1>
