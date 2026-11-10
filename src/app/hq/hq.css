@@ -613,3 +613,11 @@
  @keyframes hq-login-enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
 }
 @media(max-width:480px){.hq-login-refined .hq-login-brand img{width:200px}.hq-login-refined .hq-login-layout{gap:18px}.hq-login-refined .hq-login-card{padding:27px 23px}}
+
+
+/* Preserve the original electric-blue plug while rendering dark lettering white on navy. */
+.hq-login-refined .hq-login-logo-stack{position:relative;display:block;width:220px;line-height:0}
+.hq-login-refined .hq-login-logo-stack img{display:block;width:100%;height:auto;max-height:none;object-fit:contain}
+.hq-login-refined .hq-login-logo-stack .hq-login-logo-light{filter:brightness(0) invert(1)}
+.hq-login-refined .hq-login-logo-stack .hq-login-logo-blue{position:absolute;inset:0;filter:none;clip-path:polygon(0 0,25% 0,25% 58%,15% 58%,15% 100%,0 100%);pointer-events:none}
+@media(max-width:480px){.hq-login-refined .hq-login-logo-stack{width:200px}}
