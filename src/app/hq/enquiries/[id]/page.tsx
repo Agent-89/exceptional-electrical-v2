@@ -70,7 +70,7 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
      <div><span>Preferred time</span><strong>{pretty(e.preferred_time_window||timePreference)}</strong></div>
      <div><span>Request type</span><strong>{requestLabel}</strong></div>
      <div><span>Booking</span><strong>{e.booking_status==='pending_confirmation'||e.booking_status==='requested'?'Pending staff confirmation':e.booking_status==='confirmed'?'Confirmed':e.requested_date||requestedDate?'Pending staff confirmation':'Not booked'}</strong></div>
-    </div>{(e.intake_needs_review||e.follow_up_required)&&<div className="hq-detail-flags">{e.follow_up_required&&<span className="hq-attention-tag">Follow-up required</span>}{e.intake_needs_review&&<span className="hq-attention-tag">Verify call details</span>}</div>}</section>
+    </div>{(e.intake_needs_review||e.follow_up_required)&&<div className="hq-detail-flags">{e.follow_up_required&&<span className="hq-attention-tag">Follow-up required</span>}{e.intake_needs_review&&<span className="hq-attention-tag">Intake review needed</span>}</div>}</section>
     <details className="hq-panel hq-detail-original"><summary>Original enquiry record</summary><p className="hq-message">{msg||'No message provided.'}</p></details>
    </div>
    
