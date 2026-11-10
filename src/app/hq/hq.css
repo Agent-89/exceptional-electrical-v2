@@ -585,3 +585,31 @@
 .hq-shell-logout{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:10px 13px;border:0;border-radius:10px;background:transparent;color:#a12b38;font-size:14px;font-weight:750;text-align:left}
 .hq-shell-logout:hover,.hq-shell-logout:focus-visible{background:#fff0f1}
 @media(max-width:480px){.hq-login-premium{padding:24px 18px}.hq-login-layout{gap:22px}.hq-login-brand img{width:162px}.hq-login-brand-tag{font-size:9px}.hq-login-premium .hq-login-card{padding:28px 23px;border-radius:19px}.hq-login-footer{flex-wrap:wrap}}
+
+
+/* Refined login: centred branding, compact card and accessible controls. */
+.hq-login-refined .hq-login-layout{gap:22px}
+.hq-login-refined .hq-login-brand{justify-content:center;flex-direction:column;gap:0}
+.hq-login-refined .hq-login-brand a{display:block;line-height:0}
+.hq-login-refined .hq-login-brand img{width:220px;max-height:94px;filter:brightness(0) invert(1)}
+.hq-login-refined .hq-login-brand-tag{font-size:12px;letter-spacing:.28em;color:#77c4ff;margin-top:-2px}
+.hq-login-refined .hq-login-card{padding:clamp(26px,5vw,38px)}
+.hq-login-refined .hq-login-card h1{margin:19px 0 8px}
+.hq-login-refined .hq-login-card p{margin-bottom:24px}
+.hq-login-refined .hq-login-icon{width:40px;height:40px}
+.hq-login-refined .hq-login-password-wrap{position:relative;display:block}
+.hq-login-refined .hq-login-password-wrap input{padding-right:55px}
+.hq-login-refined .hq-login-password-toggle{position:absolute;right:5px;top:9px;display:grid;place-items:center;width:44px;height:44px;border:0;background:transparent;color:#70889a;border-radius:9px}
+.hq-login-refined .hq-login-password-toggle:hover{color:#0877d3;background:#eaf5ff}
+.hq-login-refined .hq-login-remember{display:flex;align-items:center;gap:11px;margin:3px 0 0;font-size:13px;font-weight:600;color:#526a7c;cursor:pointer}
+.hq-login-refined .hq-login-remember input{appearance:auto;width:18px;height:18px;min-width:18px;margin:0;accent-color:#1689ed;cursor:pointer}
+.hq-login-refined .hq-login-submit{margin-top:22px}
+.hq-login-refined .hq-login-secure{margin-top:18px}
+.hq-login-refined .hq-login-footer{justify-content:center}
+@media(prefers-reduced-motion:no-preference){
+ .hq-login-refined .hq-login-brand{animation:hq-login-enter .45s ease-out both}
+ .hq-login-refined .hq-login-card{animation:hq-login-enter .48s .08s ease-out both}
+ .hq-login-refined .hq-login-footer{animation:hq-login-enter .48s .15s ease-out both}
+ @keyframes hq-login-enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+}
+@media(max-width:480px){.hq-login-refined .hq-login-brand img{width:200px}.hq-login-refined .hq-login-layout{gap:18px}.hq-login-refined .hq-login-card{padding:27px 23px}}
