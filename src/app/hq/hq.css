@@ -621,3 +621,11 @@
 .hq-login-refined .hq-login-logo-stack .hq-login-logo-light{filter:brightness(0) invert(1)}
 .hq-login-refined .hq-login-logo-stack .hq-login-logo-blue{position:absolute;inset:0;filter:none;clip-path:polygon(0 0,25% 0,25% 58%,15% 58%,15% 100%,0 100%);pointer-events:none}
 @media(max-width:480px){.hq-login-refined .hq-login-logo-stack{width:200px}}
+
+
+/* Original brand artwork inside the white sign-in card, no recolouring or overlays. */
+.hq-login-refined .hq-login-card-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;margin:0 0 24px;text-align:center}
+.hq-login-refined .hq-login-card-brand img{display:block;width:min(100%,265px);height:auto;max-height:110px;object-fit:contain;filter:none!important;clip-path:none!important}
+.hq-login-refined .hq-login-card-brand span{color:#1689ed;font-size:12px;font-weight:800;letter-spacing:.28em;margin-top:0}
+.hq-login-refined .hq-login-card h1{margin:0 0 8px}
+@media(max-width:480px){.hq-login-refined .hq-login-card-brand{margin-bottom:22px}.hq-login-refined .hq-login-card-brand img{width:min(100%,245px)}}
