@@ -1,9 +1,10 @@
 'use client';
 import Link from 'next/link';
 import Image from 'next/image';
+import {logoutAction} from './actions';
 import {usePathname} from 'next/navigation';
 import {useEffect,useRef,useState} from 'react';
-import {House,Inbox,UsersRound,FileText,Menu,X} from 'lucide-react';
+import {House,Inbox,UsersRound,FileText,Menu,X,LogOut} from 'lucide-react';
 
 const items=[{href:'/hq',label:'Home',icon:House},{href:'/hq/enquiries',label:'Enquiries',icon:Inbox},{href:'/hq/customers',label:'Customers',icon:UsersRound},{href:'/hq/quotes',label:'Quotes',icon:FileText}];
 export default function HqShell({children}:{children:React.ReactNode}){
@@ -30,7 +31,7 @@ export default function HqShell({children}:{children:React.ReactNode}){
   <><button className={`hq-shell-scrim${menu?' is-open':''}`} aria-label="Close navigation menu" tabIndex={menu?0:-1} aria-hidden={!menu} onClick={()=>setMenu(false)}/><aside className={`hq-shell-drawer${menu?' is-open':''}`} aria-label="HQ menu" aria-hidden={!menu} inert={!menu}>
    <div className="hq-shell-drawer-heading"><Link href="/hq" className="hq-shell-drawer-brand" aria-label="Exceptional Electrical HQ home"><Image src="/exceptional-electrical-logo.png" alt="Exceptional Electrical" width={180} height={66} unoptimized/><span>HQ</span></Link><button onClick={()=>setMenu(false)} aria-label="Close menu"><X size={20}/></button></div>
    <nav>{items.map(item=><Link key={item.href} href={item.href} aria-current={active(item.href)?'page':undefined}><item.icon size={19} strokeWidth={1.9} aria-hidden="true"/><span>{item.label}</span></Link>)}</nav>
-   <div className="hq-shell-drawer-future"><span>Coming later</span><p>Jobs · Scheduling · Inventory · Purchasing · Reports</p></div>
+   <div className="hq-shell-drawer-future"><span>Coming later</span><p>Jobs · Scheduling · Inventory · Purchasing · Reports</p></div><form action={logoutAction} className="hq-shell-logout-form"><button type="submit" className="hq-shell-logout"><LogOut size={19} strokeWidth={1.9} aria-hidden="true"/><span>Log out</span></button></form>
   </aside></>
   <div className="hq-shell-content" id="hq-main-content">{children}</div>
   <nav className="hq-shell-bottom" aria-label="HQ sections">{items.map(item=><Link key={item.href} href={item.href} prefetch aria-current={active(item.href)?'page':undefined}><span aria-hidden="true" className="hq-shell-nav-icon"><item.icon size={22} strokeWidth={1.9}/></span><span>{item.label}</span></Link>)}</nav>
