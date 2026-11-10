@@ -33,7 +33,7 @@ export async function updateJob(formData:FormData){
  const {error}=await db.from('jobs').update({status,updated_at:new Date().toISOString(),completed_at:status==='completed'?new Date().toISOString():null}).eq('id',id);
  if(error)throw new Error('Unable to update job.');
  if(before.status!==status||note)await db.from('job_activity').insert({job_id:id,actor_id:user.id,action:before.status===status?'note_added':'status_changed',note:note||('Status: '+before.status+' → '+status)});
- revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+id);
+ revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+id);revalidatePath('/hq/schedule');
 }
 
 export async function updateJobDetails(formData:FormData){
@@ -54,7 +54,7 @@ export async function assignJobStaff(formData:FormData){
  const {error}=await db.from('job_assignments').upsert({job_id:jobId,staff_id:staffId},{onConflict:'job_id,staff_id',ignoreDuplicates:true});
  if(error)throw new Error('Could not assign staff.');
  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'staff_assigned'});
- revalidatePath('/hq/jobs/'+jobId);
+ revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/schedule');
 }
 export async function removeJobStaff(formData:FormData){
  const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
@@ -62,7 +62,7 @@ export async function removeJobStaff(formData:FormData){
  const db=dbAdmin();const {error}=await db.from('job_assignments').delete().eq('job_id',jobId).eq('staff_id',staffId);
  if(error)throw new Error('Could not remove assignment.');
  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'staff_unassigned'});
- revalidatePath('/hq/jobs/'+jobId);
+ revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');
 }
 export async function addJobAppointment(formData:FormData){
  const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
@@ -74,5 +74,5 @@ export async function addJobAppointment(formData:FormData){
  const db=dbAdmin();const {error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null});
  if(error)throw new Error('Could not schedule appointment.');
  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end});
- revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');
+ revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');
 }
