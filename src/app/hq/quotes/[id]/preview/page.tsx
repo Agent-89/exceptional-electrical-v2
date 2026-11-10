@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import BackToQuote from './back-to-quote';
 import {notFound} from 'next/navigation';
 import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
 import PrintQuoteButton from './print-button';
@@ -22,7 +22,7 @@ export default async function QuotePreview({params}:{params:Promise<{id:string}>
  const site=(q.site_address_snapshot||{}) as {address?:string};
  const printable=['approved','sent','accepted','declined','expired','superseded'].includes(q.status);
  return <main className="quote-preview-shell">
-  <div className="quote-preview-toolbar"><Link href={'/hq/quotes/'+q.id}>← Back to quote</Link><span>{printable?'Customer quotation':'DRAFT PREVIEW — NOT FOR SENDING'}</span><PrintQuoteButton quoteId={q.id}/></div>
+  <div className="quote-preview-toolbar"><BackToQuote href={'/hq/quotes/'+q.id}/><span>{printable?'Customer quotation':'DRAFT PREVIEW — NOT FOR SENDING'}</span><PrintQuoteButton quoteId={q.id}/></div>
   <article className="quote-paper">
    {!printable&&<div className="quote-watermark">DRAFT — NOT APPROVED FOR SENDING</div>}
    <header className="quote-paper-header"><div><img className="quote-brand-logo" src="/exceptional-electrical-logo.png" alt="Exceptional Electrical" width="250" height="95"/></div><div className="quote-document-label"><span>QUOTATION</span><strong>{q.quote_number}</strong></div></header>
