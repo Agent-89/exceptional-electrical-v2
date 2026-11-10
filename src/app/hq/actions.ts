@@ -13,10 +13,11 @@ export async function loginAction(form:FormData){
  if(error||!data.session||!data.user)redirect('/hq/login?error=credentials');
  const {data:staff}=await db.from('staff_profiles').select('active').eq('user_id',data.user.id).eq('active',true).maybeSingle();
  if(!staff)redirect('/hq/login?error=access');
+ const remember=form.get('remember')==='on';
  const jar=await cookies();
  const secure=process.env.NODE_ENV==='production';
  jar.set('ee_hq_access',data.session.access_token,{httpOnly:true,secure,sameSite:'lax',path:'/hq',maxAge:data.session.expires_in});
- jar.set('ee_hq_refresh',data.session.refresh_token,{httpOnly:true,secure,sameSite:'lax',path:'/hq',maxAge:60*60*24*30});
+ jar.set('ee_hq_refresh',data.session.refresh_token,{httpOnly:true,secure,sameSite:'lax',path:'/hq',...(remember?{maxAge:60*60*24*30}:{})});
  redirect('/hq');
 }
 export async function logoutAction(){
