@@ -9,7 +9,7 @@ export default function HqShell({children}:{children:React.ReactNode}){
  const pathname=usePathname();
  const [menu,setMenu]=useState(false);
  useEffect(()=>setMenu(false),[pathname]);
- if(pathname==='/hq/login'||pathname.startsWith('/hq/login/'))return <>{children}</>;
+ if(pathname==='/hq/login'||pathname.startsWith('/hq/login/')||/^\/hq\/quotes\/[^/]+\/preview\/?$/.test(pathname))return <>{children}</>;
  const active=(href:string)=>href==='/hq'?pathname==='/hq':pathname===href||pathname.startsWith(href+'/');
  return <div className="hq-shell">
   <header className="hq-shell-header">
