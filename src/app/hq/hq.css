@@ -492,3 +492,11 @@
 .hq-shell-drawer-brand{display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:calc(100% - 58px);text-decoration:none;color:inherit}
 .hq-shell-drawer-brand img{display:block;width:auto;max-width:min(175px,65vw);height:auto;max-height:56px;object-fit:contain}
 .hq-shell-drawer-brand span{font-size:14px;font-weight:800;letter-spacing:.07em;white-space:nowrap;color:#0877c7}
+
+
+/* Keep the drawer mounted so opening and closing can animate smoothly. */
+.hq-shell-scrim{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .26s ease,visibility 0s linear .26s}
+.hq-shell-scrim.is-open{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .26s ease}
+.hq-shell-drawer{transform:translate3d(-105%,0,0);visibility:hidden;pointer-events:none;transition:transform .3s cubic-bezier(.22,1,.36,1),visibility 0s linear .3s;will-change:transform}
+.hq-shell-drawer.is-open{transform:translate3d(0,0,0);visibility:visible;pointer-events:auto;transition:transform .3s cubic-bezier(.22,1,.36,1)}
+@media(prefers-reduced-motion:reduce){.hq-shell-scrim,.hq-shell-drawer{transition:none!important}}
