@@ -26,7 +26,7 @@ export async function updateJob(formData:FormData){
  const id=String(formData.get('id')||'');
  const status=String(formData.get('status')||'');
  const note=String(formData.get('note')||'').trim();
- if(!/^[a-f0-9-]{36}$/i.test(id)||!['unassigned','scheduled','in_progress','on_hold','completed','cancelled'].includes(status)||note.length>2000)throw new Error('Invalid update.');
+ if(!/^[a-f0-9-]{36}$/i.test(id)||!['unassigned','assigned','scheduled','in_progress','on_hold','completed','cancelled'].includes(status)||note.length>2000)throw new Error('Invalid update.');
  const db=dbAdmin();
  const {data:before}=await db.from('jobs').select('status').eq('id',id).maybeSingle();
  if(!before)throw new Error('Job not found.');
