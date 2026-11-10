@@ -423,3 +423,25 @@
 .hq-search-picker-empty{padding:12px;color:#64798b;font-size:13px}
 .hq-quote-number-note{font-size:12px!important;font-weight:650;color:#27658e!important;margin:5px 0 8px!important}
 @media(max-width:600px){.hq-search-picker-menu{max-height:225px}.hq-search-picker-option{padding:13px 11px}}
+
+
+/* Responsive action polish: compact, predictable controls across HQ. */
+.hq-quote-save{flex-wrap:wrap;min-width:0}
+.hq-quote-save>.hq-quote-button{min-width:0;min-height:44px;max-width:100%;box-sizing:border-box;text-align:center;line-height:1.25;white-space:nowrap}
+.hq-quote-save>span{min-width:0;flex:1 1 220px;line-height:1.5;overflow-wrap:break-word}
+.hq-quote-save-sticky>span:empty{display:none}
+.hq-quote-button:focus-visible,.hq-quote-add-customer:focus-visible{outline:3px solid #2689d8;outline-offset:2px}
+@media(max-width:640px){
+ .hq-quote-save:not(.hq-quote-save-sticky){display:flex;align-items:center;gap:10px;margin:18px 0 30px}
+ .hq-quote-save:not(.hq-quote-save-sticky)>.hq-quote-button{flex:0 1 auto;padding:11px 14px;font-size:14px}
+ .hq-quote-save:not(.hq-quote-save-sticky)>span{flex:1 1 100%;font-size:13px}
+ .hq-quote-save-sticky{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:10px;padding:10px;margin-bottom:80px}
+ .hq-quote-save-sticky>.hq-quote-button{width:100%;min-width:0;min-height:46px;padding:10px 7px;font-size:clamp(12px,3.5vw,14px);line-height:1.2;white-space:nowrap}
+ .hq-quote-save-sticky>.hq-quote-button:only-of-type{grid-column:1/-1}
+ .hq-quote-save-sticky>span{grid-column:1/-1;flex:none;font-size:12px}
+ .hq-shell-bottom a{padding:8px 4px;line-height:1.25;white-space:nowrap}
+}
+@media(max-width:360px){
+ .hq-quote-save-sticky{gap:7px;padding:8px}
+ .hq-quote-save-sticky>.hq-quote-button{font-size:12px;padding-inline:5px}
+}
