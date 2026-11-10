@@ -36,9 +36,10 @@ export async function updateJob(formData:FormData){
 
 export async function updateJobDetails(formData:FormData){
  const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
- const id=String(formData.get('id')||'');const title=String(formData.get('title')||'').trim();const description=String(formData.get('description')||'').trim();const priority=String(formData.get('priority')||'normal');const customerId=String(formData.get('customer_id')||'');
+ const id=String(formData.get('id')||'');const title=String(formData.get('title')||'').trim();const description=String(formData.get('description')||'').trim();const priority=String(formData.get('priority')||'normal');const customerId=String(formData.get('customer_id')||'');const siteAddress=String(formData.get('site_address_text')||'').trim();
+ if(siteAddress.length>500)throw new Error('Site address is too long.');
  if(!/^[0-9a-f-]{36}$/i.test(id)||title.length<2||title.length>200||description.length>5000||!['low','normal','high','urgent'].includes(priority))throw new Error('Invalid job details.');
- const db=dbAdmin();const {error}=await db.from('jobs').update({title,description:description||null,priority,customer_id:customerId||null,updated_at:new Date().toISOString()}).eq('id',id);
+ const db=dbAdmin();const {error}=await db.from('jobs').update({title,description:description||null,priority,customer_id:customerId||null,site_address_text:siteAddress||null,updated_at:new Date().toISOString()}).eq('id',id);
  if(error)throw new Error('Could not save job details.');
  await db.from('job_activity').insert({job_id:id,actor_id:user.id,action:'details_updated'});
  revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+id);
