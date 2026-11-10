@@ -9,8 +9,8 @@ const items=[{href:'/hq',label:'Home',icon:House},{href:'/hq/enquiries',label:'E
 export default function HqShell({children}:{children:React.ReactNode}){
  const pathname=usePathname();
  const [menu,setMenu]=useState(false);
- const [showStartup,setShowStartup]=useState(false);
- useEffect(()=>{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;try{if(sessionStorage.getItem('ee-hq-startup-seen'))return;sessionStorage.setItem('ee-hq-startup-seen','1')}catch{return}setShowStartup(true);const timer=setTimeout(()=>setShowStartup(false),1400);return()=>clearTimeout(timer)},[]);
+ const [showStartup,setShowStartup]=useState(true);
+ useEffect(()=>{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){setShowStartup(false);return}try{if(sessionStorage.getItem('ee-hq-startup-seen')){setShowStartup(false);return}sessionStorage.setItem('ee-hq-startup-seen','1')}catch{/* Still show the opening on storage-restricted browsers. */}const timer=setTimeout(()=>setShowStartup(false),1400);return()=>clearTimeout(timer)},[]);
  const [navigating,setNavigating]=useState(false);
  const navigationDelay=useRef<ReturnType<typeof setTimeout>|null>(null);
  const clearNavigation=()=>{if(navigationDelay.current)clearTimeout(navigationDelay.current);navigationDelay.current=null;setNavigating(false)};
@@ -27,7 +27,7 @@ export default function HqShell({children}:{children:React.ReactNode}){
    <Link href="/hq" className="hq-shell-logo" aria-label="Exceptional Electrical HQ home"><Image src="/exceptional-electrical-logo.png" alt="Exceptional Electrical" width={240} height={88} priority unoptimized/></Link>
    <span className="hq-shell-header-spacer" aria-hidden="true"/>
   </header>
-  {menu&&<><button className="hq-shell-scrim" aria-label="Close navigation menu" onClick={()=>setMenu(false)}/><aside className="hq-shell-drawer" aria-label="HQ menu">
+  <><button className={`hq-shell-scrim${menu?' is-open':''}`} aria-label="Close navigation menu" tabIndex={menu?0:-1} aria-hidden={!menu} onClick={()=>setMenu(false)}/><aside className={`hq-shell-drawer${menu?' is-open':''}`} aria-label="HQ menu" aria-hidden={!menu} inert={!menu}>
    <div className="hq-shell-drawer-heading"><Link href="/hq" className="hq-shell-drawer-brand" aria-label="Exceptional Electrical HQ home"><Image src="/exceptional-electrical-logo.png" alt="Exceptional Electrical" width={180} height={66} unoptimized/><span>HQ</span></Link><button onClick={()=>setMenu(false)} aria-label="Close menu"><X size={20}/></button></div>
    <nav>{items.map(item=><Link key={item.href} href={item.href} aria-current={active(item.href)?'page':undefined}><item.icon size={19} strokeWidth={1.9} aria-hidden="true"/><span>{item.label}</span></Link>)}</nav>
    <div className="hq-shell-drawer-future"><span>Coming later</span><p>Jobs · Scheduling · Inventory · Purchasing · Reports</p></div>
