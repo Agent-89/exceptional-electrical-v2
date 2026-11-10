@@ -4,7 +4,7 @@ import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
 import '../hq.css';
 export const dynamic='force-dynamic';
 type Job={id:string;job_number:number;title:string;status:string;priority:string;updated_at:string;customer_id:string|null;scheduled_start:string|null;next_action_at:string|null;source:string};
-const labels:Record<string,string>={unassigned:'Unassigned',scheduled:'Scheduled',in_progress:'In progress',on_hold:'On hold',completed:'Completed',cancelled:'Cancelled'};
+const labels:Record<string,string>={unassigned:'Unassigned',assigned:'Assigned',scheduled:'Scheduled',in_progress:'In progress',on_hold:'On hold',completed:'Completed',cancelled:'Cancelled'};
 export default async function JobsPage({searchParams}:{searchParams:Promise<{q?:string;status?:string}>}){
  await requireHqUser();
  const params=await searchParams;
