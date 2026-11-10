@@ -482,3 +482,8 @@
 @keyframes hq-charge-fade{to{opacity:0}}
 @keyframes hq-wordmark-in{to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.hq-startup{display:none}}
+
+/* Align drawer section icons with the bottom navigation. */
+.hq-shell-drawer nav a{display:flex;align-items:center;gap:12px}
+.hq-shell-drawer nav a svg{flex:none}
+.hq-dashboard-actions a>span:first-child{display:inline-flex;align-items:center;justify-content:flex-start}
