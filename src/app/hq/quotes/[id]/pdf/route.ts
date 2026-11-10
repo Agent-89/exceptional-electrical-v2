@@ -36,7 +36,7 @@ export async function GET(_request:NextRequest,{params}:{params:Promise<{id:stri
  }catch{ /* fallback to text brand */ }
  const pageRefs:number[]=[];let cmds:string[]=[];let y=0;
  const text=(s:string,x:number,at:number,size=10,isBold=false)=>{cmds.push('BT /F'+(isBold?'2':'1')+' '+size+' Tf '+x+' '+at+' Td ('+esc(s)+') Tj ET')};
- const right=(s:string,edge:number,at:number,size=10,isBold=false)=>text(s,Math.max(40,edge-s.length*size*(isBold?.55:.5)),at,size,isBold);
+ const right=(s:string,edge:number,at:number,size=10,isBold=false)=>text(s,Math.max(40,edge-s.length*size*(isBold ? 0.55 : 0.5)),at,size,isBold);
  const blue=()=>cmds.push('0.035 0.46 0.72 rg');const dark=()=>cmds.push('0.09 0.18 0.26 rg');
  const displayDate=(v:string|null)=>v?new Date(v.slice(0,10)+'T12:00:00Z').toLocaleDateString('en-AU',{timeZone:'UTC'}):'—';
  const rule=(at:number)=>cmds.push('0.75 0.83 0.89 RG 40 '+at+' m 555 '+at+' l S');
