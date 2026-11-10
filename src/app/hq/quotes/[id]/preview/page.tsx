@@ -1,0 +1,42 @@
+import Link from 'next/link';
+import {notFound} from 'next/navigation';
+import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
+export const dynamic='force-dynamic';
+const aud=(c:number)=>(c/100).toLocaleString('en-AU',{style:'currency',currency:'AUD'});
+const FIXED='Fixed-price electrical work';
+const date=(v:string|null)=>v?new Date(v+'T12:00:00').toLocaleDateString('en-AU',{timeZone:'Australia/Perth'}):'—';
+type Item={id:string;description:string;category:string;quantity:number;unit:string;unit_price_cents:number;gst_applicable:boolean;position:number};
+export default async function QuotePreview({params}:{params:Promise<{id:string}>}){
+ await requireHqUser();
+ const {id}=await params;
+ if(!/^[0-9a-f-]{36}$/i.test(id))notFound();
+ const db=dbAdmin();
+ const {data:q,error}=await db.from('quotes').select('id,quote_number,status,title,scope_of_work,inclusions,exclusions,customer_notes,customer_display,pricing_mode,customer_snapshot,site_address_snapshot,issue_date,expiry_date,created_at').eq('id',id).maybeSingle();
+ if(error||!q)notFound();
+ const {data:allItems}=await db.from('quote_items').select('id,description,category,quantity,unit,unit_price_cents,gst_applicable,position').eq('quote_id',id).order('position');
+ const items=((allItems||[]) as Item[]).filter(l=>q.pricing_mode==='fixed'?(l.category==='other'&&l.description===FIXED):!(l.category==='other'&&l.description===FIXED));
+ const subtotal=items.reduce((n,l)=>n+Math.round(Number(l.quantity)*Number(l.unit_price_cents)),0);
+ const gst=items.reduce((n,l)=>n+(l.gst_applicable?Math.round(Number(l.quantity)*Number(l.unit_price_cents)*.1):0),0);
+ const customer=(q.customer_snapshot||{}) as {name?:string;email?:string;phone?:string};
+ const site=(q.site_address_snapshot||{}) as {address?:string};
+ const printable=['approved','sent','accepted','declined','expired','superseded'].includes(q.status);
+ return <main className="quote-preview-shell">
+  <div className="quote-preview-toolbar"><Link href={'/hq/quotes/'+q.id}>← Back to quote</Link><span>{printable?'Customer quotation':'DRAFT PREVIEW — NOT FOR SENDING'}</span><button type="button" onClick={undefined} className="quote-print-button" id="print-quote-button">Print / Save PDF</button></div>
+  <article className="quote-paper">
+   {!printable&&<div className="quote-watermark">DRAFT — NOT APPROVED FOR SENDING</div>}
+   <header className="quote-paper-header"><div><div className="quote-brand">EXCEPTIONAL <strong>ELECTRICAL</strong></div><p>Electrical services · Western Australia</p></div><div className="quote-document-label">QUOTATION</div></header>
+   <div className="quote-paper-meta"><section><div className="quote-caption">PREPARED FOR</div><strong>{customer.name||'Customer not selected'}</strong>{customer.email&&<p>{customer.email}</p>}{customer.phone&&<p>{customer.phone}</p>}{site.address&&<><div className="quote-caption quote-site-label">JOB SITE</div><p>{site.address}</p></>}</section><section className="quote-meta-right"><div><span>Quote number</span><strong>{q.quote_number}</strong></div><div><span>Quote date</span><strong>{date(q.issue_date||q.created_at.slice(0,10))}</strong></div><div><span>Valid until</span><strong>{date(q.expiry_date)}</strong></div></section></div>
+   <div className="quote-paper-section"><div className="quote-caption">SCOPE OF WORK</div><h1>{q.title||'Electrical quotation'}</h1>{q.scope_of_work&&<p className="quote-multiline">{q.scope_of_work}</p>}</div>
+   {q.inclusions&&<div className="quote-paper-section"><div className="quote-caption">INCLUSIONS</div><p className="quote-multiline">{q.inclusions}</p></div>}
+   {q.exclusions&&<div className="quote-paper-section"><div className="quote-caption">EXCLUSIONS</div><p className="quote-multiline">{q.exclusions}</p></div>}
+   {q.customer_display==='itemised'&&items.length>0&&<table className="quote-items-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Amount (ex GST)</th></tr></thead><tbody>{items.map(l=><tr key={l.id}><td>{l.description}</td><td>{Number(l.quantity)} {l.unit}</td><td>{aud(Number(l.unit_price_cents))}</td><td>{aud(Math.round(Number(l.quantity)*Number(l.unit_price_cents)))}</td></tr>)}</tbody></table>}
+   <div className="quote-totals"><div><span>Subtotal (ex GST)</span><strong>{aud(subtotal)}</strong></div><div><span>GST</span><strong>{aud(gst)}</strong></div><div className="quote-grand-total"><span>TOTAL (AUD)</span><strong>{aud(subtotal+gst)}</strong></div></div>
+   {q.customer_notes&&<div className="quote-paper-section"><div className="quote-caption">ADDITIONAL NOTES</div><p className="quote-multiline">{q.customer_notes}</p></div>}
+   <footer className="quote-paper-footer"><p>Thank you for considering Exceptional Electrical.</p><p>Quote reference: {q.quote_number}. Contact the business to confirm acceptance and applicable terms.</p></footer>
+  </article>
+  <script dangerouslySetInnerHTML={{__html:"document.getElementById('print-quote-button')?.addEventListener('click',function(){window.print()})"}}/>
+  <style>{`
+   .quote-preview-shell{min-height:100vh;background:#e8eef4;padding:24px;color:#172d42;font-family:Arial,Helvetica,sans-serif}.quote-preview-toolbar{max-width:900px;margin:0 auto 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}.quote-preview-toolbar a{color:#0b5b9e}.quote-print-button{background:#0876bc;color:white;border:0;border-radius:8px;padding:12px 16px;font-weight:700;cursor:pointer}.quote-paper{max-width:820px;min-height:1050px;margin:auto;background:#fff;padding:54px 60px;box-shadow:0 12px 35px #20394b18;position:relative}.quote-watermark{border:2px solid #d28b35;color:#995b1c;padding:10px 14px;margin-bottom:26px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.08em}.quote-paper-header{display:flex;justify-content:space-between;align-items:start;padding-bottom:28px;border-bottom:3px solid #1176b5}.quote-brand{font-size:23px;font-weight:800;letter-spacing:.025em}.quote-brand strong{color:#0878b9}.quote-paper-header p{font-size:12px;color:#60758a}.quote-document-label{font-size:19px;letter-spacing:.12em;font-weight:800}.quote-paper-meta{display:grid;grid-template-columns:1fr 1fr;gap:40px;padding:34px 0}.quote-paper-meta p{font-size:13px;margin:7px 0}.quote-caption{font-size:10px;font-weight:800;color:#55758f;letter-spacing:.13em;margin-bottom:9px}.quote-site-label{margin-top:24px}.quote-meta-right>div{display:flex;justify-content:space-between;gap:15px;margin-bottom:13px;font-size:13px}.quote-meta-right span{color:#60758a}.quote-paper-section{margin:18px 0 28px}.quote-paper-section h1{font-size:22px;margin:0 0 12px}.quote-multiline{white-space:pre-wrap;line-height:1.6;font-size:13px}.quote-items-table{width:100%;border-collapse:collapse;margin-top:32px;font-size:12px}.quote-items-table th{background:#edf5fa;color:#335a76;text-align:left;padding:12px 10px}.quote-items-table th:not(:first-child),.quote-items-table td:not(:first-child){text-align:right}.quote-items-table td{padding:13px 10px;border-bottom:1px solid #e0e9f0;vertical-align:top}.quote-totals{margin:28px 0 40px auto;width:min(100%,340px);font-size:13px}.quote-totals>div{display:flex;justify-content:space-between;padding:9px 0}.quote-grand-total{border-top:2px solid #1176b5;font-size:17px;font-weight:800}.quote-paper-footer{border-top:1px solid #dce6ee;margin-top:50px;padding-top:16px;color:#60758a;font-size:11px;line-height:1.5}@media(max-width:640px){.quote-preview-shell{padding:10px}.quote-preview-toolbar{flex-wrap:wrap}.quote-paper{padding:26px 20px;min-height:0}.quote-brand{font-size:17px}.quote-document-label{font-size:13px}.quote-paper-meta{gap:16px}.quote-items-table{font-size:10px}.quote-items-table td,.quote-items-table th{padding:8px 4px}}@page{size:A4;margin:12mm}@media print{body{background:#fff!important}.quote-preview-shell{background:#fff;padding:0}.quote-preview-toolbar{display:none}.quote-paper{box-shadow:none;max-width:none;min-height:0;padding:0}.quote-paper-section,.quote-totals,.quote-paper-meta{break-inside:avoid}.quote-items-table tr{break-inside:avoid}.quote-paper-header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.quote-items-table th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  `}</style>
+ </main>;
+}
