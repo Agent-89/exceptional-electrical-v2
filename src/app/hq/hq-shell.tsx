@@ -29,7 +29,7 @@ export default function HqShell({children}:{children:React.ReactNode}){
   </header>
   {menu&&<><button className="hq-shell-scrim" aria-label="Close navigation menu" onClick={()=>setMenu(false)}/><aside className="hq-shell-drawer" aria-label="HQ menu">
    <div className="hq-shell-drawer-heading"><strong>Exceptional Electrical HQ</strong><button onClick={()=>setMenu(false)} aria-label="Close menu"><X size={20}/></button></div>
-   <nav>{items.map(item=><Link key={item.href} href={item.href} aria-current={active(item.href)?'page':undefined}>{item.label}</Link>)}</nav>
+   <nav>{items.map(item=><Link key={item.href} href={item.href} aria-current={active(item.href)?'page':undefined}><item.icon size={19} strokeWidth={1.9} aria-hidden="true"/><span>{item.label}</span></Link>)}</nav>
    <div className="hq-shell-drawer-future"><span>Coming later</span><p>Jobs · Scheduling · Inventory · Purchasing · Reports</p></div>
   </aside></>}
   <div className="hq-shell-content" id="hq-main-content">{children}</div>
