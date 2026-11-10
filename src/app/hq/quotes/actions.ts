@@ -25,3 +25,28 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
  revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);
  return {ok:true,message:'Draft saved',id};
 }
+
+export async function approveQuote(id:string):Promise<{ok:boolean;message:string}>{
+ const user=await requireHqUser();
+ if(!['owner','admin'].includes(user.role))return {ok:false,message:'Only an owner or admin can approve quotes.'};
+ if(!validId(id))return {ok:false,message:'Invalid quote reference'};
+ const db=dbAdmin();
+ const {data:q}=await db.from('quotes').select('id,status,customer_id,title,scope_of_work,site_address_snapshot').eq('id',id).maybeSingle();
+ if(!q||!['draft','changes_requested','pending_approval'].includes(q.status))return {ok:false,message:'Quote cannot be approved in its current status.'};
+ if(!q.customer_id||!q.title?.trim())return {ok:false,message:'Select a customer and enter a title before approval.'};
+ const {data:items,error:itemsError}=await db.from('quote_items').select('quantity,unit_price_cents,description').eq('quote_id',id);
+ if(itemsError||!items?.length||items.some(l=>!l.description?.trim()||Number(l.quantity)<=0||Number(l.unit_price_cents)<0))return {ok:false,message:'Add at least one valid priced item before approval.'};
+ const {data:approved,error}=await db.from('quotes').update({status:'approved',approved_by:user.id,approved_at:new Date().toISOString(),issue_date:new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Perth'})}).eq('id',id).eq('status',q.status).select('id').maybeSingle();
+ if(error||!approved)return {ok:false,message:'Approval failed or quote was changed. Refresh and try again.'};
+ const {error:logError}=await db.from('quote_activity').insert({quote_id:id,actor_id:user.id,action:'approved'});
+ revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);revalidatePath('/hq/quotes/'+id+'/preview');
+ return {ok:true,message:logError?'Quote approved, but the activity log needs review.':'Quote approved and ready for PDF export.'};
+}
+export async function saveAndApproveQuote(v:QuoteDraft):Promise<{ok:boolean;message:string;id?:string}>{
+ const user=await requireHqUser();
+ if(!['owner','admin'].includes(user.role))return {ok:false,message:'Only an owner or admin can approve quotes.'};
+ const saved=await saveQuoteDraft(v);
+ if(!saved.ok||!saved.id)return saved;
+ const approved=await approveQuote(saved.id);
+ return {...approved,id:saved.id,message:approved.ok?'Quote saved and approved.':approved.message+' Draft was saved.'};
+}
