@@ -487,3 +487,8 @@
 .hq-shell-drawer nav a{display:flex;align-items:center;gap:12px}
 .hq-shell-drawer nav a svg{flex:none}
 .hq-dashboard-actions a>span:first-child{display:inline-flex;align-items:center;justify-content:flex-start}
+
+/* Branded, compact mobile drawer heading. */
+.hq-shell-drawer-brand{display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:calc(100% - 58px);text-decoration:none;color:inherit}
+.hq-shell-drawer-brand img{display:block;width:auto;max-width:min(175px,65vw);height:auto;max-height:56px;object-fit:contain}
+.hq-shell-drawer-brand span{font-size:14px;font-weight:800;letter-spacing:.07em;white-space:nowrap;color:#0877c7}
