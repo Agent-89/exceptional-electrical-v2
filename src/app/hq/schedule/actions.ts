@@ -53,22 +53,32 @@ export async function updateVisitStaff(formData:FormData){
  revalidatePath('/hq/schedule');revalidatePath('/hq/jobs/'+visit.job_id);
 }
 
-/** Move a visit while preserving its duration and assigned crew. */
-export async function moveScheduledVisit(id:string,day:string,startMinutes:number){
+/** Persist a calendar drag or resize without changing its crew or notes. */
+export async function setScheduledVisitTimes(id:string,startIso:string,endIso:string,expectedStartIso:string){
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted to reschedule visits.');
- if(!/^[0-9a-f-]{36}$/i.test(id)||!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isInteger(startMinutes)||startMinutes<0||startMinutes>=1440||startMinutes%15!==0)throw new Error('Invalid appointment time.');
- const start=new Date(day+'T00:00:00+08:00');
- if(!Number.isFinite(start.getTime())||day!==new Date(start.getTime()+8*3600000).toISOString().slice(0,10))throw new Error('Invalid appointment date.');
+ if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted to change visits.');
+ if(!/^[0-9a-f-]{36}$/i.test(id))throw new Error('Invalid appointment.');
+ const start=new Date(startIso),end=new Date(endIso),expected=new Date(expectedStartIso);
+ if(![start,end,expected].every(d=>Number.isFinite(d.getTime()))||end<=start||end.getTime()-start.getTime()>7*86400000||start.getTime()%900000!==0||end.getTime()%900000!==0)throw new Error('Choose valid 15-minute appointment times.');
  const db=dbAdmin();
- const {data:visit,error:lookupError}=await db.from('job_appointments').select('id,job_id,status,starts_at,ends_at').eq('id',id).maybeSingle();
+ const {data:visit,error:lookupError}=await db.from('job_appointments').select('id,job_id,status,starts_at').eq('id',id).maybeSingle();
  if(lookupError||!visit||visit.status!=='scheduled')throw new Error('Scheduled visit not found.');
- const duration=new Date(visit.ends_at).getTime()-new Date(visit.starts_at).getTime();
- if(duration<=0||duration>7*86400000)throw new Error('Invalid existing visit duration.');
- const nextStart=new Date(start.getTime()+startMinutes*60000);
- const nextEnd=new Date(nextStart.getTime()+duration);
- const {data:changed,error}=await db.from('job_appointments').update({starts_at:nextStart.toISOString(),ends_at:nextEnd.toISOString()}).eq('id',id).eq('status','scheduled').eq('starts_at',visit.starts_at).select('id').maybeSingle();
- if(error||!changed)throw new Error('Visit changed while you were moving it. Refresh and retry.');
- await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'appointment_rescheduled',note:nextStart.toISOString()+' – '+nextEnd.toISOString()});
+ const {data:changed,error}=await db.from('job_appointments').update({starts_at:start.toISOString(),ends_at:end.toISOString()}).eq('id',id).eq('status','scheduled').eq('starts_at',expected.toISOString()).select('id').maybeSingle();
+ if(error||!changed)throw new Error('Visit changed since loading. Refresh and retry.');
+ // Keep the critical update fast; log and cache refresh are best effort.
+ await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'appointment_rescheduled',note:start.toISOString()+' – '+end.toISOString()});
  revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+visit.job_id);
+ return {starts_at:start.toISOString(),ends_at:end.toISOString()};
+}
+/** Compatibility for existing Move dialog. */
+export async function moveScheduledVisit(id:string,day:string,startMinutes:number){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isInteger(startMinutes)||startMinutes<0||startMinutes>=1440||startMinutes%15!==0)throw new Error('Invalid appointment time.');
+ const db=dbAdmin();
+ await requireHqUser();
+ const {data:v}=await db.from('job_appointments').select('starts_at,ends_at').eq('id',id).maybeSingle();
+ if(!v)throw new Error('Appointment not found.');
+ const start=new Date(day+'T00:00:00+08:00');
+ if(!Number.isFinite(start.getTime()))throw new Error('Invalid date.');
+ const next=new Date(start.getTime()+startMinutes*60000);
+ return setScheduledVisitTimes(id,next.toISOString(),new Date(next.getTime()+new Date(v.ends_at).getTime()-new Date(v.starts_at).getTime()).toISOString(),v.starts_at);
 }
