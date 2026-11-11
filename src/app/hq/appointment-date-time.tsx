@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 
-type Props={name:string;label:string;defaultValue?:string;linkedDate?:string;onDateChange?:(date:string)=>void;hideDate?:boolean};
+type Props={name:string;label:string;defaultValue?:string;linkedDate?:string;onDateChange?:(date:string)=>void;hideDate?:boolean;compactDate?:boolean};
 const parseTime=(value:string)=>{
  const s=value.trim().toLowerCase().replace(/\s+/g,'');
  const m=s.match(/^(\d{1,2})(?::?(\d{2}))?(am|pm)?$/);
@@ -12,7 +12,7 @@ const parseTime=(value:string)=>{
  return String(h).padStart(2,'0')+':'+String(minute).padStart(2,'0');
 };
 const displayTime=(s:string)=>{const t=parseTime(s);if(!t)return s;const [h,m]=t.split(':').map(Number);return String(h%12||12)+':'+String(m).padStart(2,'0')+' '+(h>=12?'PM':'AM');};
-export default function AppointmentDateTime({name,label,defaultValue='',linkedDate,onDateChange,hideDate=false}:Props){
+export default function AppointmentDateTime({name,label,defaultValue='',linkedDate,onDateChange,hideDate=false,compactDate=false}:Props){
  const [date,setDate]=useState(defaultValue.slice(0,10));
  const effectiveDate=linkedDate!==undefined?linkedDate:date;
  const [time,setTime]=useState(defaultValue?displayTime(defaultValue.slice(11,16)):name==='end'?'3:00 PM':'7:00 AM');
@@ -20,13 +20,13 @@ export default function AppointmentDateTime({name,label,defaultValue='',linkedDa
  const valid=Boolean(effectiveDate&&parsed);
  const [pickerOpen,setPickerOpen]=useState(false);
  const pickerRef=useRef<HTMLDivElement>(null);
- useEffect(()=>{if(!pickerOpen)return;const selected=pickerRef.current?.querySelector('[aria-pressed="true"]');selected?.scrollIntoView({block:'nearest'});},[pickerOpen]);
+ useEffect(()=>{if(!pickerOpen)return;const selected=pickerRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(selected&&pickerRef.current){pickerRef.current.scrollTop=selected.offsetTop-pickerRef.current.offsetTop-pickerRef.current.clientHeight/2+selected.clientHeight/2;}},[pickerOpen]);
  const choices=Array.from({length:96},(_,i)=>displayTime(String(Math.floor(i/4)).padStart(2,'0')+':'+String(i%4*15).padStart(2,'0')));
  return <fieldset className="ee-appointment-datetime">
-  <legend>{label}</legend>
+  {!compactDate&&<legend>{label}</legend>}
   <div className={"ee-appointment-fields"+(hideDate?" time-only":"")}>
    {!hideDate&&<label>Date<input type="date" value={effectiveDate} onChange={e=>{setDate(e.target.value);onDateChange?.(e.target.value)}} required/></label>}
-   <label>Time (Perth)<input type="text" inputMode="text" autoComplete="off" value={time} onChange={e=>setTime(e.target.value)} onBlur={()=>{if(parsed)setTime(displayTime(parsed));}} placeholder="7:00 AM" required aria-invalid={time.trim()!==''&&!parsed} aria-describedby={name+'-time-help'}/></label>
+   <label>{compactDate?"Start time (Perth)":"Time (Perth)"}<input type="text" inputMode="text" autoComplete="off" value={time} onChange={e=>setTime(e.target.value)} onBlur={()=>{if(parsed)setTime(displayTime(parsed));}} placeholder="7:00 AM" required aria-invalid={time.trim()!==''&&!parsed} aria-describedby={name+'-time-help'}/></label>
   </div>
   <div className="ee-time-picker-row"><button type="button" className="ee-time-picker-toggle" aria-expanded={pickerOpen} onClick={()=>setPickerOpen(v=>!v)}>{pickerOpen?'Close time options':'Choose time ▾'}</button>{pickerOpen&&<div ref={pickerRef} className="ee-time-picker-options" role="group" aria-label={label+' time options'}>{choices.map(choice=><button type="button" key={choice} aria-pressed={displayTime(time)===choice} onClick={()=>{setTime(choice);setPickerOpen(false)}}>{choice}</button>)}</div>}</div>
   <small id={name+'-time-help'}>{parsed?'Type a time or choose from the list.':'Enter a time such as 7:00 AM or 14:30.'}</small>
