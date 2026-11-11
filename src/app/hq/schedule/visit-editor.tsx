@@ -20,7 +20,7 @@ export default function VisitEditor({id,start,end,notes,staffIds,staff,onClose}:
     const marker='SCHEDULING_CONFLICT: ';
     if(!message.includes(marker))throw e;
     const description=message.slice(message.indexOf(marker)+marker.length);
-    if(!window.confirm('Scheduling conflict detected:\\n\\n'+description+'\\n\\nSave anyway?'))return;
+    if(!window.confirm('Scheduling conflict detected:\n\n'+description+'\n\nSave anyway?'))return;
     form.set('confirm_conflict','yes');
     await submit();
    }
