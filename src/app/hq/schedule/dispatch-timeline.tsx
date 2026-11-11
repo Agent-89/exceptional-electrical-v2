@@ -5,7 +5,8 @@ import VisitPreview from './visit-preview';
 export type TimelineVisit={id:string;day:string;startMinutes:number;endMinutes:number;title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds:string[];address?:string|null;notes?:string|null;conflict?:string|null};
 type Props={visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;nowMinutes:number};
 const START=6*60,END=20*60,HOUR_HEIGHT=64;
-const pad=(n:number)=>String(n).padStart(2,'0');
+const palette=['#1676c4','#a34ecb','#0e9875','#d16a21','#d34876','#6b65c8','#138d9b','#7a8533'];
+const staffColor=(id:string)=>{let h=0;for(const ch of id)h=(h*31+ch.charCodeAt(0))|0;return palette[Math.abs(h)%palette.length]};
 const hourLabel=(h:number)=>`${h%12||12} ${h<12?'am':'pm'}`;
 export default function DispatchTimeline({visits,days,staff,today,nowMinutes}:Props){
  const [mode,setMode]=useState<'week'|'day'>('week');
@@ -29,7 +30,7 @@ export default function DispatchTimeline({visits,days,staff,today,nowMinutes}:Pr
      const overlap=visible.filter(other=>other.id!==v.id&&other.day===v.day&&other.startMinutes<v.endMinutes&&other.endMinutes>v.startMinutes);
      const cluster=[v,...overlap].sort((a,b)=>a.startMinutes-b.startMinutes||a.id.localeCompare(b.id));
      const index=cluster.findIndex(x=>x.id===v.id),count=cluster.length;
-     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')} key={v.id} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`}}><VisitPreview title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} address={v.address} notes={v.notes} conflict={v.conflict}/></div>;
+     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')} key={v.id} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.staffIds.length===1?staffColor(v.staffIds[0]):undefined}}><VisitPreview title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} conflict={v.conflict}/></div>;
     })}
    </div>)}
   </div></div>
