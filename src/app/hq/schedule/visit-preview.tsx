@@ -24,10 +24,11 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
  const staffColor=(i:number)=>{const id=staffIds[i]??electricians[i]??'';let hash=0;for(const ch of id)hash=(hash*31+ch.charCodeAt(0))|0;return palette[Math.abs(hash)%palette.length]};
  const initials=(name:string)=>name.trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('').toUpperCase();
  return <div className="ee-visit-preview-root" onMouseEnter={()=>{positionHover();setHover(true)}} onMouseLeave={()=>setHover(false)}>
-  <button ref={trigger} type="button" className="ee-visit-preview-trigger" aria-label={`View visit details: ${title}, ${time}`} onClick={()=>{setHover(false);setOpen(true)}}>
+  <button ref={trigger} type="button" className="ee-visit-preview-trigger" aria-label={`View visit details: ${customer}, ${title}, ${time}`} onClick={()=>{setHover(false);setOpen(true)}}>
    <span className="ee-dispatch-time">{time}</span>
-   <strong className="ee-visit-preview-title">{title}</strong>
-   <span className="ee-visit-preview-number">{jobNumber} · {customer}</span>
+   <strong className="ee-visit-preview-customer">{customer}</strong>
+   <span className="ee-visit-preview-title">{title}</span>
+   <span className="ee-visit-preview-number">{jobNumber}</span>
    <span className="ee-visit-preview-avatars">{electricians.length?electricians.slice(0,4).map((name,i)=><span className="ee-visit-preview-avatar" style={{backgroundColor:staffColor(i),color:"#fff"}} title={name} key={i}>{initials(name)}</span>):<span className="ee-visit-preview-empty">Unassigned</span>}{electricians.length>4&&<span className="ee-visit-preview-avatar">+{electricians.length-4}</span>}</span>
   </button>
   {hover&&!open&&mounted&&createPortal(<div className="ee-visit-hover" role="tooltip" style={{top:hoverPosition.top,left:hoverPosition.left}}><strong>{title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>,document.body)}
@@ -43,7 +44,7 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
    .ee-visit-preview-trigger{display:grid;gap:5px;text-align:left;border:0;padding:0;background:transparent;width:100%;height:100%;min-height:100%;flex:1;cursor:pointer;color:#17364b;font:inherit;overflow-wrap:anywhere;align-content:start}
    .ee-visit-preview-trigger:hover .ee-visit-preview-title{color:#0875c9}
    .ee-visit-preview-trigger:focus-visible{outline:2px solid #1688e9;outline-offset:3px;border-radius:3px}
-   .ee-visit-preview-title{font-size:13px;line-height:1.3}
+   .ee-visit-preview-customer{font-size:13px;line-height:1.25;font-weight:800;color:#17364b;overflow:hidden;text-overflow:ellipsis}.ee-visit-preview-title{font-size:12px;line-height:1.3;font-weight:650}
    .ee-visit-preview-number{font-size:11px;color:#73889b}
    .ee-visit-preview-avatars{display:flex;align-items:center;gap:3px;margin-top:3px}
    .ee-visit-preview-avatar{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#e4f0fc;color:#185d90;border:1px solid #fff;font-size:10px;font-weight:800}
