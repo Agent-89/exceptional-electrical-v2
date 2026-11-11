@@ -1,0 +1,41 @@
+'use client';
+import {useMemo,useState} from 'react';
+import VisitPreview from './visit-preview';
+
+export type TimelineVisit={id:string;day:string;startMinutes:number;endMinutes:number;title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds:string[];address?:string|null;notes?:string|null;conflict?:string|null};
+type Props={visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;nowMinutes:number};
+const START=6*60,END=20*60,HOUR_HEIGHT=64;
+const pad=(n:number)=>String(n).padStart(2,'0');
+const hourLabel=(h:number)=>`${h%12||12} ${h<12?'am':'pm'}`;
+export default function DispatchTimeline({visits,days,staff,today,nowMinutes}:Props){
+ const [mode,setMode]=useState<'week'|'day'>('week');
+ const [selected,setSelected]=useState(days.find(d=>d.key===today)?.key??days[0]?.key??'');
+ const [staffId,setStaffId]=useState('all');
+ const [showUnassigned,setShowUnassigned]=useState(true);
+ const visible=useMemo(()=>visits.filter(v=>(staffId==='all'||(staffId==='unassigned'?v.staffIds.length===0:v.staffIds.includes(staffId)))&&(showUnassigned||v.staffIds.length>0)),[visits,staffId,showUnassigned]);
+ const shownDays=mode==='week'?days:days.filter(d=>d.key===selected);
+ const minHeight=(END-START)/60*HOUR_HEIGHT;
+ return <section className="ee-timeline">
+  <div className="ee-timeline-toolbar"><div className="ee-timeline-tabs"><button type="button" className={mode==='week'?'active':''} onClick={()=>setMode('week')}>Week timeline</button><button type="button" className={mode==='day'?'active':''} onClick={()=>setMode('day')}>Day timeline</button></div><label>Electrician<select value={staffId} onChange={e=>setStaffId(e.target.value)}><option value="all">All electricians</option>{staff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}<option value="unassigned">Unassigned</option></select></label><label className="ee-timeline-check"><input type="checkbox" checked={showUnassigned} onChange={e=>setShowUnassigned(e.target.checked)}/> Include unassigned</label></div>
+  {mode==='day'&&<div className="ee-timeline-day-picker"><button type="button" onClick={()=>setSelected(days[Math.max(0,days.findIndex(d=>d.key===selected)-1)]?.key??selected)} aria-label="Previous day">‹</button><select value={selected} onChange={e=>setSelected(e.target.value)}>{days.map(d=><option value={d.key} key={d.key}>{d.label}</option>)}</select><button type="button" onClick={()=>setSelected(days[Math.min(days.length-1,days.findIndex(d=>d.key===selected)+1)]?.key??selected)} aria-label="Next day">›</button></div>}
+  <div className="ee-timeline-scroll"><div className="ee-timeline-grid" style={{gridTemplateColumns:`62px repeat(${shownDays.length},minmax(${mode==='day'?260:155}px,1fr))`}}>
+   <div className="ee-timeline-corner">AWST</div>{shownDays.map(d=><div key={d.key} className={'ee-timeline-day-header'+(d.key===today?' today':'')}>{d.label}<small>{visible.filter(v=>v.day===d.key).length} visits</small></div>)}
+   <div className="ee-timeline-hours" style={{height:minHeight}}>{Array.from({length:END/60-START/60+1},(_,i)=><span key={i} style={{top:i*HOUR_HEIGHT}}>{hourLabel(START/60+i)}</span>)}</div>
+   {shownDays.map(d=><div className="ee-timeline-lane" key={d.key} style={{height:minHeight,backgroundSize:`100% ${HOUR_HEIGHT}px`}}>
+    {d.key===today&&nowMinutes>=START&&nowMinutes<=END&&<div className="ee-timeline-now" style={{top:(nowMinutes-START)/60*HOUR_HEIGHT}}><span>Now</span></div>}
+    {visible.filter(v=>v.day===d.key).map(v=>{
+     const start=Math.max(START,v.startMinutes),end=Math.min(END,v.endMinutes);
+     if(end<=start)return null;
+     const overlap=visible.filter(other=>other.id!==v.id&&other.day===v.day&&other.startMinutes<v.endMinutes&&other.endMinutes>v.startMinutes);
+     const cluster=[v,...overlap].sort((a,b)=>a.startMinutes-b.startMinutes||a.id.localeCompare(b.id));
+     const index=cluster.findIndex(x=>x.id===v.id),count=cluster.length;
+     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')} key={v.id} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`}}><VisitPreview title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} address={v.address} notes={v.notes} conflict={v.conflict}/></div>;
+    })}
+   </div>)}
+  </div></div>
+  <p className="ee-timeline-caption">Appointments are positioned by Perth time. Select a block to preview the job. Overlapping appointments appear side by side; orange indicates a shared-electrician conflict. Changes to scheduling remain available through Manage visit in the existing views.</p>
+  <style jsx global>{`
+  .ee-timeline{margin-bottom:18px}.ee-timeline-toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:12px}.ee-timeline-tabs{display:flex;padding:4px;background:#e7eef6;border-radius:10px;gap:3px}.ee-timeline-tabs button{border:0;background:transparent;padding:9px 12px;border-radius:8px;color:#47657c;font-weight:750;cursor:pointer}.ee-timeline-tabs button.active{background:#fff;color:#0875c9;box-shadow:0 1px 3px #1232}.ee-timeline-toolbar label{display:grid;gap:4px;color:#4d687d;font-size:12px;font-weight:700}.ee-timeline-toolbar select,.ee-timeline-day-picker select{padding:9px 12px;border:1px solid #d4e1ed;border-radius:9px;background:white;color:#17364b;font:inherit;min-width:165px}.ee-timeline-toolbar .ee-timeline-check{display:flex;align-items:center;gap:6px;padding-bottom:9px}.ee-timeline-check input{accent-color:#1688e9}.ee-timeline-day-picker{display:flex;gap:8px;align-items:center;margin-bottom:12px}.ee-timeline-day-picker button{background:#fff;border:1px solid #d4e1ed;border-radius:8px;padding:7px 13px;color:#0875c9;font-size:22px;cursor:pointer}.ee-timeline-scroll{overflow:auto;border:1px solid #dce5ee;border-radius:13px;background:white;max-height:680px}.ee-timeline-grid{display:grid;min-width:max-content}.ee-timeline-corner,.ee-timeline-day-header{position:sticky;top:0;z-index:5;background:#f4f8fc;border-bottom:1px solid #dce5ee;padding:10px;font-size:12px;font-weight:800;color:#17364b}.ee-timeline-corner{font-size:10px;color:#7a8fa0}.ee-timeline-day-header{border-left:1px solid #dce5ee;display:grid;gap:4px}.ee-timeline-day-header small{font-weight:500;color:#718397}.ee-timeline-day-header.today{background:#e8f3ff;color:#0875c9}.ee-timeline-hours{position:relative;background:#f9fbfd}.ee-timeline-hours span{position:absolute;right:7px;transform:translateY(-50%);font-size:10px;color:#718397}.ee-timeline-lane{position:relative;border-left:1px solid #e0e9f1;background-image:linear-gradient(to bottom,#e8edf3 1px,transparent 1px)}.ee-timeline-now{position:absolute;left:0;right:0;height:2px;background:#ec5a56;z-index:4;pointer-events:none}.ee-timeline-now span{position:absolute;right:0;top:-15px;font-size:10px;font-weight:800;color:#c83e39}.ee-timeline-event{position:absolute;z-index:2;background:#e8f3ff;border:1px solid #95c9f0;border-left:3px solid #1688e9;border-radius:8px;padding:6px;overflow:visible;box-sizing:border-box}.ee-timeline-event.conflict{background:#fff4e4;border-color:#d99034}.ee-timeline-event .ee-visit-preview-trigger{gap:3px}.ee-timeline-event .ee-visit-preview-title{font-size:12px}.ee-timeline-event .ee-dispatch-time{font-size:11px}.ee-timeline-event .ee-visit-preview-avatars{margin-top:1px}.ee-timeline-event .ee-visit-preview-avatar{width:21px;height:21px}.ee-timeline-caption{color:#72869b;font-size:12px;line-height:1.5;margin:10px 0 0}@media(max-width:760px){.ee-timeline-toolbar label{flex:1}.ee-timeline-scroll{max-height:560px}.ee-timeline-event .ee-visit-preview-title{font-size:12px}}
+  `}</style>
+ </section>;
+}
