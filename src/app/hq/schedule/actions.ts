@@ -57,7 +57,7 @@ export async function updateVisitStaff(formData:FormData){
 export async function moveScheduledVisit(id:string,day:string,startMinutes:number){
  const user=await requireHqUser();
  if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted to reschedule visits.');
- if(!/^[0-9a-f-]{36}$/i.test(id)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)||!Number.isInteger(startMinutes)||startMinutes<0||startMinutes>=1440||startMinutes%15!==0)throw new Error('Invalid appointment time.');
+ if(!/^[0-9a-f-]{36}$/i.test(id)||!/^\d{4}-\d{2}-\d{2}$/.test(day)||!Number.isInteger(startMinutes)||startMinutes<0||startMinutes>=1440||startMinutes%15!==0)throw new Error('Invalid appointment time.');
  const start=new Date(day+'T00:00:00+08:00');
  if(!Number.isFinite(start.getTime())||day!==new Date(start.getTime()+8*3600000).toISOString().slice(0,10))throw new Error('Invalid appointment date.');
  const db=dbAdmin();
