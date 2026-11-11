@@ -28,7 +28,7 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  const monday=addDays(selectedDate,-(['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(perthWeekday)));
  const next=addDays(monday,7),prev=addDays(monday,-7);
  const days=Array.from({length:7},(_,i)=>addDays(monday,i));
- const view=params.view==='team'?'team':params.view==='timeline'?'timeline':'week';
+ const view=params.view==='team'?'team':params.view==='week'?'week':'timeline';
  const viewQuery=(v:string,w=dayKey(monday))=>'/hq/schedule?week='+w+'&view='+v;
  const db=dbAdmin();
  const [{data:visits,error},{data:jobs},{data:assignments},{data:staff},{data:customers},{data:visitStaff}]=await Promise.all([
@@ -61,7 +61,7 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  const renderVisit=(v:Visit)=>{
   const job=jobMap.get(v.job_id);const names=(visitAssigned.get(v.id)??[]).map(id=>staffMap.get(id)??'Team member');
   return <article key={v.id} className={'ee-dispatch-visit'+(clashes.has(v.id)?' has-conflict':'')}>
-   <VisitPreview title={job?.title??'Job'} jobNumber={'JB'+String(job?.job_number??0).padStart(5,'0')} jobHref={'/hq/jobs/'+v.job_id} time={timeLabel(v.starts_at)+' – '+(dayKey(v.starts_at)===dayKey(v.ends_at)?timeLabel(v.ends_at):dayLabel(new Date(v.ends_at))+', '+timeLabel(v.ends_at))} customer={job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'} electricians={names} address={job?.site_address_text} notes={v.notes} conflict={clashes.has(v.id)?'Overlaps with '+(conflictDetails.get(v.id)??[]).join('; '):null}/>
+   <VisitPreview title={job?.title??'Job'} jobNumber={'JB'+String(job?.job_number??0).padStart(5,'0')} jobHref={'/hq/jobs/'+v.job_id} time={timeLabel(v.starts_at)+' – '+(dayKey(v.starts_at)===dayKey(v.ends_at)?timeLabel(v.ends_at):dayLabel(new Date(v.ends_at))+', '+timeLabel(v.ends_at))} customer={job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'} electricians={names} staffIds={visitAssigned.get(v.id)??[]} address={job?.site_address_text} notes={v.notes} conflict={clashes.has(v.id)?'Overlaps with '+(conflictDetails.get(v.id)??[]).join('; '):null}/>
    {canEdit&&<details className="ee-dispatch-edit"><summary>Assign electricians</summary><form action={updateVisitStaff}><input type="hidden" name="appointment_id" value={v.id}/><div className="ee-dispatch-staff-options">{[...staffMap.entries()].map(([id,name])=><label key={id}><input type="checkbox" name="staff_id" value={id} defaultChecked={(visitAssigned.get(v.id)??[]).includes(id)}/>{name}</label>)}</div><button type="submit">Save electricians</button></form></details>}
    {canEdit&&<details className="ee-dispatch-edit"><summary>Manage visit</summary><form action={updateScheduledVisit}><input type="hidden" name="appointment_id" value={v.id}/><AppointmentDateTime name="start" label="Start" defaultValue={inputDate(v.starts_at)}/><AppointmentDateTime name="end" label="End" defaultValue={inputDate(v.ends_at)}/><button type="submit" name="operation" value="reschedule">Save time</button><button className="ee-dispatch-cancel" type="submit" name="operation" value="cancel" formNoValidate>Cancel visit</button></form></details>}
   </article>;
