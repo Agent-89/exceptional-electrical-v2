@@ -71,10 +71,33 @@ export async function addJobAppointment(formData:FormData){
  const parse=(s:string)=>/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(s)?new Date(s+':00+08:00'):new Date(NaN);
  const begins=parse(start),ends=parse(end);
  if(!Number.isFinite(begins.getTime())||!Number.isFinite(ends.getTime())||ends<=begins||notes.length>2000)throw new Error('Please enter a valid appointment.');
- const db=dbAdmin();const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();
+ const db=dbAdmin();
+ const explicit=formData.get('explicit_visit_staff')==='yes';
+ const chosen=[...new Set(formData.getAll('staff_id').map(String))];
+ if(chosen.some(id=>!/^[0-9a-f-]{36}$/i.test(id)))throw new Error('Invalid electrician selection.');
+ const {data:job,error:jobError}=await db.from('jobs').select('id,status').eq('id',jobId).maybeSingle();
+ if(jobError||!job||['cancelled','completed','archived'].includes(job.status))throw new Error('Select an active job.');
+ let staffIds:string[];
+ if(explicit)staffIds=chosen;
+ else{
+  const {data:jobStaff,error:staffLookupError}=await db.from('job_assignments').select('staff_id').eq('job_id',jobId);
+  if(staffLookupError)throw new Error('Unable to read job electricians.');
+  staffIds=[...new Set((jobStaff??[]).map(a=>a.staff_id))];
+ }
+ if(staffIds.length){
+  const {data:active,error:staffError}=await db.from('staff_profiles').select('user_id').eq('active',true).in('user_id',staffIds);
+  if(staffError||active?.length!==staffIds.length)throw new Error('Choose active electricians only.');
+ }
+ const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();
  if(error||!visit)throw new Error('Could not schedule appointment.');
- const {data:jobStaff}=await db.from('job_assignments').select('staff_id').eq('job_id',jobId);
- if(jobStaff?.length){const {error:staffError}=await db.from('job_appointment_staff').insert(jobStaff.map(a=>({appointment_id:visit.id,staff_id:a.staff_id})));if(staffError)throw new Error('Visit created, but electrician assignment failed. Please assign staff in Scheduling.');}
+ if(staffIds.length){
+  const {error:staffError}=await db.from('job_appointment_staff').insert(staffIds.map(staff_id=>({appointment_id:visit.id,staff_id})));
+  if(staffError){
+   const {error:rollbackError}=await db.from('job_appointments').delete().eq('id',visit.id);
+   if(rollbackError)throw new Error('Visit was created but assigning electricians failed. Please review the calendar before retrying.');
+   throw new Error('Unable to assign electricians. No appointment was saved.');
+  }
+ }
  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end});
  revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');
 }
