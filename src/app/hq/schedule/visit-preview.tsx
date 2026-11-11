@@ -8,6 +8,8 @@ type Props={title:string;jobNumber:string;jobHref:string;time:string;customer:st
 export default function VisitPreview({title,jobNumber,jobHref,time,customer,electricians,address,notes,conflict}:Props){
  const [open,setOpen]=useState(false);
  const [hover,setHover]=useState(false);
+ const [hoverPosition,setHoverPosition]=useState({top:0,left:0});
+ const positionHover=()=>{const r=trigger.current?.getBoundingClientRect();if(!r)return;const width=Math.min(290,window.innerWidth-24);const height=195;setHoverPosition({left:Math.max(12,Math.min(r.left,window.innerWidth-width-12)),top:r.bottom+height+10>window.innerHeight?Math.max(12,r.top-height-8):r.bottom+8});};
  const trigger=useRef<HTMLButtonElement>(null);
  const [mounted,setMounted]=useState(false);
  useEffect(()=>setMounted(true),[]);
@@ -19,14 +21,14 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
   return ()=>window.removeEventListener('keydown',onKey);
  },[open]);
  const initials=(name:string)=>name.trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('').toUpperCase();
- return <div className="ee-visit-preview-root" onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}>
+ return <div className="ee-visit-preview-root" onMouseEnter={()=>{positionHover();setHover(true)}} onMouseLeave={()=>setHover(false)}>
   <button ref={trigger} type="button" className="ee-visit-preview-trigger" aria-label={`View visit details: ${title}, ${time}`} onClick={()=>{setHover(false);setOpen(true)}}>
    <span className="ee-dispatch-time">{time}</span>
    <strong className="ee-visit-preview-title">{title}</strong>
    <span className="ee-visit-preview-number">{jobNumber}</span>
    <span className="ee-visit-preview-avatars">{electricians.length?electricians.slice(0,4).map((name,i)=><span className="ee-visit-preview-avatar" title={name} key={i}>{initials(name)}</span>):<span className="ee-visit-preview-empty">Unassigned</span>}{electricians.length>4&&<span className="ee-visit-preview-avatar">+{electricians.length-4}</span>}</span>
   </button>
-  {hover&&!open&&<div className="ee-visit-hover" role="tooltip"><strong>{title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>}
+  {hover&&!open&&mounted&&createPortal(<div className="ee-visit-hover" role="tooltip" style={{top:hoverPosition.top,left:hoverPosition.left}}><strong>{title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>,document.body)}
   {open&&mounted&&createPortal(<div className="ee-visit-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false)}}>
    <section className="ee-visit-modal" role="dialog" aria-modal="true" aria-label={`Appointment details: ${title}`}>
     <header><div><small>APPOINTMENT · {jobNumber}</small><h2>{title}</h2></div><button type="button" className="ee-visit-close" aria-label="Close appointment details" onClick={()=>{setOpen(false);trigger.current?.focus()}}>×</button></header>
@@ -44,7 +46,7 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
    .ee-visit-preview-avatars{display:flex;align-items:center;gap:3px;margin-top:3px}
    .ee-visit-preview-avatar{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#e4f0fc;color:#185d90;border:1px solid #fff;font-size:10px;font-weight:800}
    .ee-visit-preview-empty{font-size:11px;color:#64798a}
-   .ee-visit-hover{position:absolute;z-index:30;left:0;top:calc(100% + 8px);width:min(290px,75vw);background:white;border:1px solid #d0dfe9;border-radius:12px;box-shadow:0 14px 36px #153c5b30;padding:13px;display:grid;gap:7px;font-size:12px;color:#4d6477;pointer-events:none}
+   .ee-visit-hover{position:fixed;z-index:2147482000;width:min(290px,calc(100vw - 24px));background:white;border:1px solid #d0dfe9;border-radius:12px;box-shadow:0 14px 36px #153c5b30;padding:13px;display:grid;gap:7px;font-size:12px;color:#4d6477;pointer-events:none}
    .ee-visit-hover strong{font-size:14px;color:#17364b}.ee-visit-hover-hint{color:#0875c9;font-weight:700}
    .ee-visit-modal-backdrop{position:fixed;inset:0;z-index:2147483000;background:#102c4280;display:grid;place-items:center;padding:20px}
    .ee-visit-modal{width:min(460px,100%);max-height:min(85dvh,750px);overflow:auto;background:white;border-radius:18px;box-shadow:0 24px 65px #102c4250;color:#17364b}
