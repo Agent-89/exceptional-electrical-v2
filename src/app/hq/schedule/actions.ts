@@ -12,16 +12,18 @@ export async function updateScheduledVisit(formData:FormData){
  const {data:visit,error:lookupError}=await db.from('job_appointments').select('id,job_id,status,starts_at,ends_at').eq('id',id).maybeSingle();
  if(lookupError||!visit)throw new Error('Appointment not found.');
  if(visit.status!=='scheduled')throw new Error('Only scheduled visits can be changed.');
- let update:Record<string,string>;
+ let update:Record<string,string|null>;
  if(action==='cancel')update={status:'cancelled'};
  else{
   const start=parsePerth(String(formData.get('start')||''));
   const end=parsePerth(String(formData.get('end')||''));
   if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||end<=start)throw new Error('Enter a valid start and end time.');
-  update={starts_at:start.toISOString(),ends_at:end.toISOString()};
+  const notes=String(formData.get('notes')??'').trim();
+  if(notes.length>2000)throw new Error('Instructions must be 2000 characters or fewer.');
+  update={starts_at:start.toISOString(),ends_at:end.toISOString(),notes:notes||null};
  }
- const {error}=await db.from('job_appointments').update(update).eq('id',id).eq('status','scheduled');
- if(error)throw new Error('Could not update appointment.');
+ const {data:changed,error}=await db.from('job_appointments').update(update).eq('id',id).eq('status','scheduled').select('id').maybeSingle();
+ if(error||!changed)throw new Error('Could not update appointment; it may have changed since opening.');
  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:action==='cancel'?'appointment_cancelled':'appointment_rescheduled',note:action==='cancel'?'Visit cancelled':update.starts_at+' – '+update.ends_at});
  revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+visit.job_id);
 }
@@ -39,12 +41,14 @@ export async function updateVisitStaff(formData:FormData){
   const {data:active,error:staffError}=await db.from('staff_profiles').select('user_id').eq('active',true).in('user_id',staffIds);
   if(staffError||active?.length!==staffIds.length)throw new Error('Choose active staff members.');
  }
- const {error:removeError}=await db.from('job_appointment_staff').delete().eq('appointment_id',id);
- if(removeError)throw new Error('Unable to update visit staff.');
- if(staffIds.length){
-  const {error:insertError}=await db.from('job_appointment_staff').insert(staffIds.map(staff_id=>({appointment_id:id,staff_id})));
-  if(insertError)throw new Error('Unable to assign visit staff.');
- }
+ const {data:existing,error:readError}=await db.from('job_appointment_staff').select('staff_id').eq('appointment_id',id);
+ if(readError)throw new Error('Unable to read current visit staff.');
+ const oldIds=new Set((existing??[]).map(row=>row.staff_id));
+ const toAdd=staffIds.filter(staffId=>!oldIds.has(staffId));
+ const toRemove=[...oldIds].filter(staffId=>!staffIds.includes(staffId));
+ // Add before removing existing crew so a failed insert never clears the roster.
+ if(toAdd.length){const {error:addError}=await db.from('job_appointment_staff').insert(toAdd.map(staff_id=>({appointment_id:id,staff_id})));if(addError)throw new Error('Unable to assign visit staff.');}
+ if(toRemove.length){const {error:removeError}=await db.from('job_appointment_staff').delete().eq('appointment_id',id).in('staff_id',toRemove);if(removeError)throw new Error('Unable to remove previous visit staff.');}
  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'visit_staff_updated',note:staffIds.length+' electrician(s) assigned to visit'});
  revalidatePath('/hq/schedule');revalidatePath('/hq/jobs/'+visit.job_id);
 }
