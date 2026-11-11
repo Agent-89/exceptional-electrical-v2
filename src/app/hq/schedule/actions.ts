@@ -52,3 +52,23 @@ export async function updateVisitStaff(formData:FormData){
  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'visit_staff_updated',note:staffIds.length+' electrician(s) assigned to visit'});
  revalidatePath('/hq/schedule');revalidatePath('/hq/jobs/'+visit.job_id);
 }
+
+/** Move a visit while preserving its duration and assigned crew. */
+export async function moveScheduledVisit(id:string,day:string,startMinutes:number){
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted to reschedule visits.');
+ if(!/^[0-9a-f-]{36}$/i.test(id)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)||!Number.isInteger(startMinutes)||startMinutes<0||startMinutes>=1440||startMinutes%15!==0)throw new Error('Invalid appointment time.');
+ const start=new Date(day+'T00:00:00+08:00');
+ if(!Number.isFinite(start.getTime())||day!==new Date(start.getTime()+8*3600000).toISOString().slice(0,10))throw new Error('Invalid appointment date.');
+ const db=dbAdmin();
+ const {data:visit,error:lookupError}=await db.from('job_appointments').select('id,job_id,status,starts_at,ends_at').eq('id',id).maybeSingle();
+ if(lookupError||!visit||visit.status!=='scheduled')throw new Error('Scheduled visit not found.');
+ const duration=new Date(visit.ends_at).getTime()-new Date(visit.starts_at).getTime();
+ if(duration<=0||duration>7*86400000)throw new Error('Invalid existing visit duration.');
+ const nextStart=new Date(start.getTime()+startMinutes*60000);
+ const nextEnd=new Date(nextStart.getTime()+duration);
+ const {data:changed,error}=await db.from('job_appointments').update({starts_at:nextStart.toISOString(),ends_at:nextEnd.toISOString()}).eq('id',id).eq('status','scheduled').eq('starts_at',visit.starts_at).select('id').maybeSingle();
+ if(error||!changed)throw new Error('Visit changed while you were moving it. Refresh and retry.');
+ await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'appointment_rescheduled',note:nextStart.toISOString()+' – '+nextEnd.toISOString()});
+ revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+visit.job_id);
+}
