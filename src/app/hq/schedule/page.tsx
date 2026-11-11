@@ -59,7 +59,7 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  const renderVisit=(v:Visit)=>{
   const job=jobMap.get(v.job_id);const names=(visitAssigned.get(v.id)??[]).map(id=>staffMap.get(id)??'Team member');
   return <article key={v.id} className={'ee-dispatch-visit'+(clashes.has(v.id)?' has-conflict':'')}>
-   <div className="ee-dispatch-time">{timeLabel(v.starts_at)} – {timeLabel(v.ends_at)}</div>
+   <div className="ee-dispatch-time">{timeLabel(v.starts_at)} – {dayKey(v.starts_at)===dayKey(v.ends_at)?timeLabel(v.ends_at):dayLabel(new Date(v.ends_at))+", "+timeLabel(v.ends_at)}</div>
    <Link className="ee-dispatch-job" href={'/hq/jobs/'+v.job_id}>{job?.title??'Job'} <span>JB{String(job?.job_number??0).padStart(5,'0')}</span></Link>
    <div className="ee-dispatch-meta"><span className="ee-dispatch-meta-label">Customer:</span> {job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'}</div>
    <div className="ee-dispatch-meta"><span className="ee-dispatch-meta-label">{names.length===1?'Electrician:':'Electricians:'}</span> {names.length?names.join(', '):'Unassigned'}</div>
