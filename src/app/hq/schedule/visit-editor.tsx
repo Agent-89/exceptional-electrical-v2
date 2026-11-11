@@ -1,10 +1,8 @@
 'use client';
 import {useState} from 'react';
-import {useFormStatus} from 'react-dom';
 import {updateScheduledVisit,updateVisitStaff} from './actions';
 type Staff={id:string;name:string};
 type Props={id:string;start:string;end:string;notes?:string|null;staffIds:string[];staff:Staff[];onClose:()=>void};
-function Submit({children}:{children:React.ReactNode}){const {pending}=useFormStatus();return <button type="submit" disabled={pending}>{pending?'Saving…':children}</button>}
 const perthInput=(iso:string)=>new Date(iso).toLocaleString('sv-SE',{timeZone:'Australia/Perth',hour12:false}).replace(' ','T').slice(0,16);
 export default function VisitEditor({id,start,end,notes,staffIds,staff,onClose}:Props){
  const [tab,setTab]=useState<'details'|'crew'>('details');
