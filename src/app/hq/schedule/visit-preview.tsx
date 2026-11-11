@@ -27,7 +27,7 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
   <button ref={trigger} type="button" className="ee-visit-preview-trigger" aria-label={`View visit details: ${title}, ${time}`} onClick={()=>{setHover(false);setOpen(true)}}>
    <span className="ee-dispatch-time">{time}</span>
    <strong className="ee-visit-preview-title">{title}</strong>
-   <span className="ee-visit-preview-number">{jobNumber}</span>
+   <span className="ee-visit-preview-number">{jobNumber} · {customer}</span>
    <span className="ee-visit-preview-avatars">{electricians.length?electricians.slice(0,4).map((name,i)=><span className="ee-visit-preview-avatar" style={{backgroundColor:staffColor(i),color:"#fff"}} title={name} key={i}>{initials(name)}</span>):<span className="ee-visit-preview-empty">Unassigned</span>}{electricians.length>4&&<span className="ee-visit-preview-avatar">+{electricians.length-4}</span>}</span>
   </button>
   {hover&&!open&&mounted&&createPortal(<div className="ee-visit-hover" role="tooltip" style={{top:hoverPosition.top,left:hoverPosition.left}}><strong>{title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>,document.body)}
