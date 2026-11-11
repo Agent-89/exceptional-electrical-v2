@@ -1,8 +1,8 @@
 'use client';
 import {useState} from 'react';
-export default function DispatchViews({initialView,week,dayBoard,teamBoard,timelineBoard}:{initialView:'week'|'team'|'timeline'|'timeline';week:string;dayBoard:React.ReactNode;teamBoard:React.ReactNode;timelineBoard:React.ReactNode}){
+export default function DispatchViews({initialView,week,dayBoard,teamBoard,timelineBoard}:{initialView:'week'|'team'|'timeline';week:string;dayBoard:React.ReactNode;teamBoard:React.ReactNode;timelineBoard:React.ReactNode}){
  const [view,setView]=useState(initialView);
- const change=(next:'week'|'team')=>{
+ const change=(next:'week'|'team'|'timeline')=>{
   setView(next);
   const url=new URL(window.location.href);
   url.searchParams.set('view',next);
