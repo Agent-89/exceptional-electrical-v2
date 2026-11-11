@@ -23,10 +23,10 @@ export default function AppointmentDateTime({name,label,defaultValue='',linkedDa
  useEffect(()=>{if(!pickerOpen)return;const selected=pickerRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(selected&&pickerRef.current){pickerRef.current.scrollTop=selected.offsetTop-pickerRef.current.offsetTop-pickerRef.current.clientHeight/2+selected.clientHeight/2;}},[pickerOpen]);
  const choices=Array.from({length:96},(_,i)=>displayTime(String(Math.floor(i/4)).padStart(2,'0')+':'+String(i%4*15).padStart(2,'0')));
  return <fieldset className="ee-appointment-datetime">
-  {!compactDate&&<legend>{label}</legend>}
+  {!compactDate&&!hideDate&&<legend>{label}</legend>}
   <div className={"ee-appointment-fields"+(hideDate?" time-only":"")}>
    {!hideDate&&<label>Date<input type="date" value={effectiveDate} onChange={e=>{setDate(e.target.value);onDateChange?.(e.target.value)}} required/></label>}
-   <label>{compactDate?"Start time (Perth)":"Time (Perth)"}<input type="text" inputMode="text" autoComplete="off" value={time} onChange={e=>setTime(e.target.value)} onBlur={()=>{if(parsed)setTime(displayTime(parsed));}} placeholder="7:00 AM" required aria-invalid={time.trim()!==''&&!parsed} aria-describedby={name+'-time-help'}/></label>
+   <label>{compactDate?"Start time (Perth)":hideDate?"End time (Perth)":"Time (Perth)"}<input type="text" inputMode="text" autoComplete="off" value={time} onChange={e=>setTime(e.target.value)} onBlur={()=>{if(parsed)setTime(displayTime(parsed));}} placeholder="7:00 AM" required aria-invalid={time.trim()!==''&&!parsed} aria-describedby={name+'-time-help'}/></label>
   </div>
   <div className="ee-time-picker-row"><button type="button" className="ee-time-picker-toggle" aria-expanded={pickerOpen} onClick={()=>setPickerOpen(v=>!v)}>{pickerOpen?'Close time options':'Choose time ▾'}</button>{pickerOpen&&<div ref={pickerRef} className="ee-time-picker-options" role="group" aria-label={label+' time options'}>{choices.map(choice=><button type="button" key={choice} aria-pressed={displayTime(time)===choice} onClick={()=>{setTime(choice);setPickerOpen(false)}}>{choice}</button>)}</div>}</div>
   <small id={name+'-time-help'}>{parsed?'Type a time or choose from the list.':'Enter a time such as 7:00 AM or 14:30.'}</small>
