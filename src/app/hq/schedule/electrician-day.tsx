@@ -3,11 +3,11 @@ import {useState} from 'react';
 import VisitPreview from './visit-preview';
 import type {TimelineVisit} from './dispatch-timeline';
 
-type Props={visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string};
+type Props={visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;weekBoard:React.ReactNode};
 const START=6*60,END=20*60,WIDTH=90;
 const palette=['#1676c4','#a34ecb','#0e9875','#d16a21','#d34876','#6b65c8','#138d9b','#7a8533'];
 const color=(id:string)=>{let h=0;for(const ch of id)h=(h*31+ch.charCodeAt(0))|0;return palette[Math.abs(h)%palette.length]};
-export default function ElectricianDay({visits,days,staff,today}:Props){
+export default function ElectricianDay({visits,days,staff,today,weekBoard}:Props){
  const [selected,setSelected]=useState(days.find(d=>d.key===today)?.key??days[0]?.key??'');
  const [mode,setMode]=useState<'week'|'day'>('week');
  const index=days.findIndex(d=>d.key===selected);
@@ -15,7 +15,7 @@ export default function ElectricianDay({visits,days,staff,today}:Props){
  const groups=[...staff.map(s=>({id:s.id,name:s.name})),{id:'shared',name:'Shared crews'},{id:'unassigned',name:'Unassigned'}];
  return <section className="ee-electrician-board">
   <div className="ee-electrician-controls"><div className="ee-timeline-tabs"><button type="button" className={mode==='week'?'active':''} onClick={()=>setMode('week')}>Week</button><button type="button" className={mode==='day'?'active':''} onClick={()=>setMode('day')}>Day timeline</button></div>{mode==='day'&&<div className="ee-electrician-nav"><button type="button" disabled={index<=0} onClick={()=>setSelected(days[index-1].key)} aria-label="Previous day">‹</button><select value={selected} onChange={e=>setSelected(e.target.value)} aria-label="Selected day">{days.map(d=><option key={d.key} value={d.key}>{d.label}</option>)}</select><button type="button" disabled={index>=days.length-1} onClick={()=>setSelected(days[index+1].key)} aria-label="Next day">›</button><button type="button" onClick={()=>setSelected(days.find(d=>d.key===today)?.key??days[0].key)}>Today</button></div>}</div>
-  {mode==='week'?<div className="ee-electrician-week-slot" id="ee-electrician-week-slot"/>:<div className="ee-electrician-scroll"><div className="ee-electrician-chart">
+  {mode==='week'?<>{weekBoard}</>:<div className="ee-electrician-scroll"><div className="ee-electrician-chart">
    <div className="ee-electrician-chart-head"><strong>Electrician</strong><div className="ee-electrician-ruler">{Array.from({length:END/60-START/60+1},(_,i)=><span key={i} style={{left:(i/(END/60-START/60))*100+'%'}}>{(START/60+i)%12||12}{START/60+i<12?'am':'pm'}</span>)}</div></div>
    {groups.map(g=>{const matches=entries.filter(v=>g.id==='unassigned'?v.staffIds.length===0:g.id==='shared'?v.staffIds.length>1:v.staffIds.length===1&&v.staffIds[0]===g.id);return <div className="ee-electrician-resource" key={g.id}><div className="ee-electrician-name">{g.id!=='shared'&&g.id!=='unassigned'&&<span style={{background:color(g.id)}}>{g.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</span>}<strong>{g.name}</strong></div><div className="ee-electrician-lane">{matches.map(v=>{const start=Math.max(START,v.startMinutes),end=Math.min(END,v.endMinutes);if(end<=start)return null;return <div className={'ee-electrician-event'+(v.conflict?' conflict':'')} key={v.id} style={{left:((start-START)/(END-START))*100+'%',width:Math.max(2,((end-start)/(END-START))*100)+'%',borderTopColor:g.id==='shared'||g.id==='unassigned'?'#1688e9':color(g.id)}}><VisitPreview title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} conflict={v.conflict}/></div>})}</div></div>})}
   </div></div>}
