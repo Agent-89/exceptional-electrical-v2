@@ -2,10 +2,12 @@
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import Link from 'next/link';
+import VisitEditor from './visit-editor';
 
-type Props={title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds?:string[];address?:string|null;notes?:string|null;conflict?:string|null};
+type Props={appointmentId?:string;startIso?:string;endIso?:string;canEdit?:boolean;staff?:{id:string;name:string}[];title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds?:string[];address?:string|null;notes?:string|null;conflict?:string|null};
 
-export default function VisitPreview({title,jobNumber,jobHref,time,customer,electricians,staffIds=[],address,notes,conflict}:Props){
+export default function VisitPreview({appointmentId,startIso,endIso,canEdit=false,staff=[],title,jobNumber,jobHref,time,customer,electricians,staffIds=[],address,notes,conflict}:Props){
+ const [editing,setEditing]=useState(false);
  const [open,setOpen]=useState(false);
  const [hover,setHover]=useState(false);
  const [hoverPosition,setHoverPosition]=useState({top:0,left:0});
@@ -16,7 +18,7 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
  useEffect(()=>{if(!open)return;const old=document.body.style.overflow;document.body.style.overflow='hidden';return ()=>{document.body.style.overflow=old}},[open]);
  useEffect(()=>{
   if(!open)return;
-  const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpen(false)};
+  const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape'){setOpen(false);setEditing(false)}};
   window.addEventListener('keydown',onKey);
   return ()=>window.removeEventListener('keydown',onKey);
  },[open]);
@@ -34,9 +36,10 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
   {hover&&!open&&mounted&&createPortal(<div className="ee-visit-hover" role="tooltip" style={{top:hoverPosition.top,left:hoverPosition.left}}><strong>{title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>,document.body)}
   {open&&mounted&&createPortal(<div className="ee-visit-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false)}}>
    <section className="ee-visit-modal" role="dialog" aria-modal="true" aria-label={`Appointment details: ${title}`}>
-    <header><div><small>APPOINTMENT · {jobNumber}</small><h2>{title}</h2></div><button type="button" className="ee-visit-close" aria-label="Close appointment details" onClick={()=>{setOpen(false);trigger.current?.focus()}}>×</button></header>
+    <header><div><small>APPOINTMENT · {jobNumber}</small><h2>{title}</h2></div><button type="button" className="ee-visit-close" aria-label="Close appointment details" onClick={()=>{setOpen(false);setEditing(false);trigger.current?.focus()}}>×</button></header>
     <div className="ee-visit-modal-body"><div><small>TIME</small><strong>{time}</strong></div><div><small>CUSTOMER</small><strong>{customer}</strong></div><div><small>ELECTRICIANS</small><div className="ee-visit-modal-crew">{electricians.length?electricians.map((name,i)=><span key={i}><b style={{backgroundColor:staffColor(i),color:"#fff"}}>{initials(name)}</b>{name}</span>):'Unassigned'}</div></div>{address&&<div><small>WORKSITE</small><span>{address}</span></div>}{notes&&<div><small>INSTRUCTIONS</small><span>{notes}</span></div>}{conflict&&<div className="ee-visit-modal-warning"><small>CONFLICT</small><span>{conflict}</span></div>}</div>
-    <footer><Link href={jobHref}>Open job details</Link><button type="button" onClick={()=>{setOpen(false);trigger.current?.focus()}}>Back to schedule</button></footer>
+    {editing&&appointmentId&&startIso&&endIso&&<VisitEditor id={appointmentId} start={startIso} end={endIso} notes={notes} staffIds={staffIds} staff={staff} onClose={()=>{setEditing(false);setOpen(false)}}/>}
+    <footer>{canEdit&&appointmentId&&<button type="button" onClick={()=>setEditing(v=>!v)}>{editing?'Hide editor':'Edit visit'}</button>}<Link href={jobHref}>Open job details</Link><button type="button" onClick={()=>{setOpen(false);trigger.current?.focus()}}>Back to schedule</button></footer>
    </section>
   </div>,document.body)}
   <style jsx global>{`
