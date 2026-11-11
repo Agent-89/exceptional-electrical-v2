@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import Link from 'next/link';
 
 type Props={title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];address?:string|null;notes?:string|null;conflict?:string|null};
@@ -8,6 +9,9 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
  const [open,setOpen]=useState(false);
  const [hover,setHover]=useState(false);
  const trigger=useRef<HTMLButtonElement>(null);
+ const [mounted,setMounted]=useState(false);
+ useEffect(()=>setMounted(true),[]);
+ useEffect(()=>{if(!open)return;const old=document.body.style.overflow;document.body.style.overflow='hidden';return ()=>{document.body.style.overflow=old}},[open]);
  useEffect(()=>{
   if(!open)return;
   const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpen(false)};
@@ -23,16 +27,16 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
    <span className="ee-visit-preview-avatars">{electricians.length?electricians.slice(0,4).map((name,i)=><span className="ee-visit-preview-avatar" title={name} key={i}>{initials(name)}</span>):<span className="ee-visit-preview-empty">Unassigned</span>}{electricians.length>4&&<span className="ee-visit-preview-avatar">+{electricians.length-4}</span>}</span>
   </button>
   {hover&&!open&&<div className="ee-visit-hover" role="tooltip"><strong>{title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>}
-  {open&&<div className="ee-visit-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false)}}>
+  {open&&mounted&&createPortal(<div className="ee-visit-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false)}}>
    <section className="ee-visit-modal" role="dialog" aria-modal="true" aria-label={`Appointment details: ${title}`}>
     <header><div><small>APPOINTMENT · {jobNumber}</small><h2>{title}</h2></div><button type="button" className="ee-visit-close" aria-label="Close appointment details" onClick={()=>{setOpen(false);trigger.current?.focus()}}>×</button></header>
     <div className="ee-visit-modal-body"><div><small>TIME</small><strong>{time}</strong></div><div><small>CUSTOMER</small><strong>{customer}</strong></div><div><small>ELECTRICIANS</small><div className="ee-visit-modal-crew">{electricians.length?electricians.map((name,i)=><span key={i}><b>{initials(name)}</b>{name}</span>):'Unassigned'}</div></div>{address&&<div><small>WORKSITE</small><span>{address}</span></div>}{notes&&<div><small>INSTRUCTIONS</small><span>{notes}</span></div>}{conflict&&<div className="ee-visit-modal-warning"><small>CONFLICT</small><span>{conflict}</span></div>}</div>
     <footer><Link href={jobHref}>Open job details</Link><button type="button" onClick={()=>{setOpen(false);trigger.current?.focus()}}>Back to schedule</button></footer>
    </section>
-  </div>}
+  </div>,document.body)}
   <style jsx global>{`
-   .ee-visit-preview-root{position:relative;min-width:0}
-   .ee-visit-preview-trigger{display:grid;gap:5px;text-align:left;border:0;padding:0;background:transparent;width:100%;cursor:pointer;color:#17364b;font:inherit;overflow-wrap:anywhere}
+   .ee-visit-preview-root{position:relative;min-width:0;height:100%;display:flex;flex-direction:column}
+   .ee-visit-preview-trigger{display:grid;gap:5px;text-align:left;border:0;padding:0;background:transparent;width:100%;height:100%;min-height:100%;flex:1;cursor:pointer;color:#17364b;font:inherit;overflow-wrap:anywhere;align-content:start}
    .ee-visit-preview-trigger:hover .ee-visit-preview-title{color:#0875c9}
    .ee-visit-preview-trigger:focus-visible{outline:2px solid #1688e9;outline-offset:3px;border-radius:3px}
    .ee-visit-preview-title{font-size:13px;line-height:1.3}
@@ -42,7 +46,7 @@ export default function VisitPreview({title,jobNumber,jobHref,time,customer,elec
    .ee-visit-preview-empty{font-size:11px;color:#64798a}
    .ee-visit-hover{position:absolute;z-index:30;left:0;top:calc(100% + 8px);width:min(290px,75vw);background:white;border:1px solid #d0dfe9;border-radius:12px;box-shadow:0 14px 36px #153c5b30;padding:13px;display:grid;gap:7px;font-size:12px;color:#4d6477;pointer-events:none}
    .ee-visit-hover strong{font-size:14px;color:#17364b}.ee-visit-hover-hint{color:#0875c9;font-weight:700}
-   .ee-visit-modal-backdrop{position:fixed;inset:0;z-index:9999;background:#102c4266;display:grid;place-items:center;padding:20px}
+   .ee-visit-modal-backdrop{position:fixed;inset:0;z-index:2147483000;background:#102c4280;display:grid;place-items:center;padding:20px}
    .ee-visit-modal{width:min(460px,100%);max-height:min(85dvh,750px);overflow:auto;background:white;border-radius:18px;box-shadow:0 24px 65px #102c4250;color:#17364b}
    .ee-visit-modal header{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 22px;border-bottom:1px solid #e1eaf2;gap:12px}
    .ee-visit-modal header small,.ee-visit-modal-body small{font-size:10px;letter-spacing:.09em;color:#6b8498;font-weight:800}
