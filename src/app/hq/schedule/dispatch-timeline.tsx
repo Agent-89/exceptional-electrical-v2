@@ -30,7 +30,7 @@ export default function DispatchTimeline({visits,days,staff,today,nowMinutes}:Pr
      const overlap=visible.filter(other=>other.id!==v.id&&other.day===v.day&&other.startMinutes<v.endMinutes&&other.endMinutes>v.startMinutes);
      const cluster=[v,...overlap].sort((a,b)=>a.startMinutes-b.startMinutes||a.id.localeCompare(b.id));
      const index=cluster.findIndex(x=>x.id===v.id),count=cluster.length;
-     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')} key={v.id} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.staffIds.length===1?staffColor(v.staffIds[0]):undefined}}><VisitPreview title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} conflict={v.conflict}/></div>;
+     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')} key={v.id} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}><VisitPreview title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} conflict={v.conflict}/></div>;
     })}
    </div>)}
   </div></div>
