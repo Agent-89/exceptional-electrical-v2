@@ -4,6 +4,7 @@ import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
 import {updateScheduledVisit,updateVisitStaff} from './actions';
 import {addJobAppointment} from '../jobs/actions';
 import DispatchViews from './view-switch';
+import VisitPreview from './visit-preview';
 import '../hq.css';
 export const dynamic='force-dynamic';
 type Visit={id:string;job_id:string;starts_at:string;ends_at:string;notes:string|null;status:string};
@@ -58,14 +59,8 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  }
  const renderVisit=(v:Visit)=>{
   const job=jobMap.get(v.job_id);const names=(visitAssigned.get(v.id)??[]).map(id=>staffMap.get(id)??'Team member');
-  return <article key={v.id} tabIndex={0} className={'ee-dispatch-visit'+(clashes.has(v.id)?' has-conflict':'')}>
-   <div className="ee-dispatch-time">{timeLabel(v.starts_at)} – {dayKey(v.starts_at)===dayKey(v.ends_at)?timeLabel(v.ends_at):dayLabel(new Date(v.ends_at))+", "+timeLabel(v.ends_at)}</div>
-   <Link className="ee-dispatch-job" href={'/hq/jobs/'+v.job_id}>{job?.title??'Job'} <span>JB{String(job?.job_number??0).padStart(5,'0')}</span></Link>
-   <div className="ee-dispatch-meta"><span className="ee-dispatch-meta-label">Customer:</span> {job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'}</div>
-   <div className="ee-dispatch-crew" aria-label={names.length?`Assigned electricians: ${names.join(', ')}`:'Unassigned visit'}>{names.length?names.slice(0,4).map((name,i)=><span className="ee-dispatch-avatar" title={name} key={i}>{name.trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('').toUpperCase()}</span>):<span className="ee-dispatch-unassigned">Unassigned</span>}{names.length>4&&<span className="ee-dispatch-avatar">+{names.length-4}</span>}<span className="ee-dispatch-crew-count">{names.length===1?names[0]:names.length?`${names.length} electricians`:'Assign electricians'}</span></div><div className="ee-dispatch-preview"><strong>Visit details</strong><span>{job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'}</span>{job?.site_address_text&&<span>{job.site_address_text}</span>}<span>{names.length?names.join(', '):'No electricians assigned'}</span>{v.notes&&<span>{v.notes}</span>}</div>
-   {job?.site_address_text&&<div className="ee-dispatch-meta">{job.site_address_text}</div>}
-   {clashes.has(v.id)&&<div className="ee-dispatch-conflict"><strong>Scheduling conflict — shared electrician</strong><span>Overlaps with: {(conflictDetails.get(v.id)??[]).join("; ")}</span></div>}
-   {v.notes&&<p className="ee-dispatch-note">{v.notes}</p>}
+  return <article key={v.id} className={'ee-dispatch-visit'+(clashes.has(v.id)?' has-conflict':'')}>
+   <VisitPreview title={job?.title??'Job'} jobNumber={'JB'+String(job?.job_number??0).padStart(5,'0')} jobHref={'/hq/jobs/'+v.job_id} time={timeLabel(v.starts_at)+' – '+(dayKey(v.starts_at)===dayKey(v.ends_at)?timeLabel(v.ends_at):dayLabel(new Date(v.ends_at))+', '+timeLabel(v.ends_at))} customer={job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'} electricians={names} address={job?.site_address_text} notes={v.notes} conflict={clashes.has(v.id)?'Overlaps with '+(conflictDetails.get(v.id)??[]).join('; '):null}/>
    {canEdit&&<details className="ee-dispatch-edit"><summary>Assign electricians</summary><form action={updateVisitStaff}><input type="hidden" name="appointment_id" value={v.id}/><div className="ee-dispatch-staff-options">{[...staffMap.entries()].map(([id,name])=><label key={id}><input type="checkbox" name="staff_id" value={id} defaultChecked={(visitAssigned.get(v.id)??[]).includes(id)}/>{name}</label>)}</div><button type="submit">Save electricians</button></form></details>}
    {canEdit&&<details className="ee-dispatch-edit"><summary>Manage visit</summary><form action={updateScheduledVisit}><input type="hidden" name="appointment_id" value={v.id}/><AppointmentDateTime name="start" label="Start" defaultValue={inputDate(v.starts_at)}/><AppointmentDateTime name="end" label="End" defaultValue={inputDate(v.ends_at)}/><button type="submit" name="operation" value="reschedule">Save time</button><button className="ee-dispatch-cancel" type="submit" name="operation" value="cancel" formNoValidate>Cancel visit</button></form></details>}
   </article>;
