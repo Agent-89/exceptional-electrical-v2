@@ -22,7 +22,7 @@ export default function AppointmentDateTime({name,label,defaultValue='',linkedDa
  const pickerRef=useRef<HTMLDivElement>(null);
  useEffect(()=>{if(!pickerOpen)return;const selected=pickerRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(selected&&pickerRef.current){pickerRef.current.scrollTop=selected.offsetTop-pickerRef.current.offsetTop-pickerRef.current.clientHeight/2+selected.clientHeight/2;}},[pickerOpen]);
  const choices=Array.from({length:96},(_,i)=>displayTime(String(Math.floor(i/4)).padStart(2,'0')+':'+String(i%4*15).padStart(2,'0')));
- return <fieldset className="ee-appointment-datetime">
+ return <fieldset className={"ee-appointment-datetime"+(compactDate?" compact-date":"")}>
   {!compactDate&&!hideDate&&<legend>{label}</legend>}
   <div className={"ee-appointment-fields"+(hideDate?" time-only":"")}>
    {!hideDate&&<label>Date<input type="date" value={effectiveDate} onChange={e=>{setDate(e.target.value);onDateChange?.(e.target.value)}} required/></label>}
@@ -38,9 +38,10 @@ export default function AppointmentDateTime({name,label,defaultValue='',linkedDa
   .ee-appointment-fields.time-only{grid-template-columns:1fr}.ee-appointment-fields label{display:grid;gap:5px;font-size:12px;font-weight:650}
   .ee-appointment-fields input{width:100%;min-width:0;box-sizing:border-box;border:1px solid #cbd8e6;border-radius:9px;padding:11px 10px;background:#fff;color:#17364b;font-size:16px;min-height:46px}
   .ee-appointment-fields input[aria-invalid="true"]{border-color:#cc6156}
+  .ee-appointment-datetime.compact-date .ee-time-picker-row,.ee-appointment-datetime.compact-date>small{margin-left:calc(50% + 5px)}
   .ee-time-picker-row{position:relative}.ee-time-picker-toggle{border:1px solid #d1e0ee;border-radius:8px;background:#f3f8fc;color:#176ba7;padding:7px 12px;font-size:12px;font-weight:750;cursor:pointer}.ee-time-picker-options{position:absolute;top:100%;left:0;z-index:30;width:min(350px,90vw);max-height:210px;overflow:auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:white;padding:8px;border:1px solid #cbd8e6;border-radius:9px;box-shadow:0 12px 25px #1233}.ee-time-picker-options button{border:0;border-radius:6px;background:#f3f8fc;padding:8px 3px;color:#17364b;cursor:pointer}.ee-time-picker-options button[aria-pressed="true"]{background:#d8ecff;color:#0875c9;font-weight:800}
   .ee-appointment-datetime>small{font-size:11px;color:#718397;line-height:1.35}
-  @media(max-width:420px){.ee-appointment-fields{grid-template-columns:1fr}}
+  @media(max-width:420px){.ee-appointment-fields{grid-template-columns:1fr}.ee-appointment-datetime.compact-date .ee-time-picker-row,.ee-appointment-datetime.compact-date>small{margin-left:0}}
   `}</style>
  </fieldset>;
 }
