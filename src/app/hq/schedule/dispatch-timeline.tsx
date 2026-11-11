@@ -1,5 +1,5 @@
 'use client';
-import {useMemo,useRef,useState,useTransition} from 'react';
+import {useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {setScheduledVisitTimes} from './actions';
 import VisitPreview from './visit-preview';
@@ -17,6 +17,7 @@ export default function DispatchTimeline({canEdit,visits,days,staff,today,nowMin
  const [moveTime,setMoveTime]=useState('07:00');
  const [preview,setPreview]=useState<{id:string;day:string;start:number;end:number}|null>(null);
  const [overrides,setOverrides]=useState<Record<string,{day:string;start:number;end:number;startIso:string;endIso:string}>>({});
+ const previewRef=useRef<{id:string;day:string;start:number;end:number}|null>(null);
  const gesture=useRef<{id:string;kind:'move'|'start'|'end';day:string;start:number;end:number;anchorY:number;anchorMinute:number;originStart:number;originEnd:number;originDay:string;pointerId:number;active:boolean}|null>(null);
  const lanes=useRef<Record<string,HTMLDivElement|null>>({});
  const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
@@ -44,12 +45,12 @@ export default function DispatchTimeline({canEdit,visits,days,staff,today,nowMin
   if(g.kind==='move'){day=target;start=clamp(minute-(g.anchorMinute-g.originStart),START,END-duration);start=snap(start);end=start+duration;}
   else if(g.kind==='start')start=clamp(minute,START,g.originEnd-15);
   else end=clamp(minute,g.originStart+15,END);
-  setPreview({id:g.id,day,start,end});
+  previewRef.current={id:g.id,day,start,end};setPreview(previewRef.current);
  };
  const endGesture=(e:React.PointerEvent)=>{
   const g=gesture.current;if(!g||g.pointerId!==e.pointerId)return;
   gesture.current=null;
-  const p=preview;setPreview(null);
+  const p=previewRef.current;previewRef.current=null;setPreview(null);
   if(!g.active||!p)return;
   const v=effective.find(x=>x.id===g.id);if(v)confirmTimes(v,p.day,p.start,p.end);
  };
@@ -90,7 +91,7 @@ export default function DispatchTimeline({canEdit,visits,days,staff,today,nowMin
      const overlap=visible.filter(other=>other.id!==v.id&&other.day===v.day&&other.startMinutes<v.endMinutes&&other.endMinutes>v.startMinutes);
      const cluster=[v,...overlap].sort((a,b)=>a.startMinutes-b.startMinutes||a.id.localeCompare(b.id));
      const index=cluster.findIndex(x=>x.id===v.id),count=cluster.length;
-     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')+(preview?.id===v.id?' is-dragging':'')} key={v.id} onPointerDown={e=>beginGesture(e,v,'move')} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={()=>{gesture.current=null;setPreview(null)}} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}>{canEdit&&<div className="ee-timeline-resize top" onPointerDown={e=>beginGesture(e,v,'start')} title="Drag to adjust start time"/>}<VisitPreview appointmentId={v.id} startIso={v.startIso} endIso={v.endIso} canEdit={canEdit} staff={staff} title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} conflict={v.conflict}/>{canEdit&&<button type="button" className="ee-timeline-move" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();beginMove(v)}}>Move</button>}{canEdit&&<div className="ee-timeline-resize bottom" onPointerDown={e=>beginGesture(e,v,'end')} title="Drag to adjust end time"/>}</div>;
+     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')+(preview?.id===v.id?' is-dragging':'')} key={v.id} onPointerDown={e=>beginGesture(e,v,'move')} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={()=>{gesture.current=null;previewRef.current=null;setPreview(null)}} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}>{canEdit&&<div className="ee-timeline-resize top" onPointerDown={e=>beginGesture(e,v,'start')} title="Drag to adjust start time"/>}<VisitPreview appointmentId={v.id} startIso={v.startIso} endIso={v.endIso} canEdit={canEdit} staff={staff} title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} conflict={v.conflict}/>{canEdit&&<button type="button" className="ee-timeline-move" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();beginMove(v)}}>Move</button>}{canEdit&&<div className="ee-timeline-resize bottom" onPointerDown={e=>beginGesture(e,v,'end')} title="Drag to adjust end time"/>}</div>;
     })}
    </div>)}
   </div></div>
