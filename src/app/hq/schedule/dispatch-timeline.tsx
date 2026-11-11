@@ -21,7 +21,7 @@ export default function DispatchTimeline({canEdit,visits,days,staff,today,nowMin
  const [preview,setPreview]=useState<{id:string;day:string;start:number;end:number}|null>(null);
  const [overrides,setOverrides]=useState<Record<string,{day:string;start:number;end:number;startIso:string;endIso:string}>>({});
  const previewRef=useRef<{id:string;day:string;start:number;end:number}|null>(null);
- const gesture=useRef<{id:string;kind:'move'|'start'|'end';day:string;start:number;end:number;anchorY:number;anchorMinute:number;originStart:number;originEnd:number;originDay:string;pointerId:number;active:boolean}|null>(null);
+ const gesture=useRef<{id:string;kind:'move'|'start'|'end';day:string;start:number;end:number;anchorY:number;anchorX:number;anchorMinute:number;originStart:number;originEnd:number;originDay:string;pointerId:number;active:boolean}|null>(null);
  const lanes=useRef<Record<string,HTMLDivElement|null>>({});
  const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
  const snap=(v:number)=>Math.round(v/15)*15;
@@ -33,12 +33,12 @@ export default function DispatchTimeline({canEdit,visits,days,staff,today,nowMin
   e.preventDefault();e.stopPropagation();
   const lane=lanes.current[v.day];if(!lane)return;
   const rect=lane.getBoundingClientRect();
-  gesture.current={id:v.id,kind,day:v.day,start:v.startMinutes,end:v.endMinutes,anchorY:e.clientY,anchorMinute:snap(START+(e.clientY-rect.top)/HOUR_HEIGHT*60),originStart:v.startMinutes,originEnd:v.endMinutes,originDay:v.day,pointerId:e.pointerId,active:false};
+  gesture.current={id:v.id,kind,day:v.day,start:v.startMinutes,end:v.endMinutes,anchorY:e.clientY,anchorX:e.clientX,anchorMinute:snap(START+(e.clientY-rect.top)/HOUR_HEIGHT*60),originStart:v.startMinutes,originEnd:v.endMinutes,originDay:v.day,pointerId:e.pointerId,active:false};
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
  };
  const moveGesture=(e:React.PointerEvent)=>{
   const g=gesture.current;if(!g||g.pointerId!==e.pointerId)return;
-  if(Math.abs(e.clientY-g.anchorY)<6&&Math.abs(e.clientX-(lanes.current[g.originDay]?.getBoundingClientRect().left??e.clientX))<6&&!g.active)return;
+  if(Math.abs(e.clientY-g.anchorY)<6&&Math.abs(e.clientX-g.anchorX)<6&&!g.active)return;
   g.active=true;
   const target=Object.entries(lanes.current).find(([,el])=>{if(!el)return false;const r=el.getBoundingClientRect();return e.clientX>=r.left&&e.clientX<r.right})?.[0]??g.day;
   const lane=lanes.current[g.kind==='move'?target:g.originDay];if(!lane)return;
