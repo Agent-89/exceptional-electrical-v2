@@ -57,8 +57,8 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
   const a=all[i],b=all[j];
   if(new Date(a.starts_at)<new Date(b.ends_at)&&new Date(b.starts_at)<new Date(a.ends_at)&&
-   (visitAssigned.get(a.id)??[]).some(id=>(visitAssigned.get(b.id)??[]).includes(id)) ){clashes.add(a.id);clashes.add(b.id);
-   const describe=(v:Visit,other:Visit)=>{const common=(visitAssigned.get(v.id)??[]).filter(id=>(visitAssigned.get(other.id)??[]).includes(id)).map(id=>staffMap.get(id)??'Electrician');return `${jobMap.get(v.job_id)?.title??'Job'} (${dayLabel(new Date(v.starts_at))}, ${timeLabel(v.starts_at)}–${timeLabel(v.ends_at)}) · ${common.join(', ')}${common.length===1?' is':' are'} assigned to both`;};
+   (a.job_id===b.job_id||(visitAssigned.get(a.id)??[]).some(id=>(visitAssigned.get(b.id)??[]).includes(id))) ){clashes.add(a.id);clashes.add(b.id);
+   const describe=(v:Visit,other:Visit)=>{const common=(visitAssigned.get(v.id)??[]).filter(id=>(visitAssigned.get(other.id)??[]).includes(id)).map(id=>staffMap.get(id)??'Electrician');return `${v.job_id===other.job_id?'Duplicate/overlapping visit for same job: ':''}${jobMap.get(v.job_id)?.title??'Job'} (${dayLabel(new Date(v.starts_at))}, ${timeLabel(v.starts_at)}–${timeLabel(v.ends_at)}) · ${common.length?common.join(', ')+(common.length===1?' is':' are')+' assigned to both':'same job is booked more than once'}`;};
    conflictDetails.set(a.id,[...(conflictDetails.get(a.id)??[]),describe(b,a)]);
    conflictDetails.set(b.id,[...(conflictDetails.get(b.id)??[]),describe(a,b)]);
   }
