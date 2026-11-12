@@ -53,7 +53,7 @@ export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,st
     if(g&&g.pointerId===e.pointerId){g.armed=true;if(navigator.vibrate)navigator.vibrate(20);}
     holdTimer.current=null;
    },450);
-  }else (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
  };
  const moveGesture=(e:React.PointerEvent)=>{
   const g=gesture.current;if(!g||g.pointerId!==e.pointerId)return;
