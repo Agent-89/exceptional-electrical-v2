@@ -40,13 +40,13 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
   db.from('job_appointments').select('id,job_id,starts_at,ends_at,notes,status').eq('status','scheduled').gte('starts_at',monday.toISOString()).lt('starts_at',next.toISOString()).order('starts_at',{ascending:true}).limit(500),
   db.from('jobs').select('id,job_number,title,customer_id,site_address_text,status').limit(1000),
   db.from('job_assignments').select('job_id,staff_id').limit(3000),
-  db.from('staff_profiles').select('user_id,full_name').eq('active',true).limit(300),
+  db.from('scheduling_staff').select('id,full_name,initials,avatar_color').eq('active',true).limit(300),
   db.from('customers').select('id,name').limit(1000),
   db.from('job_appointment_staff').select('appointment_id,staff_id').limit(5000)
  ]);
  const all=(visits??[]) as Visit[];
  const jobMap=new Map(((jobs??[]) as Job[]).map(j=>[j.id,j]));
- const staffMap=new Map((staff??[]).map(s=>[s.user_id,s.full_name]));
+ const staffMap=new Map((staff??[]).map(s=>[s.id,s.full_name]));
  const customerMap=new Map((customers??[]).map(c=>[c.id,c.name]));
  const assigned=new Map<string,string[]>();
  for(const a of assignments??[])assigned.set(a.job_id,[...(assigned.get(a.job_id)??[]),a.staff_id]);
