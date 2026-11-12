@@ -27,6 +27,14 @@ export default function ElectricianDay({canEdit,visits,days,staff,today,weekBoar
 .ee-electrician-name{position:sticky;left:0;z-index:8;min-width:0;box-shadow:2px 0 4px #153c5b12}
 .ee-electrician-chart-head{z-index:10}
 @media(max-width:760px){.ee-electrician-name{padding:9px 7px!important;gap:5px!important}.ee-electrician-name strong{overflow-wrap:anywhere;font-size:11px}}
+  @media(max-width:760px){
+.ee-electrician-controls{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:8px!important}
+.ee-electrician-controls>.ee-timeline-tabs{align-self:flex-start}
+.ee-electrician-controls .ee-electrician-nav{display:grid!important;grid-template-columns:38px minmax(0,1fr) 38px auto!important;width:100%!important;box-sizing:border-box;gap:5px!important;align-items:center}
+.ee-electrician-controls .ee-electrician-nav select{width:100%!important;min-width:0!important;height:40px!important;box-sizing:border-box}
+.ee-electrician-controls .ee-electrician-nav button{min-width:0!important;height:40px!important;padding:5px 8px!important}
+.ee-electrician-controls .ee-electrician-nav button:last-child{white-space:nowrap}
+}
   `}</style>
  </section>;
 }
