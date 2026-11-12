@@ -205,5 +205,33 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
 .ee-dispatch-google-details:not([open])>.ee-google-control{display:none!important}
 .ee-dispatch-google-details[open]>.ee-google-control{display:flex!important;margin:4px 0 0!important}
 }
+
+/* Final mobile schedule layout; desktop selectors unchanged */
+@media(max-width:760px){
+.ee-dispatch:has(.ee-dispatch-view-switch>button:nth-child(3)[aria-pressed="true"]) .ee-schedule-header-group .ee-dispatch-metrics-inline{display:flex!important}
+.ee-dispatch .ee-schedule-header-group{display:flex!important;flex-wrap:wrap;gap:5px!important;margin-bottom:7px!important}
+.ee-dispatch .ee-schedule-header-group .ee-schedule-topline{flex:0 0 auto!important;display:contents!important}
+.ee-dispatch .ee-schedule-header-group h1{font-size:23px!important;line-height:1.2!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{display:flex!important;flex:1 1 auto!important;justify-content:flex-end!important;margin:0!important;gap:3px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline>a{padding:3px 5px!important;min-height:34px!important;gap:2px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline>a small{font-size:9px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline>a strong{font-size:15px!important}
+.ee-dispatch .ee-dispatch-view-switch{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important;padding:6px!important}
+.ee-dispatch .ee-dispatch-view-switch>button{grid-row:1!important;min-width:0!important;padding:9px 2px!important;min-height:38px!important;font-size:12px!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-top-week{grid-column:1/-1!important;grid-row:2!important;margin:0!important;min-width:0!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-top-week .ee-schedule-date-nav{display:flex!important;justify-content:space-between!important;gap:3px!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-top-week .ee-schedule-date-nav strong{font-size:12px!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-create-open{grid-column:1/3!important;grid-row:3!important;min-height:36px!important;padding:7px!important;width:100%!important;margin:0!important;font-size:13px!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-google-details{grid-column:3!important;grid-row:3!important;align-self:center!important;justify-self:stretch!important;min-width:0!important}
+.ee-dispatch .ee-dispatch-google-details>summary{display:flex!important;justify-content:center;align-items:center;min-height:36px;padding:6px!important;border:1px solid #d4e1ed;border-radius:8px;background:white;font-size:11px!important}
+.ee-dispatch .ee-dispatch-google-details>summary{font-size:0!important}
+.ee-dispatch .ee-dispatch-google-details>summary::after{content:"Calendar";font-size:12px}
+.ee-dispatch .ee-dispatch-google-details[open]{grid-column:1/-1!important;grid-row:4!important}
+.ee-dispatch .ee-dispatch-google-details[open]>summary{justify-content:flex-start!important}
+.ee-dispatch .ee-dispatch-day .ee-dispatch-visit,.ee-dispatch .ee-dispatch-team-day .ee-dispatch-visit{padding:8px 11px!important}
+.ee-dispatch .ee-dispatch-visit .ee-visit-preview-trigger{gap:3px!important}
+.ee-dispatch .ee-dispatch-visit .ee-dispatch-edit{margin:0!important}
+.ee-dispatch .ee-dispatch-visit .ee-dispatch-edit summary{padding:5px 0!important;line-height:1.3!important}
+}
 `}</style></main>;
 }
