@@ -1,0 +1,3 @@
+import {NextResponse} from 'next/server';
+import {dbAdmin,hqUser} from '@/lib/hq-auth';
+export async function POST(req:Request){const user=await hqUser();if(!user||!['owner','admin'].includes(user.role))return NextResponse.json({error:'Forbidden'},{status:403});const origin=new URL(req.url).origin;if(req.headers.get('origin')!==origin)return NextResponse.json({error:'Invalid origin'},{status:403});const db=dbAdmin();const {error}=await db.from('google_calendar_connections').delete().eq('id',1);if(error)return NextResponse.json({error:'Unable to disconnect'},{status:500});return NextResponse.redirect(new URL('/hq/schedule?google=disconnected',origin),303);}
