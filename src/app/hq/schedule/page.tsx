@@ -405,5 +405,14 @@ grid-template-rows:38px 38px!important;gap:6px 9px!important;padding:7px 10px!im
 .ee-dispatch .ee-timeline-density-shortcut[aria-pressed="true"]{background:#e5f3ff;border-color:#1688e9}
 .ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-toolbar{display:flex!important;align-items:center!important}
 }
+
+@media(min-width:1000px){
+.ee-dispatch .ee-dispatch-view-switch #ee-dispatch-team-controls{grid-column:1/4!important;grid-row:2!important;justify-self:start!important;align-self:center!important}
+.ee-dispatch .ee-dispatch-view-switch #ee-dispatch-team-controls[hidden],
+.ee-dispatch .ee-dispatch-view-switch #ee-dispatch-timeline-controls[hidden]{display:none!important}
+.ee-dispatch .ee-dispatch-view-switch #ee-dispatch-team-controls:not([hidden]),
+.ee-dispatch .ee-dispatch-view-switch #ee-dispatch-timeline-controls:not([hidden]){display:flex!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-toolbar-metrics{display:flex!important}
+}
 `}</style></main>;
 }
