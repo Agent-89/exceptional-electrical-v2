@@ -16,6 +16,9 @@ export async function loginAction(form:FormData){
  const remember=form.get('remember')==='on';
  const jar=await cookies();
  const secure=process.env.NODE_ENV==='production';
+ // Expire legacy path-scoped cookies before setting the shared secure session.
+ jar.set('ee_hq_access','',{path:'/hq',maxAge:0});
+ jar.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
  jar.set('ee_hq_access',data.session.access_token,{httpOnly:true,secure,sameSite:'lax',path:'/',maxAge:data.session.expires_in});
  jar.set('ee_hq_refresh',data.session.refresh_token,{httpOnly:true,secure,sameSite:'lax',path:'/',...(remember?{maxAge:60*60*24*30}:{})});
  redirect('/hq');
@@ -23,6 +26,7 @@ export async function loginAction(form:FormData){
 export async function logoutAction(){
  const jar=await cookies();
  jar.set('ee_hq_access','',{path:'/',maxAge:0});jar.set('ee_hq_refresh','',{path:'/',maxAge:0});
+ jar.set('ee_hq_access','',{path:'/hq',maxAge:0});jar.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
  redirect('/hq/login');
 }
 const allowed=['new','contacted','qualified','scheduled','closed','spam'] as const;
