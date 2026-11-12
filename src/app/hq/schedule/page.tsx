@@ -317,5 +317,50 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
 .ee-dispatch .ee-schedule-header-group{display:none!important}
 .ee-dispatch .ee-dispatch-timeline-controls{display:none!important}
 }
+
+/* Desktop schedule: two purposeful rows and no former header gutter. */
+@media(min-width:1000px){
+.hq-shell-content:has(> .hq-detail .ee-dispatch){padding-top:0!important;margin-top:0!important}
+.hq-shell-content>.hq-detail:has(.ee-dispatch){padding-top:8px!important;margin-top:0!important}
+.hq-shell-content>.hq-detail .ee-dispatch{padding-top:0!important;margin-top:0!important}
+.ee-dispatch .ee-dispatch-view-switch{
+display:grid!important;
+grid-template-columns:max-content max-content max-content minmax(0,1fr) max-content!important;
+grid-template-rows:minmax(38px,auto) minmax(38px,auto)!important;
+column-gap:8px!important;row-gap:5px!important;
+align-items:center!important;justify-content:stretch!important;
+padding:7px 10px!important;min-height:0!important;
+}
+.ee-dispatch .ee-dispatch-view-switch>button:nth-child(1){grid-column:1;grid-row:1}
+.ee-dispatch .ee-dispatch-view-switch>button:nth-child(2){grid-column:2;grid-row:1}
+.ee-dispatch .ee-dispatch-view-switch>button:nth-child(3){grid-column:3;grid-row:1}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-top-week{
+grid-column:4!important;grid-row:1!important;
+justify-self:center!important;justify-content:center!important;
+margin:0!important;width:auto!important;min-width:0!important;
+}
+.ee-dispatch .ee-dispatch-view-switch .ee-create-open{
+grid-column:5!important;grid-row:1!important;
+margin:0!important;justify-self:end!important;
+}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-timeline-controls{
+grid-column:1/5!important;grid-row:2!important;
+justify-self:start!important;align-self:center!important;
+min-height:34px!important;
+}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-google-visible{
+grid-column:5!important;grid-row:2!important;
+justify-self:end!important;align-self:center!important;
+}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-top-week .ee-schedule-date-nav{
+gap:7px!important;
+}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-day-picker{
+max-width:none!important;
+}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-day-picker select{
+width:130px!important;
+}
+}
 `}</style></main>;
 }
