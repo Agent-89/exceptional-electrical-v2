@@ -275,10 +275,10 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
 @media(min-width:761px){
 .ee-dispatch .ee-dispatch-google-visible{order:7}
 .ee-dispatch .ee-schedule-header-group{margin-bottom:0!important}
-.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{position:absolute;right:210px;top:0;visibility:hidden}
-.ee-dispatch .ee-dispatch-view-switch{position:relative;padding-right:205px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{position:static;visibility:visible;justify-content:flex-end!important;width:100%;margin-bottom:3px!important}
+.ee-dispatch .ee-dispatch-view-switch{position:relative;padding-right:8px!important}
 .ee-dispatch .ee-dispatch-view-switch::after{content:"";display:none}
-.ee-dispatch .ee-dispatch-google-visible{position:absolute;right:130px;top:50%;transform:translateY(-50%)}
+.ee-dispatch .ee-dispatch-google-visible{position:static;transform:none}
 }
 @media(max-width:760px){
 .ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{display:flex!important;gap:4px!important;margin:0 0 4px!important}
