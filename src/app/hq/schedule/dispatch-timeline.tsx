@@ -190,6 +190,23 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
 .ee-timeline-toolbar>.ee-timeline-extra-controls{flex:1 0 100%;order:2;grid-column:auto!important;grid-row:auto!important;margin:0!important;width:100%}
 .ee-timeline-day-picker{margin-top:6px}
 }
+
+/* Mobile filter panel: prevent inherited flex-grow from creating empty space */
+@media(max-width:760px){
+.ee-timeline-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:6px!important;align-items:center!important}
+.ee-timeline-toolbar>.ee-timeline-tabs{grid-column:1!important;grid-row:1!important;flex:none!important;width:100%!important}
+.ee-timeline-toolbar>.ee-timeline-mobile-filters{grid-column:2!important;grid-row:1!important;flex:none!important}
+.ee-timeline-toolbar>.ee-timeline-mobile-filters[open]{grid-column:1/-1!important;grid-row:2!important;width:100%!important}
+.ee-timeline-mobile-filters[open]>.ee-timeline-filter-body{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important;padding:10px!important;align-items:stretch!important}
+.ee-timeline-filter-body>.ee-timeline-staff-filter{display:flex!important;flex:0 0 auto!important;min-height:0!important;height:auto!important;align-items:stretch!important;flex-direction:column!important;gap:4px!important;margin:0!important;padding:0!important}
+.ee-timeline-filter-body>.ee-timeline-staff-filter>span{display:block!important;line-height:1.3!important}
+.ee-timeline-filter-body>.ee-timeline-staff-filter select{flex:0 0 auto!important;width:100%!important;min-height:40px!important}
+.ee-timeline-filter-body>.ee-timeline-check{display:flex!important;flex:0 0 auto!important;min-height:28px!important;height:auto!important;justify-content:flex-start!important;align-items:center!important;margin:0!important}
+.ee-timeline-filter-body>.ee-timeline-density{display:flex!important;flex:0 0 auto!important;min-height:36px!important;height:auto!important;margin:0!important}
+.ee-timeline-filter-body>.ee-timeline-density button{min-height:36px!important}
+.ee-timeline-filter-body>.ee-timeline-extra-controls{display:none!important}
+.ee-timeline-toolbar>.ee-timeline-extra-controls{display:none!important}
+}
   `}</style>
  </section>;
 }
