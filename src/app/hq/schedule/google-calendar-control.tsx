@@ -1,13 +1,12 @@
 'use client';
 import {useState} from 'react';
-import {RefreshCw,Settings2} from 'lucide-react';
-export default function GoogleCalendarControl({connected,email,error,refreshing,onRefresh,show,onToggle,canManage}:{connected:boolean;email:string|null;error:boolean;refreshing:boolean;onRefresh:()=>void;show:boolean;onToggle:()=>void;canManage:boolean}){
+import {Settings2} from 'lucide-react';
+export default function GoogleCalendarControl({connected,email,error,show,onToggle,canManage}:{connected:boolean;email:string|null;error:boolean;show:boolean;onToggle:()=>void;canManage:boolean}){
  const [settings,setSettings]=useState(false);
  return <div className="ee-google-control">
   {connected?<button type="button" onClick={onToggle} aria-pressed={show} aria-label={show?'Hide Google Calendar events':'Show Google Calendar events'} title={show?'Hide Google Calendar events':'Show Google Calendar events'} className={'ee-google-toggle'+(show?' is-on':'')}><span className="ee-google-g">G</span>{!show&&<span className="ee-google-off" aria-hidden="true"/>}</button>:canManage?<a className="ee-google-connect" href="/hq/google-calendar/connect" title="Connect Google Calendar"><span className="ee-google-g">G</span><span>Connect</span></a>:null}
   {connected&&canManage&&<button type="button" className="ee-google-settings" title="Google Calendar connection settings" aria-label="Google Calendar settings" onClick={()=>setSettings(v=>!v)}><Settings2 size={17}/></button>}
-  {settings&&<div className="ee-google-popover"><strong>Google Calendar</strong><p>{email??'Connected account'} · {error?'Refresh failed':'Connected'}</p><button type="button" onClick={onRefresh} disabled={refreshing} style={{display:'inline-flex',alignItems:'center',gap:6,marginBottom:7}}><RefreshCw size={14}/>{refreshing?'Refreshing…':'Refresh events now'}</button><p>External events affect Neil only. Hiding events does not change his availability.</p><form action="/api/integrations/google-calendar/disconnect" method="post"><button type="submit">Disconnect account</button></form></div>}
-  {refreshing&&<span className="ee-google-sync" role="status" title="Refreshing Google events"><RefreshCw size={13}/></span>}
+  {settings&&<div className="ee-google-popover"><strong>Google Calendar</strong><p>{email??'Connected account'} · {error?'Refresh failed':'Connected'}</p><p>External events affect Neil only. Hiding events does not change his availability.</p><form action="/api/integrations/google-calendar/disconnect" method="post"><button type="submit">Disconnect account</button></form></div>}
   {error&&<span className="ee-google-error" title="Google events could not be refreshed" role="status">!</span>}
   <style jsx global>{`
    .ee-google-control{display:flex;align-items:center;gap:5px;margin-left:auto;position:relative}
