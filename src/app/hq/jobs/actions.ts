@@ -1,3 +1,4 @@
+import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 'use server';
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
@@ -88,6 +89,7 @@ export async function addJobAppointment(formData:FormData){
   const {data:active,error:staffError}=await db.from('staff_profiles').select('user_id').eq('active',true).in('user_id',staffIds);
   if(staffError||active?.length!==staffIds.length)throw new Error('Choose active electricians only.');
  }
+ const conflicts=await requireNeilAvailability(staffIds,begins,ends,formData.get('override_neil_calendar')==='yes',user.role);
  const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();
  if(error||!visit)throw new Error('Could not schedule appointment.');
  if(staffIds.length){
@@ -98,6 +100,6 @@ export async function addJobAppointment(formData:FormData){
    throw new Error('Unable to assign electricians. No appointment was saved.');
   }
  }
- await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end});
+ await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
  revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');
 }
