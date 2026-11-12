@@ -29,7 +29,7 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
   <button ref={trigger} type="button" className="ee-visit-preview-trigger" aria-label={`View visit details: ${customer}, ${title}, ${time}`} onClick={()=>{setHover(false);setOpen(true)}}>
    <span className="ee-dispatch-time">{time}</span>
    <span className="ee-visit-preview-number">{jobNumber}</span>
-   <span className="ee-visit-preview-avatars">{electricians.length?electricians.slice(0,4).map((name,i)=><span className="ee-visit-preview-avatar" style={{backgroundColor:staffColor(i),color:"#fff"}} title={name} key={i}>{initials(name)}</span>):<span className="ee-visit-preview-empty">Unassigned</span>}{electricians.length>4&&<span className="ee-visit-preview-avatar">+{electricians.length-4}</span>}</span>
+   <span className="ee-visit-preview-avatars">{electricians.length?electricians.map((name,i)=><span className="ee-visit-preview-avatar" style={{backgroundColor:staffColor(i),color:"#fff"}} title={name} key={i}>{initials(name)}</span>):<span className="ee-visit-preview-empty">Unassigned</span>}</span>
    <strong className="ee-visit-preview-customer">{customer}</strong>
    <span className="ee-visit-preview-title">{title}</span>
   </button>
@@ -69,11 +69,11 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
    .ee-visit-modal footer a{background:#1688e9;color:white}.ee-visit-modal footer button{border:1px solid #d4e1ed;background:white;color:#34576f}
    /* Calendar-only density rules: container width, not viewport width, determines what fits. */
    .ee-visit-preview-compact{container-type:inline-size;min-width:0}
-   .ee-visit-preview-compact .ee-visit-preview-trigger{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:4px;min-width:0;overflow:hidden;overflow-wrap:normal;word-break:normal}
+   .ee-visit-preview-compact .ee-visit-preview-trigger{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:4px;min-width:0;overflow-x:hidden;overflow-y:auto;scrollbar-width:none;overflow-wrap:normal;word-break:normal}.ee-visit-preview-compact .ee-visit-preview-trigger::-webkit-scrollbar{display:none}
    .ee-visit-preview-compact .ee-dispatch-time{display:none}
    .ee-visit-preview-compact .ee-visit-preview-number{order:0;display:block;max-width:100%;font-size:11px;line-height:1.25;font-weight:800;color:#0875c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-   .ee-visit-preview-compact .ee-visit-preview-avatars{order:1;display:flex;flex-wrap:nowrap;gap:0;margin:0;max-width:100%;min-width:0;overflow:hidden}
-   .ee-visit-preview-compact .ee-visit-preview-avatar{flex:0 0 21px;width:21px;height:21px;font-size:9px;margin-right:-3px}
+   .ee-visit-preview-compact .ee-visit-preview-avatars{order:1;display:flex;flex-wrap:wrap;align-content:flex-start;gap:2px;margin:0;max-width:100%;min-width:0;overflow:visible}
+   .ee-visit-preview-compact .ee-visit-preview-avatar{flex:0 0 21px;width:21px;height:21px;font-size:9px;margin-right:0}
    .ee-visit-preview-compact .ee-visit-preview-empty{font-size:10px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
    .ee-visit-preview-compact .ee-visit-preview-customer{order:2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;max-width:100%;font-size:12px;line-height:1.25;overflow:hidden;overflow-wrap:normal;word-break:normal}
    .ee-visit-preview-compact .ee-visit-preview-title{order:3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;max-width:100%;font-size:11px;line-height:1.25;overflow:hidden;overflow-wrap:normal;word-break:normal;color:#607a90}
