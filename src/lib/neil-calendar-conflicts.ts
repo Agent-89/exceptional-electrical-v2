@@ -4,17 +4,17 @@ import {calendarEvents} from '@/lib/google-calendar';
 
 /** Resolve Neil by exact first name; fail closed if staff identities are ambiguous. */
 export async function neilStaffId(){
- const {data,error}=await dbAdmin().from('staff_profiles').select('user_id,full_name').eq('active',true).ilike('full_name','Neil %');
+ const {data,error}=await dbAdmin().from('scheduling_staff').select('id,full_name').eq('active',true).ilike('full_name','Neil %');
  if(error)throw new Error('Unable to verify Neil’s staff profile.');
  if(!data?.length){
-  const {data:all,error:allError}=await dbAdmin().from('staff_profiles').select('user_id').eq('active',true).limit(2);
+  const {data:all,error:allError}=await dbAdmin().from('scheduling_staff').select('id').eq('active',true).limit(2);
   if(allError)throw new Error('Unable to verify Google Calendar staff mapping.');
   // During initial setup, a single active electrician owns the connected calendar.
   // With multiple staff, require an explicit Neil profile rather than guessing.
-  return all?.length===1?all[0].user_id as string:null;
+  return all?.length===1?all[0].id as string:null;
  }
  if(data.length!==1)throw new Error('Multiple active Neil profiles exist. Resolve the staff mapping before scheduling.');
- return data[0].user_id as string;
+ return data[0].id as string;
 }
 export async function neilCalendarConflicts(staffIds:string[],start:Date,end:Date){
  const neil=await neilStaffId();
