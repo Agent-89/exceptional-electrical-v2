@@ -6,7 +6,13 @@ import {calendarEvents} from '@/lib/google-calendar';
 export async function neilStaffId(){
  const {data,error}=await dbAdmin().from('staff_profiles').select('user_id,full_name').eq('active',true).ilike('full_name','Neil %');
  if(error)throw new Error('Unable to verify Neil’s staff profile.');
- if(!data?.length)return null;
+ if(!data?.length){
+  const {data:all,error:allError}=await dbAdmin().from('staff_profiles').select('user_id').eq('active',true).limit(2);
+  if(allError)throw new Error('Unable to verify Google Calendar staff mapping.');
+  // During initial setup, a single active electrician owns the connected calendar.
+  // With multiple staff, require an explicit Neil profile rather than guessing.
+  return all?.length===1?all[0].user_id as string:null;
+ }
  if(data.length!==1)throw new Error('Multiple active Neil profiles exist. Resolve the staff mapping before scheduling.');
  return data[0].user_id as string;
 }
@@ -21,7 +27,7 @@ export async function requireNeilAvailability(staffIds:string[],start:Date,end:D
  const conflicts=await neilCalendarConflicts(staffIds,start,end);
  if(conflicts.length&&!override){
   const label=conflicts.map(e=>e.title+' ('+new Date(e.start).toLocaleString('en-AU',{timeZone:'Australia/Perth',dateStyle:'medium',timeStyle:'short'})+' – '+new Date(e.end).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',timeStyle:'short'})+')').join('; ');
-  throw new Error('Neil is unavailable in Google Calendar: '+label+'. To proceed, tick “Override Neil’s Google Calendar conflict” and save again.');
+  throw new Error('The connected Google Calendar has a busy event: '+label+'. To proceed, tick “Override Google Calendar conflict” and save again.');
  }
  if(conflicts.length&&override&&!['owner','admin'].includes(role))throw new Error('Only an owner or admin may override Neil’s Google Calendar conflict.');
  return conflicts;
