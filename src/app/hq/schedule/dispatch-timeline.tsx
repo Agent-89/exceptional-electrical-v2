@@ -6,15 +6,17 @@ import {setScheduledVisitTimes} from './actions';
 import VisitPreview from './visit-preview';
 
 export type TimelineVisit={startIso:string;endIso:string;id:string;day:string;startMinutes:number;endMinutes:number;title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds:string[];address?:string|null;notes?:string|null;conflict?:string|null};
-type Props={canEdit:boolean;visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;nowMinutes:number};
+type Props={canEdit:boolean;canOverrideNeil:boolean;visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;nowMinutes:number};
 const START=6*60,END=18*60,HOUR_HEIGHT=64;
 const palette=['#1676c4','#a34ecb','#0e9875','#d16a21','#d34876','#6b65c8','#138d9b','#7a8533'];
 const staffColor=(id:string)=>{let h=0;for(const ch of id)h=(h*31+ch.charCodeAt(0))|0;return palette[Math.abs(h)%palette.length]};
 const hourLabel=(h:number)=>`${h%12||12} ${h<12?'am':'pm'}`;
-export default function DispatchTimeline({canEdit,visits,days,staff,today,nowMinutes}:Props){
+export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,staff,today,nowMinutes}:Props){
  const router=useRouter();
  const [moving,setMoving]=useState<TimelineVisit|null>(null);
  const [proposed,setProposed]=useState<{visit:TimelineVisit;day:string;start:number;end:number;warning:string}|null>(null);
+ const [overrideNeil,setOverrideNeil]=useState(false);
+ const [serverWarning,setServerWarning]=useState('');
  const [moveDay,setMoveDay]=useState('');
  const [moveTime,setMoveTime]=useState('07:00');
  const [moveEnd,setMoveEnd]=useState('08:00');
@@ -86,13 +88,13 @@ export default function DispatchTimeline({canEdit,visits,days,staff,today,nowMin
   if(nextStart===v.startIso&&nextEnd===v.endIso)return;
   const overlaps=effective.filter(other=>other.id!==v.id&&v.staffIds.some(id=>other.staffIds.includes(id))&&new Date(other.startIso)<new Date(nextEnd)&&new Date(other.endIso)>new Date(nextStart));
   const warning=overlaps.length?'\n\nStaff conflict with: '+overlaps.map(x=>x.customer+' — '+x.title).join('; '):'';
-  setMoving(null);setProposed({visit:v,day,start,end,warning});
+  setMoving(null);setOverrideNeil(false);setServerWarning('');setProposed({visit:v,day,start,end,warning});
  };
- const applyTimes=(v:TimelineVisit,day:string,start:number,end:number)=>{
+ const applyTimes=(v:TimelineVisit,day:string,start:number,end:number,override=false)=>{
   const nextStart=toIso(day,start),nextEnd=toIso(day,end);
   const previous=overrides[v.id];
   setOverrides(old=>({...old,[v.id]:{day,start,end,startIso:nextStart,endIso:nextEnd}}));
-  startTransition(async()=>{try{await setScheduledVisitTimes(v.id,nextStart,nextEnd,v.startIso);setMoving(null);router.refresh();}catch(e){setOverrides(old=>{const copy={...old};if(previous)copy[v.id]=previous;else delete copy[v.id];return copy;});window.alert(e instanceof Error?e.message:'Unable to reschedule visit.')}})
+  startTransition(async()=>{try{await setScheduledVisitTimes(v.id,nextStart,nextEnd,v.startIso,override);setMoving(null);router.refresh();}catch(e){setOverrides(old=>{const copy={...old};if(previous)copy[v.id]=previous;else delete copy[v.id];return copy;});setServerWarning(e instanceof Error?e.message:'Unable to reschedule visit.');setOverrideNeil(false);setProposed({visit:v,day,start,end,warning:''})}})
  };
  const [mode,setMode]=useState<'week'|'day'>('week');
  const [selected,setSelected]=useState(days.find(d=>d.key===today)?.key??days[0]?.key??'');
@@ -131,7 +133,7 @@ export default function DispatchTimeline({canEdit,visits,days,staff,today,nowMin
    </div>)}
   </div></div>
 
-  {proposed&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setProposed(null)}}><div className="ee-timeline-move-dialog" role="dialog" aria-modal="true" aria-label="Confirm appointment change"><h2>Confirm appointment change</h2><p><strong>{proposed.visit.customer} — {proposed.visit.title}</strong></p><p>Current: {proposed.visit.day} · {format(proposed.visit.startMinutes)}–{format(proposed.visit.endMinutes)}</p><p>New: <strong>{proposed.day} · {format(proposed.start)}–{format(proposed.end)}</strong></p>{proposed.warning&&<p className="ee-timeline-conflict-warning">{proposed.warning.trim()}</p>}<div><button type="button" onClick={()=>setProposed(null)}>Keep original</button><button type="button" disabled={pending} onClick={()=>{const p=proposed;setProposed(null);applyTimes(p.visit,p.day,p.start,p.end)}}>Confirm change</button></div></div></div>}
+  {proposed&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setProposed(null)}}><div className="ee-timeline-move-dialog" role="dialog" aria-modal="true" aria-label="Confirm appointment change"><h2>Confirm appointment change</h2><p><strong>{proposed.visit.customer} — {proposed.visit.title}</strong></p><p>Current: {proposed.visit.day} · {format(proposed.visit.startMinutes)}–{format(proposed.visit.endMinutes)}</p><p>New: <strong>{proposed.day} · {format(proposed.start)}–{format(proposed.end)}</strong></p>{proposed.warning&&<p className="ee-timeline-conflict-warning">{proposed.warning.trim()}</p>}{serverWarning&&<p role="alert" className="ee-timeline-conflict-warning">{serverWarning}</p>}{canOverrideNeil&&<label className="ee-neil-override"><input type="checkbox" checked={overrideNeil} onChange={e=>setOverrideNeil(e.target.checked)}/> Override Neil’s Google Calendar conflict (if applicable)</label>}<div><button type="button" onClick={()=>setProposed(null)}>Keep original</button><button type="button" disabled={pending} onClick={()=>{const p=proposed;setProposed(null);applyTimes(p.visit,p.day,p.start,p.end,overrideNeil)}}>Confirm change</button></div></div></div>}
   {moving&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setMoving(null)}}><form className="ee-timeline-move-dialog" onSubmit={e=>{e.preventDefault();const [sh,sm]=moveTime.split(':').map(Number),[eh,em]=moveEnd.split(':').map(Number);const start=snap(sh*60+sm),end=snap(eh*60+em);if(end<=start){setMoveError('End time must be after start time.');return;}setMoveError('');confirmTimes(moving,moveDay,start,end)}}><h2>Change appointment</h2><p>{moving.customer} — {moving.title}</p><label>Date<input type="date" required value={moveDay} onChange={e=>setMoveDay(e.target.value)}/></label><label>Start time<input type="time" required step={900} value={moveTime} onChange={e=>{setMoveTime(e.target.value);setMoveError('')}}/></label><label>End time<input type="time" required step={900} value={moveEnd} onChange={e=>{setMoveEnd(e.target.value);setMoveError('')}}/></label>{moveError&&<p role="alert" className="ee-timeline-conflict-warning">{moveError}</p>}<div><button type="button" onClick={()=>setMoving(null)}>Cancel</button><button type="submit" disabled={pending}>Review change</button></div></form></div>}
   <style jsx global>{`
   .ee-timeline-google-event{position:absolute;z-index:1;left:3px;right:3px;display:flex;flex-direction:column;gap:4px;padding:7px;background:#ffe0e0;border:1px solid #f4a5a5;border-left:4px solid #ef6268;border-radius:7px;color:#772e32;font-size:11px;overflow:hidden;text-decoration:none;box-sizing:border-box}.ee-timeline-google-event strong{font-size:12px;line-height:1.25}.ee-timeline-google-event span,.ee-timeline-google-event small{font-size:10px;line-height:1.3}.ee-timeline-google-event:hover{z-index:4;background:#ffd1d1}
