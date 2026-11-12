@@ -255,5 +255,38 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
 .ee-dispatch .ee-dispatch-view-switch{row-gap:5px!important}
 .ee-dispatch .ee-dispatch-day .ee-dispatch-visit,.ee-dispatch .ee-dispatch-team-day .ee-dispatch-visit{padding:9px 11px!important}
 }
+
+/* Unified schedule toolbar: always-visible Google event visibility, compact metrics */
+.ee-dispatch .ee-dispatch-google-visible{display:flex;align-items:center;gap:4px;margin-left:0}
+.ee-dispatch .ee-google-visibility{display:flex;align-items:center;gap:5px;height:32px;padding:3px 8px;border:1px solid #cbddeb;background:#fff;border-radius:8px;color:#33566e;font-size:11px;font-weight:700;cursor:pointer}
+.ee-dispatch .ee-google-visibility.is-on{background:#eaf5ff;border-color:#8bc5fa;color:#0878cb}
+.ee-dispatch .ee-google-visibility:disabled{opacity:.65;cursor:not-allowed}
+.ee-dispatch .ee-google-visibility .ee-google-g{font-size:17px;letter-spacing:-1px}
+.ee-dispatch .ee-dispatch-google-settings{position:relative}
+.ee-dispatch .ee-dispatch-google-settings>summary{display:flex;align-items:center;justify-content:center;list-style:none;cursor:pointer;height:32px;width:32px;border:1px solid #d4e2ee;background:#fff;border-radius:8px;color:#3c647d}
+.ee-dispatch .ee-dispatch-google-settings>summary::-webkit-details-marker{display:none}
+.ee-dispatch .ee-dispatch-google-settings-body{position:absolute;right:0;top:37px;z-index:50;min-width:110px;padding:7px;border:1px solid #d4e2ee;background:#fff;box-shadow:0 8px 24px #14354a20;border-radius:10px}
+.ee-dispatch .ee-dispatch-google-settings-body .ee-google-control{margin:0}
+.ee-dispatch .ee-dispatch-view-switch{justify-content:space-between}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{display:flex!important}
+.ee-dispatch .ee-dispatch-metrics-inline>a{display:flex!important;flex-direction:row!important;align-items:center!important;gap:4px!important;min-height:27px!important;padding:3px 7px!important}
+.ee-dispatch .ee-dispatch-metrics-inline>a small{font-size:10px!important}
+.ee-dispatch .ee-dispatch-metrics-inline>a strong{font-size:13px!important}
+@media(min-width:761px){
+.ee-dispatch .ee-dispatch-google-visible{order:7}
+.ee-dispatch .ee-schedule-header-group{margin-bottom:0!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{position:absolute;right:210px;top:0;visibility:hidden}
+.ee-dispatch .ee-dispatch-view-switch{position:relative;padding-right:205px!important}
+.ee-dispatch .ee-dispatch-view-switch::after{content:"";display:none}
+.ee-dispatch .ee-dispatch-google-visible{position:absolute;right:130px;top:50%;transform:translateY(-50%)}
+}
+@media(max-width:760px){
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{display:flex!important;gap:4px!important;margin:0 0 4px!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-google-visible{grid-column:3!important;grid-row:3!important;min-width:0!important;display:flex!important;justify-content:flex-end!important;align-self:center!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-google-visibility{font-size:11px!important;padding:4px 6px!important;height:36px!important;min-width:0!important}
+.ee-dispatch .ee-dispatch-view-switch .ee-google-visibility .ee-google-g{font-size:16px}
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-google-settings>summary{height:36px;width:30px}
+.ee-dispatch .ee-dispatch-view-switch .ee-create-open{grid-column:1/3!important}
+}
 `}</style></main>;
 }
