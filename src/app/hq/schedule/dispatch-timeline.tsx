@@ -119,7 +119,7 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
  const dayLayouts=new Map(shownDays.map(d=>[d.key,layoutForDay(d.key)]));
  const minHeight=(END-START)/60*HOUR_HEIGHT;
  return <section className="ee-timeline">
-  <div className="ee-timeline-toolbar"><div className="ee-timeline-tabs"><button type="button" className={mode==='week'?'active':''} onClick={()=>setMode('week')}>Week</button><button type="button" className={mode==='day'?'active':''} onClick={()=>setMode('day')}>Day</button></div><label className="ee-timeline-staff-filter"><span>Electrician</span><select value={staffId} onChange={e=>setStaffId(e.target.value)}><option value="all">All electricians</option>{staff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}<option value="unassigned">Unassigned</option></select></label><label className="ee-timeline-check" title="Show unassigned visits"><input type="checkbox" checked={showUnassigned} onChange={e=>setShowUnassigned(e.target.checked)}/> <span>Unassigned</span></label>{toolbarExtras&&<div className="ee-timeline-extra-controls">{toolbarExtras}</div>}<div className="ee-timeline-density" role="group" aria-label="Calendar density" title="Fit compresses hours to the viewport; Comfortable uses larger hour spacing and page scrolling"><button type="button" className={density==='fit'?'active':''} onClick={()=>setDensity('fit')}>Fit</button><button type="button" className={density==='comfortable'?'active':''} onClick={()=>setDensity('comfortable')}>Comfortable</button></div></div>
+  <div className="ee-timeline-toolbar"><div className="ee-timeline-tabs"><button type="button" className={mode==='week'?'active':''} onClick={()=>setMode('week')}>Week</button><button type="button" className={mode==='day'?'active':''} onClick={()=>setMode('day')}>Day</button></div><details className="ee-timeline-mobile-filters"><summary>☷ Filters</summary><div className="ee-timeline-filter-body"><label className="ee-timeline-staff-filter"><span>Electrician</span><select value={staffId} onChange={e=>setStaffId(e.target.value)}><option value="all">All electricians</option>{staff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}<option value="unassigned">Unassigned</option></select></label><label className="ee-timeline-check" title="Show unassigned visits"><input type="checkbox" checked={showUnassigned} onChange={e=>setShowUnassigned(e.target.checked)}/> <span>Unassigned</span></label>{toolbarExtras&&<div className="ee-timeline-extra-controls">{toolbarExtras}</div>}<div className="ee-timeline-density" role="group" aria-label="Calendar density" title="Fit compresses hours to the viewport; Comfortable uses larger hour spacing and page scrolling"><button type="button" className={density==='fit'?'active':''} onClick={()=>setDensity('fit')}>Fit</button><button type="button" className={density==='comfortable'?'active':''} onClick={()=>setDensity('comfortable')}>Comfortable</button></div></div></details></div>
   {mode==='day'&&<div className="ee-timeline-day-picker"><button type="button" onClick={()=>setSelected(days[Math.max(0,days.findIndex(d=>d.key===selected)-1)]?.key??selected)} aria-label="Previous day">‹</button><select value={selected} onChange={e=>setSelected(e.target.value)}>{days.map(d=><option value={d.key} key={d.key}>{d.label}</option>)}</select><button type="button" onClick={()=>setSelected(days[Math.min(days.length-1,days.findIndex(d=>d.key===selected)+1)]?.key??selected)} aria-label="Next day">›</button></div>}
   {visits.some(v=>v.startMinutes<START||v.endMinutes>END)&&<p className="ee-timeline-outside" role="status">Some appointments fall outside 6 am–6 pm. View their full times in By day or By electrician.</p>}
   
@@ -175,6 +175,22 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
  .ee-timeline-toolbar .ee-timeline-check{flex:0 0 auto;justify-content:flex-start;font-size:11px}
  .ee-timeline-day-picker{margin-bottom:6px}
 }
-  `}</style>
+  `}
+@media(min-width:761px){.ee-timeline-mobile-filters{display:contents}.ee-timeline-mobile-filters>summary{display:none}.ee-timeline-filter-body{display:contents}}
+@media(max-width:760px){
+.ee-timeline-toolbar{display:flex!important;flex-wrap:wrap;align-items:center;gap:7px!important;padding:7px!important}
+.ee-timeline-toolbar>.ee-timeline-tabs{flex:1 1 52%;width:auto!important;min-width:0;grid-column:auto;grid-row:auto}
+.ee-timeline-toolbar>.ee-timeline-mobile-filters{flex:0 0 auto;min-width:0;position:relative;grid-column:auto;grid-row:auto}
+.ee-timeline-mobile-filters>summary{display:block;list-style:none;cursor:pointer;border:1px solid #d4e1ed;border-radius:9px;padding:10px 12px;font-size:13px;font-weight:700;color:#0875c9;background:white;white-space:nowrap}
+.ee-timeline-mobile-filters>summary::-webkit-details-marker{display:none}
+.ee-timeline-filter-body{display:none}
+.ee-timeline-mobile-filters[open]{flex:1 0 100%;order:3}
+.ee-timeline-mobile-filters[open]>.ee-timeline-filter-body{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid #dce5ee;border-radius:10px;background:#f7fafc}
+.ee-timeline-filter-body>.ee-timeline-staff-filter,.ee-timeline-filter-body>.ee-timeline-check,.ee-timeline-filter-body>.ee-timeline-density{display:flex!important;grid-column:auto!important;grid-row:auto!important;width:100%;margin:0!important;order:initial!important}
+.ee-timeline-filter-body>.ee-timeline-staff-filter select{width:100%;max-width:none!important}
+.ee-timeline-toolbar>.ee-timeline-extra-controls{flex:1 0 100%;order:2;grid-column:auto!important;grid-row:auto!important;margin:0!important;width:100%}
+.ee-timeline-day-picker{margin-top:6px}
+}
+</style>
  </section>;
 }
