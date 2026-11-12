@@ -23,7 +23,8 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
   return ()=>window.removeEventListener('keydown',onKey);
  },[open]);
  const palette=['#1676c4','#a34ecb','#0e9875','#d16a21','#d34876','#6b65c8','#138d9b','#7a8533'];
- const staffColor=(i:number)=>{const id=staffIds[i]??electricians[i]??'';let hash=0;for(const ch of id)hash=(hash*31+ch.charCodeAt(0))|0;return palette[Math.abs(hash)%palette.length]};
+ const staffColors:Record<string,string>={'Aaron Rachman':'#F5A54C','Billy Hicks':'#6842C9','Cooper Peberdy':'#15936A','Emma Payne':'#05BFC5','Evelyn Rosa':'#9962DC','Kaleb Dierden':'#67A4F3','Melanie':'#EC347B','Neil Peberdy':'#FA6268'};
+ const staffColor=(i:number)=>staffColors[electricians[i]]??palette[i%palette.length];
  const initials=(name:string)=>name.trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('').toUpperCase();
  return <div className={"ee-visit-preview-root"+(compact?" ee-visit-preview-compact":"")} onMouseEnter={()=>{positionHover();setHover(true)}} onMouseLeave={()=>setHover(false)}>
   <button ref={trigger} type="button" className="ee-visit-preview-trigger" aria-label={`View visit details: ${customer}, ${title}, ${time}`} onClick={()=>{setHover(false);setOpen(true)}}>
