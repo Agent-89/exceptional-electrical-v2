@@ -10,8 +10,8 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
  const [editing,setEditing]=useState(false);
  const [open,setOpen]=useState(false);
  const [hover,setHover]=useState(false);
- const [hoverPosition,setHoverPosition]=useState({top:0,left:0});
- const positionHover=()=>{const r=trigger.current?.getBoundingClientRect();if(!r)return;const width=Math.min(290,window.innerWidth-24);const height=195;setHoverPosition({left:Math.max(12,Math.min(r.left,window.innerWidth-width-12)),top:r.bottom+height+10>window.innerHeight?Math.max(12,r.top-height-8):r.bottom+8});};
+ const [hoverPosition,setHoverPosition]=useState({top:0,left:0,side:'right' as 'right'|'left',arrowTop:28});
+ const positionHover=()=>{const r=trigger.current?.getBoundingClientRect();if(!r)return;const width=Math.min(290,window.innerWidth-24),height=195,gap=12;const rightFits=r.right+gap+width<=window.innerWidth-12;const leftFits=r.left-gap-width>=12;const side=rightFits?'right':leftFits?'left':(window.innerWidth-r.right>=r.left?'right':'left');const left=Math.max(12,Math.min(side==='right'?r.right+gap:r.left-gap-width,window.innerWidth-width-12));const top=Math.max(12,Math.min(r.top,window.innerHeight-height-12));const arrowTop=Math.max(14,Math.min(r.top+r.height/2-top,Math.min(height-14,window.innerHeight-top-20)));setHoverPosition({left,top,side,arrowTop});};
  const trigger=useRef<HTMLButtonElement>(null);
  const [mounted,setMounted]=useState(false);
  useEffect(()=>setMounted(true),[]);
@@ -33,7 +33,7 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
    <strong className="ee-visit-preview-customer">{customer}</strong>
    <span className="ee-visit-preview-title">{title}</span>
   </button>
-  {hover&&!open&&mounted&&createPortal(<div className="ee-visit-hover" role="tooltip" style={{top:hoverPosition.top,left:hoverPosition.left}}><strong>{jobNumber} · {title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>,document.body)}
+  {hover&&!open&&mounted&&createPortal(<div className={"ee-visit-hover ee-visit-hover-"+hoverPosition.side} role="tooltip" style={{top:hoverPosition.top,left:hoverPosition.left,"--ee-hover-arrow-top":hoverPosition.arrowTop+"px"} as React.CSSProperties}><strong>{jobNumber} · {title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>,document.body)}
   {open&&mounted&&createPortal(<div className="ee-visit-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false)}}>
    <section className={"ee-visit-modal"+(editing?" is-editing":"")} role="dialog" aria-modal="true" aria-label={`Appointment details: ${title}`}>
     <header><div><small>APPOINTMENT · {jobNumber}</small><h2>{title}</h2></div><button type="button" className="ee-visit-close" aria-label="Close appointment details" onClick={()=>{setOpen(false);setEditing(false);trigger.current?.focus()}}>×</button></header>
@@ -53,6 +53,7 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
    .ee-visit-preview-avatar{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#e4f0fc;color:#185d90;border:1px solid #fff;font-size:10px;font-weight:800}
    .ee-visit-preview-empty{font-size:11px;color:#64798a}
    .ee-visit-hover{position:fixed;z-index:2147482000;width:min(290px,calc(100vw - 24px));background:white;border:1px solid #d0dfe9;border-radius:12px;box-shadow:0 14px 36px #153c5b30;padding:13px;display:grid;gap:7px;font-size:12px;color:#4d6477;pointer-events:none}
+   .ee-visit-hover::before{content:'';position:absolute;top:var(--ee-hover-arrow-top);width:11px;height:11px;background:white;transform:translateY(-50%) rotate(45deg);border:1px solid #d0dfe9}.ee-visit-hover-right::before{left:-7px;border-right:0;border-top:0}.ee-visit-hover-left::before{right:-7px;border-left:0;border-bottom:0}
    .ee-visit-hover strong{font-size:14px;color:#17364b}.ee-visit-hover-hint{color:#0875c9;font-weight:700}
    .ee-visit-modal-backdrop{position:fixed;inset:0;z-index:2147483000;background:#102c4280;display:grid;place-items:center;padding:20px}
    .ee-visit-modal{box-sizing:border-box;width:min(560px,100%);max-width:100%;max-height:calc(100dvh - 40px);overflow-x:hidden;overflow-y:auto;background:white;border-radius:18px;box-shadow:0 24px 65px #102c4250;color:#17364b}
