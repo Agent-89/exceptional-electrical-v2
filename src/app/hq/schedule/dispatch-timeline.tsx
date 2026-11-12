@@ -100,7 +100,8 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
   setOverrides(old=>({...old,[v.id]:{day,start,end,startIso:nextStart,endIso:nextEnd}}));
   startTransition(async()=>{try{await setScheduledVisitTimes(v.id,nextStart,nextEnd,v.startIso,override);setMoving(null);router.refresh();}catch(e){setOverrides(old=>{const copy={...old};if(previous)copy[v.id]=previous;else delete copy[v.id];return copy;});setServerWarning(e instanceof Error?e.message:'Unable to reschedule visit.');setOverrideNeil(false);setProposed({visit:v,day,start,end,warning:''})}})
  };
- const [mode,setMode]=useState<'week'|'day'>(()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 760px)').matches?'day':'week');
+ const [mode,setMode]=useState<'week'|'day'>('week');
+ useEffect(()=>{if(window.matchMedia('(max-width: 760px)').matches)setMode('day');},[]);
  const [selected,setSelected]=useState(days.find(d=>d.key===today)?.key??days[0]?.key??'');
  const [staffId,setStaffId]=useState('all');
  const [showUnassigned,setShowUnassigned]=useState(true);
