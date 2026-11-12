@@ -2,10 +2,8 @@ import {calendarEvents} from '@/lib/google-calendar';
 import AppointmentRange from '../appointment-range';
 import JobPicker from './job-picker';
 import ElectricianDay from './electrician-day';
-import AppointmentDateTime from '../appointment-date-time';
 import Link from 'next/link';
 import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
-import {updateScheduledVisit,updateVisitStaff} from './actions';
 import ScheduleCreateForm from './schedule-create-form';
 import DispatchViews from './view-switch';
 import DispatchTimeline from './dispatch-timeline';
@@ -79,12 +77,11 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
   const job=jobMap.get(v.job_id);const names=(visitAssigned.get(v.id)??[]).map(id=>staffMap.get(id)??'Team member');
   return <article key={v.id} className={'ee-dispatch-visit'+(clashes.has(v.id)?' has-conflict':'')}>
    <VisitPreview appointmentId={v.id} startIso={v.starts_at} endIso={v.ends_at} canEdit={canEdit} staff={[...staffMap].map(([id,name])=>({id,name}))} title={job?.title??'Job'} jobNumber={'JB'+String(job?.job_number??0).padStart(5,'0')} jobHref={'/hq/jobs/'+v.job_id} time={timeLabel(v.starts_at)+' – '+(dayKey(v.starts_at)===dayKey(v.ends_at)?timeLabel(v.ends_at):dayLabel(new Date(v.ends_at))+', '+timeLabel(v.ends_at))} customer={job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'} electricians={names} staffIds={visitAssigned.get(v.id)??[]} address={job?.site_address_text} notes={v.notes} conflict={clashes.has(v.id)?'Overlaps with '+(conflictDetails.get(v.id)??[]).join('; '):null}/>
-   {canEdit&&<details className="ee-dispatch-edit"><summary>Assign electricians</summary><form action={updateVisitStaff}><input type="hidden" name="appointment_id" value={v.id}/><div className="ee-dispatch-staff-options">{[...staffMap.entries()].map(([id,name])=><label key={id}><input type="checkbox" name="staff_id" value={id} defaultChecked={(visitAssigned.get(v.id)??[]).includes(id)}/>{name}</label>)}</div>{['owner','admin'].includes(user.role)&&<label className="ee-neil-override"><input type="checkbox" name="override_neil_calendar" value="yes"/> Override Neil’s Google Calendar conflict if one is detected (owner/admin only)</label>}<button type="submit">Save electricians</button></form></details>}
-   {canEdit&&<details className="ee-dispatch-edit"><summary>Manage visit</summary><form action={updateScheduledVisit}><input type="hidden" name="appointment_id" value={v.id}/><AppointmentDateTime name="start" label="Start" defaultValue={inputDate(v.starts_at)}/><AppointmentDateTime name="end" label="End" defaultValue={inputDate(v.ends_at)}/>{['owner','admin'].includes(user.role)&&<label className="ee-neil-override"><input type="checkbox" name="override_neil_calendar" value="yes"/> Override Neil’s Google Calendar conflict if one is detected (owner/admin only)</label>}<button type="submit" name="operation" value="reschedule">Save time</button><button className="ee-dispatch-cancel" type="submit" name="operation" value="cancel" formNoValidate>Cancel visit</button></form></details>}
+
   </article>;
  };
  return <main className="hq-detail"><div className="hq-detail-inner ee-dispatch">
- <div className="ee-schedule-header-group"><div className="ee-schedule-topline"><h1>Schedule</h1><div className="ee-schedule-date-nav"><Link aria-label="Previous week" href={viewQuery(view,dayKey(prev))}>‹</Link><strong>{dayLabel(monday)} – {dayLabel(addDays(monday,6))}</strong><Link aria-label="Next week" href={viewQuery(view,dayKey(next))}>›</Link><Link className="ee-schedule-today" href={viewQuery(view,today)}>This week</Link></div></div>
+ <div className="ee-schedule-header-group"><div className="ee-schedule-topline"><h1 className="ee-sr-only">Schedule</h1><div className="ee-schedule-date-nav"><Link aria-label="Previous week" href={viewQuery(view,dayKey(prev))}>‹</Link><strong>{dayLabel(monday)} – {dayLabel(addDays(monday,6))}</strong><Link aria-label="Next week" href={viewQuery(view,dayKey(next))}>›</Link><Link className="ee-schedule-today" href={viewQuery(view,today)}>This week</Link></div></div>
  <div className="ee-dispatch-metrics ee-dispatch-metrics-compact ee-dispatch-metrics-actionable ee-dispatch-metrics-inline" aria-label="Schedule filters"><Link className={focus==='all'?'is-selected':''} aria-current={focus==='all'?'true':undefined} href={metricHref('all')}><small>Scheduled</small><strong>{all.length}</strong></Link><Link className={focus==='conflicts'?'is-selected':''} aria-current={focus==='conflicts'?'true':undefined} href={metricHref('conflicts')}><small>Conflicts</small><strong>{clashes.size}</strong></Link><Link className={focus==='unassigned'?'is-selected':''} aria-current={focus==='unassigned'?'true':undefined} href={metricHref('unassigned')}><small>Unassigned</small><strong>{all.filter(v=>(visitAssigned.get(v.id)??[]).length===0).length}</strong></Link></div></div>
  {error&&<p role="alert">Unable to load appointments. Please try again.</p>}
 
@@ -232,6 +229,31 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
 .ee-dispatch .ee-dispatch-visit .ee-visit-preview-trigger{gap:3px!important}
 .ee-dispatch .ee-dispatch-visit .ee-dispatch-edit{margin:0!important}
 .ee-dispatch .ee-dispatch-visit .ee-dispatch-edit summary{padding:5px 0!important;line-height:1.3!important}
+}
+
+/* Schedule: one compact control area across desktop and mobile */
+.ee-dispatch .ee-schedule-header-group{margin:0 0 4px!important;gap:0!important}
+.ee-dispatch .ee-schedule-header-group .ee-schedule-topline{display:contents!important}
+.ee-dispatch .ee-schedule-header-group .ee-schedule-topline>.ee-schedule-date-nav{display:none!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{display:flex!important;justify-content:flex-start!important;flex:0 1 auto!important;margin:0 0 3px!important;gap:4px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline>a{min-height:30px!important;padding:3px 8px!important;gap:5px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline>a small{font-size:11px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline>a strong{font-size:15px!important}
+.ee-dispatch .ee-dispatch-view-switch{margin-bottom:7px!important}
+.ee-dispatch .ee-dispatch-visit{padding:9px 12px!important}
+.ee-dispatch .ee-dispatch-visit .ee-visit-preview-trigger{gap:4px!important}
+.ee-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+@media(min-width:761px){
+.ee-dispatch .ee-dispatch-view-switch{gap:6px!important;padding:5px 8px!important}
+.ee-dispatch .ee-dispatch-top-week{margin-left:6px!important}
+}
+@media(max-width:760px){
+.ee-dispatch .ee-schedule-header-group{display:block!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{width:100%!important;justify-content:space-between!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline>a{flex:1 1 0!important;min-width:0!important;min-height:32px!important;padding:4px 5px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline>a small{font-size:10px!important}
+.ee-dispatch .ee-dispatch-view-switch{row-gap:5px!important}
+.ee-dispatch .ee-dispatch-day .ee-dispatch-visit,.ee-dispatch .ee-dispatch-team-day .ee-dispatch-visit{padding:9px 11px!important}
 }
 `}</style></main>;
 }
