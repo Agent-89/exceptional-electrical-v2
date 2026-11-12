@@ -4,9 +4,9 @@ import {createPortal} from 'react-dom';
 import Link from 'next/link';
 import VisitEditor from './visit-editor';
 
-type Props={appointmentId?:string;startIso?:string;endIso?:string;canEdit?:boolean;staff?:{id:string;name:string}[];title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds?:string[];address?:string|null;notes?:string|null;conflict?:string|null};
+type Props={appointmentId?:string;startIso?:string;endIso?:string;canEdit?:boolean;staff?:{id:string;name:string}[];title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds?:string[];address?:string|null;notes?:string|null;conflict?:string|null;compact?:boolean};
 
-export default function VisitPreview({appointmentId,startIso,endIso,canEdit=false,staff=[],title,jobNumber,jobHref,time,customer,electricians,staffIds=[],address,notes,conflict}:Props){
+export default function VisitPreview({appointmentId,startIso,endIso,canEdit=false,staff=[],title,jobNumber,jobHref,time,customer,electricians,staffIds=[],address,notes,conflict,compact=false}:Props){
  const [editing,setEditing]=useState(false);
  const [open,setOpen]=useState(false);
  const [hover,setHover]=useState(false);
@@ -25,15 +25,15 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
  const palette=['#1676c4','#a34ecb','#0e9875','#d16a21','#d34876','#6b65c8','#138d9b','#7a8533'];
  const staffColor=(i:number)=>{const id=staffIds[i]??electricians[i]??'';let hash=0;for(const ch of id)hash=(hash*31+ch.charCodeAt(0))|0;return palette[Math.abs(hash)%palette.length]};
  const initials=(name:string)=>name.trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('').toUpperCase();
- return <div className="ee-visit-preview-root" onMouseEnter={()=>{positionHover();setHover(true)}} onMouseLeave={()=>setHover(false)}>
+ return <div className={"ee-visit-preview-root"+(compact?" ee-visit-preview-compact":"")} onMouseEnter={()=>{positionHover();setHover(true)}} onMouseLeave={()=>setHover(false)}>
   <button ref={trigger} type="button" className="ee-visit-preview-trigger" aria-label={`View visit details: ${customer}, ${title}, ${time}`} onClick={()=>{setHover(false);setOpen(true)}}>
    <span className="ee-dispatch-time">{time}</span>
-   <strong className="ee-visit-preview-customer">{customer}</strong>
-   <span className="ee-visit-preview-title">{title}</span>
    <span className="ee-visit-preview-number">{jobNumber}</span>
    <span className="ee-visit-preview-avatars">{electricians.length?electricians.slice(0,4).map((name,i)=><span className="ee-visit-preview-avatar" style={{backgroundColor:staffColor(i),color:"#fff"}} title={name} key={i}>{initials(name)}</span>):<span className="ee-visit-preview-empty">Unassigned</span>}{electricians.length>4&&<span className="ee-visit-preview-avatar">+{electricians.length-4}</span>}</span>
+   <strong className="ee-visit-preview-customer">{customer}</strong>
+   <span className="ee-visit-preview-title">{title}</span>
   </button>
-  {hover&&!open&&mounted&&createPortal(<div className="ee-visit-hover" role="tooltip" style={{top:hoverPosition.top,left:hoverPosition.left}}><strong>{title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>,document.body)}
+  {hover&&!open&&mounted&&createPortal(<div className="ee-visit-hover" role="tooltip" style={{top:hoverPosition.top,left:hoverPosition.left}}><strong>{jobNumber} · {title}</strong><span>{time}</span><span>Customer: {customer}</span><span>Electricians: {electricians.join(', ')||'Unassigned'}</span>{address&&<span>{address}</span>}<span className="ee-visit-hover-hint">Click for appointment details</span></div>,document.body)}
   {open&&mounted&&createPortal(<div className="ee-visit-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false)}}>
    <section className={"ee-visit-modal"+(editing?" is-editing":"")} role="dialog" aria-modal="true" aria-label={`Appointment details: ${title}`}>
     <header><div><small>APPOINTMENT · {jobNumber}</small><h2>{title}</h2></div><button type="button" className="ee-visit-close" aria-label="Close appointment details" onClick={()=>{setOpen(false);setEditing(false);trigger.current?.focus()}}>×</button></header>
@@ -67,6 +67,19 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
    .ee-visit-modal footer{display:flex;gap:10px;flex-wrap:wrap;padding:16px 22px 22px;border-top:1px solid #e1eaf2}
    .ee-visit-modal footer a,.ee-visit-modal footer button{white-space:normal;padding:11px 14px;border-radius:9px;font-size:13px;font-weight:750;text-decoration:none;cursor:pointer}
    .ee-visit-modal footer a{background:#1688e9;color:white}.ee-visit-modal footer button{border:1px solid #d4e1ed;background:white;color:#34576f}
+   /* Calendar-only density rules: container width, not viewport width, determines what fits. */
+   .ee-visit-preview-compact{container-type:inline-size;min-width:0}
+   .ee-visit-preview-compact .ee-visit-preview-trigger{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:4px;min-width:0;overflow:hidden;overflow-wrap:normal;word-break:normal}
+   .ee-visit-preview-compact .ee-dispatch-time{display:none}
+   .ee-visit-preview-compact .ee-visit-preview-number{order:0;display:block;max-width:100%;font-size:11px;line-height:1.25;font-weight:800;color:#0875c9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+   .ee-visit-preview-compact .ee-visit-preview-avatars{order:1;display:flex;flex-wrap:nowrap;gap:0;margin:0;max-width:100%;min-width:0;overflow:hidden}
+   .ee-visit-preview-compact .ee-visit-preview-avatar{flex:0 0 21px;width:21px;height:21px;font-size:9px;margin-right:-3px}
+   .ee-visit-preview-compact .ee-visit-preview-empty{font-size:10px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+   .ee-visit-preview-compact .ee-visit-preview-customer{order:2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;max-width:100%;font-size:12px;line-height:1.25;overflow:hidden;overflow-wrap:normal;word-break:normal}
+   .ee-visit-preview-compact .ee-visit-preview-title{order:3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;max-width:100%;font-size:11px;line-height:1.25;overflow:hidden;overflow-wrap:normal;word-break:normal;color:#607a90}
+   @container (max-width:115px){.ee-visit-preview-compact .ee-visit-preview-title{display:none}.ee-visit-preview-compact .ee-visit-preview-customer{font-size:11px}}
+   @container (max-width:75px){.ee-visit-preview-compact .ee-visit-preview-customer{display:none}.ee-visit-preview-compact .ee-visit-preview-number{font-size:10px;letter-spacing:-.03em}.ee-visit-preview-compact .ee-visit-preview-avatar{flex-basis:19px;width:19px;height:19px;font-size:8px}}
+   @container (max-width:45px){.ee-visit-preview-compact .ee-visit-preview-number{font-size:9px}.ee-visit-preview-compact .ee-visit-preview-avatars{max-width:100%}}
    @media(hover:none){.ee-visit-hover{display:none}}
    @media(max-width:760px){.ee-visit-preview-title{font-size:16px}.ee-visit-preview-number{font-size:13px}.ee-visit-modal-backdrop{align-items:end;padding:0}.ee-visit-modal{width:100%;max-height:88dvh;border-radius:18px 18px 0 0}}
   `}</style>
