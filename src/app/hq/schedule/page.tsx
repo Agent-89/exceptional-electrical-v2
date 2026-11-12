@@ -66,7 +66,7 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  const displayedVisits=all.filter(v=>focus==='all'||(focus==='conflicts'?clashes.has(v.id):(visitAssigned.get(v.id)??[]).length===0));
  const displayedIds=new Set(displayedVisits.map(v=>v.id));
  const displayedTimelineVisits=timelineVisits.filter(v=>displayedIds.has(v.id));
- const metricHref=(target:string)=>viewQuery(view)+(target==='all'?'':'&focus='+target);
+ const metricHref=(target:string)=>viewQuery(view)+(target==='all'||target===focus?'':'&focus='+target);
  const {data:googleConnection}=await db.from('google_calendar_connections').select('google_email').eq('id',1).maybeSingle();
  let externalEvents:Awaited<ReturnType<typeof calendarEvents>>=[];
  let googleError=false;
