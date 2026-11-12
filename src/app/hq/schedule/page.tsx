@@ -288,5 +288,34 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
 .ee-dispatch .ee-dispatch-view-switch .ee-dispatch-google-settings>summary{height:36px;width:30px}
 .ee-dispatch .ee-dispatch-view-switch .ee-create-open{grid-column:1/3!important}
 }
+
+/* November schedule toolbar consolidation */
+.ee-dispatch .ee-google-visibility{width:33px!important;min-width:33px!important;height:33px!important;padding:3px!important;justify-content:center!important}
+.ee-dispatch .ee-google-visibility .ee-google-g{font-size:21px!important}
+.ee-dispatch-timeline-controls[hidden]{display:none!important}
+@media(min-width:1000px){
+.ee-dispatch .ee-dispatch-view-switch{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;gap:5px!important;min-height:44px!important;padding:4px 7px!important}
+.ee-dispatch .ee-dispatch-view-switch>button{flex:0 0 auto!important}
+.ee-dispatch .ee-dispatch-top-week{flex:0 0 auto!important;width:auto!important;order:0!important;margin:0 auto!important}
+.ee-dispatch .ee-dispatch-top-week .ee-schedule-date-nav{gap:3px!important;flex-wrap:nowrap!important}
+.ee-dispatch .ee-dispatch-timeline-controls{display:flex;align-items:center;gap:5px;flex:0 0 auto;min-width:0}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-toolbar{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;border:0!important;background:transparent!important;padding:0!important;margin:0!important;min-height:0!important;gap:5px!important}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-tabs{padding:2px!important}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-tabs button{padding:5px 8px!important;min-height:29px!important}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-mobile-filters>summary{min-height:30px!important;padding:4px 8px!important}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-day-picker{display:flex!important;align-items:center;gap:3px!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;max-width:180px}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-day-picker button{height:31px!important;min-width:26px!important;padding:2px!important}
+.ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-day-picker select{height:31px!important;min-width:95px!important;width:108px!important;padding:3px!important;font-size:11px!important}
+.ee-dispatch .ee-dispatch-google-visible{order:0!important;margin:0!important}
+.ee-dispatch .ee-dispatch-create{order:0!important}
+.ee-dispatch .ee-schedule-header-group{display:none!important}
+}
+@media(max-width:760px){
+.ee-dispatch .ee-dispatch-google-visible{grid-column:3!important;grid-row:3!important}
+.ee-dispatch .ee-dispatch-google-visible .ee-google-visibility{height:36px!important;width:38px!important}
+.ee-dispatch .ee-schedule-header-group>.ee-dispatch-metrics-inline{display:none!important}
+.ee-dispatch .ee-schedule-header-group{display:none!important}
+.ee-dispatch .ee-dispatch-timeline-controls{display:none!important}
+}
 `}</style></main>;
 }
