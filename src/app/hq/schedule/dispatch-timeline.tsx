@@ -1,5 +1,5 @@
-import {useGoogleCalendar} from './google-calendar-context';
 'use client';
+import {useGoogleCalendar} from './google-calendar-context';
 import {useEffect,useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {setScheduledVisitTimes} from './actions';
