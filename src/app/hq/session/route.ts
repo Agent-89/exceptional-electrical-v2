@@ -19,6 +19,7 @@ export async function GET(request:NextRequest){
   return response;
  }
  const response=NextResponse.redirect(new URL('/hq',request.url));
+ response.cookies.set('ee_hq_access','',{path:'/hq',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
  const opts={httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax' as const,path:'/'};
  response.cookies.set('ee_hq_access',data.session.access_token,{...opts,maxAge:data.session.expires_in});
  response.cookies.set('ee_hq_refresh',data.session.refresh_token,{...opts,maxAge:60*60*24*30});
