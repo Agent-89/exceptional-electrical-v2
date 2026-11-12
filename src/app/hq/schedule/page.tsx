@@ -144,5 +144,36 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  .ee-dispatch-view-switch .ee-create-open{width:auto;flex:1 1 auto;padding:7px 8px;min-height:36px}
  .ee-dispatch-view-switch .ee-google-control{margin-left:0}
 }
-`}</style></main>;
+`}
+/* Mobile-only scheduling refinements; desktop styles intentionally unchanged. */
+@media(max-width:760px){
+ .ee-dispatch .ee-schedule-header-group{margin-bottom:6px!important}
+ .ee-dispatch .ee-schedule-topline{margin-bottom:5px!important}
+ .ee-dispatch .ee-schedule-topline .ee-schedule-date-nav{display:none!important}
+ .ee-dispatch .ee-dispatch-view-switch{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px!important;padding:7px!important;margin-bottom:8px!important;width:100%!important;box-sizing:border-box}
+ .ee-dispatch .ee-dispatch-view-switch>button{grid-row:1;min-width:0;padding:10px 3px!important;font-size:12px;white-space:nowrap}
+ .ee-dispatch .ee-dispatch-view-switch .ee-create-open{grid-column:1/-1;grid-row:2;width:100%;margin:0!important;min-height:42px}
+ .ee-dispatch .ee-dispatch-top-week{grid-column:1/-1;grid-row:3;order:initial!important;margin:0!important;justify-content:center!important;width:100%}
+ .ee-dispatch .ee-dispatch-top-week .ee-schedule-date-nav{width:100%;justify-content:space-between!important;gap:4px!important}
+ .ee-dispatch .ee-dispatch-top-week .ee-schedule-date-nav strong{font-size:12px;min-width:0;white-space:normal;text-align:center}
+ .ee-dispatch .ee-dispatch-view-switch .ee-google-control{grid-column:1/-1;grid-row:4;justify-self:start;margin:0!important}
+ .ee-dispatch .ee-dispatch-board{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+ .ee-dispatch .ee-dispatch-day{min-height:0;border-radius:12px;overflow:visible}
+ .ee-dispatch .ee-dispatch-day-head{padding:9px 12px;display:flex;justify-content:space-between;align-items:center}
+ .ee-dispatch .ee-dispatch-day .ee-dispatch-visit{padding:10px 12px}
+ .ee-dispatch .ee-dispatch-visit .ee-visit-preview-trigger{gap:4px}
+ .ee-dispatch .ee-dispatch-visit .ee-dispatch-edit{margin-top:5px}
+ .ee-dispatch .ee-dispatch-team-board{gap:9px}
+ .ee-dispatch .ee-dispatch-team-row>header{padding:10px 12px}
+ .ee-dispatch .ee-dispatch-team-days{display:flex;flex-direction:column}
+ .ee-dispatch .ee-dispatch-team-day{min-height:0;border-right:0;border-top:1px solid #e2eaf2}
+ .ee-dispatch .ee-dispatch-team-day>small{padding:7px 12px}
+ .ee-dispatch .ee-dispatch-team-day .ee-dispatch-visit{padding:10px 12px}
+ .ee-dispatch .ee-dispatch-team-day:has(>small:only-child){display:none}
+ .ee-dispatch .ee-dispatch-metrics-inline>a{min-width:0!important}
+ .ee-dispatch .ee-dispatch-metrics-inline>a small{font-size:10px!important}
+ .ee-dispatch .ee-dispatch-metrics-inline>a strong{font-size:16px!important}
+ .ee-dispatch .ee-dispatch-edit summary{font-size:12px}
+}
+</style></main>;
 }
