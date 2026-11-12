@@ -123,7 +123,7 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
   {mode==='day'&&<div className="ee-timeline-day-picker"><button type="button" onClick={()=>setSelected(days[Math.max(0,days.findIndex(d=>d.key===selected)-1)]?.key??selected)} aria-label="Previous day">‹</button><select value={selected} onChange={e=>setSelected(e.target.value)}>{days.map(d=><option value={d.key} key={d.key}>{d.label}</option>)}</select><button type="button" onClick={()=>setSelected(days[Math.min(days.length-1,days.findIndex(d=>d.key===selected)+1)]?.key??selected)} aria-label="Next day">›</button></div>}
   {visits.some(v=>v.startMinutes<START||v.endMinutes>END)&&<p className="ee-timeline-outside" role="status">Some appointments fall outside 6 am–6 pm. View their full times in By day or By electrician.</p>}
   
-  <div className="ee-timeline-scroll"><div className="ee-timeline-grid" style={{gridTemplateColumns:`62px repeat(${shownDays.length},minmax(0,1fr))`}}>
+  <div className="ee-timeline-scroll"><div className={"ee-timeline-grid"+(mode==="week"?" is-week":" is-day")} style={{gridTemplateColumns:mode==="week"?`62px repeat(${shownDays.length},minmax(0,1fr))`:"62px minmax(0,1fr)"}}>
    <div className="ee-timeline-corner">AWST</div>{shownDays.map(d=><div key={d.key} className={'ee-timeline-day-header'+(d.key===today?' today':'')}>{d.label}<small>{visible.filter(v=>v.day===d.key).length} visits</small></div>)}
    <div className="ee-timeline-hours" style={{height:minHeight}}>{Array.from({length:END/60-START/60+1},(_,i)=><span key={i} style={{top:i*HOUR_HEIGHT}}>{hourLabel(START/60+i)}</span>)}</div>
    {shownDays.map(d=><div className="ee-timeline-lane" key={d.key} ref={el=>{lanes.current[d.key]=el}} style={{height:minHeight,backgroundSize:`100% ${HOUR_HEIGHT}px`}}>
@@ -206,6 +206,16 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
 .ee-timeline-filter-body>.ee-timeline-density button{min-height:36px!important}
 .ee-timeline-filter-body>.ee-timeline-extra-controls{display:none!important}
 .ee-timeline-toolbar>.ee-timeline-extra-controls{display:none!important}
+}
+
+/* Mobile weekly calendar: maintain readable day columns and scroll sideways */
+@media(max-width:760px){
+.ee-timeline-scroll{width:100%!important;max-width:100%!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.ee-timeline-grid.is-week{width:max(100%,902px)!important;min-width:902px!important;grid-template-columns:62px repeat(7,minmax(120px,1fr))!important}
+.ee-timeline-grid.is-day{width:100%!important;min-width:0!important;grid-template-columns:62px minmax(0,1fr)!important}
+.ee-timeline-grid.is-week .ee-timeline-corner,.ee-timeline-grid.is-week .ee-timeline-hours{position:sticky!important;left:0!important;z-index:12!important}
+.ee-timeline-grid.is-week .ee-timeline-corner{z-index:20!important}
+.ee-timeline-grid.is-week .ee-timeline-day-header{white-space:normal!important;overflow-wrap:normal!important}
 }
   `}</style>
  </section>;
