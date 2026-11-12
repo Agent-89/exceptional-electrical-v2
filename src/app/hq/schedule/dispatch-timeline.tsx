@@ -175,7 +175,6 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
  .ee-timeline-toolbar .ee-timeline-check{flex:0 0 auto;justify-content:flex-start;font-size:11px}
  .ee-timeline-day-picker{margin-bottom:6px}
 }
-  `}
 @media(min-width:761px){.ee-timeline-mobile-filters{display:contents}.ee-timeline-mobile-filters>summary{display:none}.ee-timeline-filter-body{display:contents}}
 @media(max-width:760px){
 .ee-timeline-toolbar{display:flex!important;flex-wrap:wrap;align-items:center;gap:7px!important;padding:7px!important}
@@ -191,6 +190,6 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
 .ee-timeline-toolbar>.ee-timeline-extra-controls{flex:1 0 100%;order:2;grid-column:auto!important;grid-row:auto!important;margin:0!important;width:100%}
 .ee-timeline-day-picker{margin-top:6px}
 }
-</style>
+  `}</style>
  </section>;
 }
