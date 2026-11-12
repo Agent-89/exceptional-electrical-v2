@@ -13,7 +13,20 @@ export default function VisitEditor({id,start,end,notes,staffIds,staff,onClose}:
  const [saving,setSaving]=useState(false);
  const save=async(form:FormData,action:'details'|'crew')=>{
   setError('');setSaving(true);
-  try{if(action==='crew')await updateVisitStaff(form);else await updateScheduledVisit(form);onClose();window.location.reload();}
+  try{
+   const submit=()=>action==='crew'?updateVisitStaff(form):updateScheduledVisit(form);
+   try{await submit();}
+   catch(e){
+    const message=e instanceof Error?e.message:'Unable to save changes.';
+    const marker='SCHEDULING_CONFLICT: ';
+    if(!message.includes(marker))throw e;
+    const description=message.slice(message.indexOf(marker)+marker.length);
+    if(!window.confirm('Scheduling conflict detected:\n\n'+description+'\n\nSave anyway?'))return;
+    form.set('confirm_conflict','yes');
+    await submit();
+   }
+   onClose();window.location.reload();
+  }
   catch(e){setError(e instanceof Error?e.message:'Unable to save changes.');}
   finally{setSaving(false);}
  };
