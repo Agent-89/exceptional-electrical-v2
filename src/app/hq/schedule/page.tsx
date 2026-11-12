@@ -144,7 +144,6 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  .ee-dispatch-view-switch .ee-create-open{width:auto;flex:1 1 auto;padding:7px 8px;min-height:36px}
  .ee-dispatch-view-switch .ee-google-control{margin-left:0}
 }
-`}
 /* Mobile-only scheduling refinements; desktop styles intentionally unchanged. */
 @media(max-width:760px){
  .ee-dispatch .ee-schedule-header-group{margin-bottom:6px!important}
@@ -175,5 +174,5 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  .ee-dispatch .ee-dispatch-metrics-inline>a strong{font-size:16px!important}
  .ee-dispatch .ee-dispatch-edit summary{font-size:12px}
 }
-</style></main>;
+`}</style></main>;
 }
