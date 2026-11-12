@@ -89,6 +89,17 @@ export async function addJobAppointment(formData:FormData){
   const {data:active,error:staffError}=await db.from('staff_profiles').select('user_id').eq('active',true).in('user_id',staffIds);
   if(staffError||active?.length!==staffIds.length)throw new Error('Choose active electricians only.');
  }
+ const {data:overlapping,error:overlapError}=await db.from('job_appointments').select('id,job_id,starts_at,ends_at').eq('status','scheduled').lt('starts_at',ends.toISOString()).gt('ends_at',begins.toISOString()).limit(200);
+ if(overlapError)throw new Error('Unable to check existing bookings. Please retry.');
+ if((overlapping??[]).some(v=>v.job_id===jobId&&v.starts_at===begins.toISOString()&&v.ends_at===ends.toISOString()))
+  throw new Error('This job already has a visit booked for exactly these times. No duplicate was created.');
+ const overlapIds=(overlapping??[]).map(v=>v.id);
+ if(staffIds.length&&overlapIds.length){
+  const {data:booked,error:bookedError}=await db.from('job_appointment_staff').select('appointment_id,staff_id').in('appointment_id',overlapIds);
+  if(bookedError)throw new Error('Unable to check electrician availability.');
+  if((booked??[]).some(a=>staffIds.includes(a.staff_id)))
+   throw new Error('One of the selected electricians already has an overlapping HQ visit. Choose another time or electrician.');
+ }
  const conflicts=await requireNeilAvailability(staffIds,begins,ends,formData.get('override_neil_calendar')==='yes',user.role);
  const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();
  if(error||!visit)throw new Error('Could not schedule appointment.');
