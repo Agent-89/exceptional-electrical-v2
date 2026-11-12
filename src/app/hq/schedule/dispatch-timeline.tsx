@@ -217,6 +217,22 @@ export default function DispatchTimeline({toolbarExtras,canEdit,canOverrideNeil,
 .ee-timeline-grid.is-week .ee-timeline-corner{z-index:20!important}
 .ee-timeline-grid.is-week .ee-timeline-day-header{white-space:normal!important;overflow-wrap:normal!important}
 }
+
+/* Desktop filters remain available, but don't consume a full toolbar row */
+@media(min-width:761px){
+.ee-timeline-toolbar{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:8px!important}
+.ee-timeline-mobile-filters{display:block!important;position:relative!important;flex:0 0 auto!important}
+.ee-timeline-mobile-filters>summary{display:flex!important;align-items:center;justify-content:center;list-style:none;cursor:pointer;padding:6px 11px;border:1px solid #d4e1ed;border-radius:8px;background:#fff;color:#0875c9;font-size:12px;font-weight:700;min-height:32px}
+.ee-timeline-mobile-filters>summary::-webkit-details-marker{display:none}
+.ee-timeline-filter-body{display:none!important}
+.ee-timeline-mobile-filters[open]>.ee-timeline-filter-body{display:flex!important;position:absolute!important;left:0;top:38px;z-index:45;flex-direction:column!important;align-items:stretch!important;gap:10px!important;min-width:250px;max-width:310px;padding:12px!important;border:1px solid #dce5ee;border-radius:10px;background:#fff;box-shadow:0 12px 25px #173d5a20}
+.ee-timeline-filter-body>.ee-timeline-staff-filter{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:4px!important}
+.ee-timeline-filter-body>.ee-timeline-staff-filter>span{display:block!important;line-height:1.3!important}
+.ee-timeline-filter-body>.ee-timeline-staff-filter select{width:100%!important}
+.ee-timeline-filter-body>.ee-timeline-check{display:flex!important;align-items:center!important}
+.ee-timeline-filter-body>.ee-timeline-density{display:flex!important;margin:0!important}
+.ee-timeline-filter-body>.ee-timeline-extra-controls{display:none!important}
+}
   `}</style>
  </section>;
 }
