@@ -73,6 +73,8 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  let externalEvents:Awaited<ReturnType<typeof calendarEvents>>=[];
  let googleError=false;
  if(googleConnection){try{externalEvents=await calendarEvents(monday.toISOString(),next.toISOString());}catch{googleError=true;}}
+ const metrics=<div className="ee-dispatch-metrics ee-dispatch-metrics-compact ee-dispatch-metrics-actionable ee-dispatch-metrics-inline" aria-label="Schedule filters"><Link className={focus==='all'?'is-selected':''} aria-current={focus==='all'?'true':undefined} href={metricHref('all')}><small>Scheduled</small><strong>{all.length}</strong></Link><Link className={focus==='conflicts'?'is-selected':''} aria-current={focus==='conflicts'?'true':undefined} href={metricHref('conflicts')}><small>Conflicts</small><strong>{clashes.size}</strong></Link><Link className={focus==='unassigned'?'is-selected':''} aria-current={focus==='unassigned'?'true':undefined} href={metricHref('unassigned')}><small>Unassigned</small><strong>{all.filter(v=>(visitAssigned.get(v.id)??[]).length===0).length}</strong></Link></div>;
+ const date=<div className="ee-schedule-date-nav"><Link aria-label="Previous week" href={viewQuery(view,dayKey(prev))}>‹</Link><strong>{dayLabel(monday)} – {dayLabel(addDays(monday,6))}</strong><Link aria-label="Next week" href={viewQuery(view,dayKey(next))}>›</Link><Link className="ee-schedule-today" href={viewQuery(view,today)}>This week</Link></div>;
  const renderVisit=(v:Visit)=>{
   const job=jobMap.get(v.job_id);const names=(visitAssigned.get(v.id)??[]).map(id=>staffMap.get(id)??'Team member');
   return <article key={v.id} className={'ee-dispatch-visit'+(clashes.has(v.id)?' has-conflict':'')}>
