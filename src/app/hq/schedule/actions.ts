@@ -41,7 +41,7 @@ export async function updateVisitStaff(formData:FormData){
  const {data:visit}=await db.from('job_appointments').select('job_id,status').eq('id',id).maybeSingle();
  if(!visit||visit.status!=='scheduled')throw new Error('Scheduled visit not found.');
  if(staffIds.length){
-  const {data:active,error:staffError}=await db.from('staff_profiles').select('user_id').eq('active',true).in('user_id',staffIds);
+  const {data:active,error:staffError}=await db.from('scheduling_staff').select('id').eq('active',true).in('id',staffIds);
   if(staffError||active?.length!==staffIds.length)throw new Error('Choose active staff members.');
  }
  const {data:existing,error:readError}=await db.from('job_appointment_staff').select('staff_id').eq('appointment_id',id);
