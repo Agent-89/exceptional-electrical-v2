@@ -196,5 +196,14 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
 .ee-dispatch .ee-dispatch-day .ee-dispatch-edit:not([open]),.ee-dispatch .ee-dispatch-team-day .ee-dispatch-edit:not([open]){margin:0!important}
 .ee-dispatch .ee-dispatch-day .ee-dispatch-edit summary,.ee-dispatch .ee-dispatch-team-day .ee-dispatch-edit summary{padding:7px 0!important}
 }
+
+@media(min-width:761px){.ee-dispatch-google-details{display:contents}.ee-dispatch-google-details>summary{display:none}}
+@media(max-width:760px){
+.ee-dispatch .ee-dispatch-view-switch .ee-dispatch-google-details{grid-column:1/-1;grid-row:4;justify-self:stretch}
+.ee-dispatch-google-details>summary{cursor:pointer;list-style:none;font-size:12px;font-weight:700;color:#0875c9;padding:6px 2px}
+.ee-dispatch-google-details>summary::-webkit-details-marker{display:none}
+.ee-dispatch-google-details:not([open])>.ee-google-control{display:none!important}
+.ee-dispatch-google-details[open]>.ee-google-control{display:flex!important;margin:4px 0 0!important}
+}
 `}</style></main>;
 }
