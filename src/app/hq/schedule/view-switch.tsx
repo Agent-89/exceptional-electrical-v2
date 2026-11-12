@@ -8,7 +8,6 @@ export default function DispatchViews({initialView,week,dayBoard,teamBoard,timel
  const [events,setEvents]=useState<GoogleEvent[]>(google?.events??[]);
  const [refreshError,setRefreshError]=useState(google?.error??false);
  const [refreshing,setRefreshing]=useState(false);
- const lastSuccess=useRef<string|null>(null);
  const inFlight=useRef(false);
  const refresh=useCallback(async()=>{
   if(!google?.connected||inFlight.current||typeof document==='undefined'||document.visibilityState==='hidden')return;
@@ -21,7 +20,7 @@ export default function DispatchViews({initialView,week,dayBoard,teamBoard,timel
    if(!res.ok)throw new Error('Calendar refresh failed');
    const data=await res.json() as {events:GoogleEvent[];updatedAt:string};
    if(!Array.isArray(data.events))throw new Error('Invalid events');
-   setEvents(data.events);setRefreshError(false);lastSuccess.current=data.updatedAt;
+   setEvents(data.events);setRefreshError(false);
   }catch{setRefreshError(true);}
   finally{inFlight.current=false;setRefreshing(false);}
  },[google?.connected,week]);
