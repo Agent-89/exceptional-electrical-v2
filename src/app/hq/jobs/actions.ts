@@ -50,7 +50,7 @@ export async function updateJobDetails(formData:FormData){
 export async function assignJobStaff(formData:FormData){
  const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
  const jobId=String(formData.get('job_id')||'');const staffId=String(formData.get('staff_id')||'');
- const db=dbAdmin();const {data:staff}=await db.from('staff_profiles').select('user_id').eq('user_id',staffId).eq('active',true).maybeSingle();
+ const db=dbAdmin();const {data:staff}=await db.from('scheduling_staff').select('user_id').eq('id',staffId).eq('active',true).maybeSingle();
  if(!staff)throw new Error('Staff member not found.');
  const {error}=await db.from('job_assignments').upsert({job_id:jobId,staff_id:staffId},{onConflict:'job_id,staff_id',ignoreDuplicates:true});
  if(error)throw new Error('Could not assign staff.');
@@ -86,7 +86,7 @@ export async function addJobAppointment(formData:FormData){
   staffIds=[...new Set((jobStaff??[]).map(a=>a.staff_id))];
  }
  if(staffIds.length){
-  const {data:active,error:staffError}=await db.from('staff_profiles').select('user_id').eq('active',true).in('user_id',staffIds);
+  const {data:active,error:staffError}=await db.from('scheduling_staff').select('id').eq('active',true).in('id',staffIds);
   if(staffError||active?.length!==staffIds.length)throw new Error('Choose active electricians only.');
  }
  const {data:overlapping,error:overlapError}=await db.from('job_appointments').select('id,job_id,starts_at,ends_at').eq('status','scheduled').lt('starts_at',ends.toISOString()).gt('ends_at',begins.toISOString()).limit(200);
