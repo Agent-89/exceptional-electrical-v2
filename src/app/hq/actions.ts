@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { dbAdmin,requireHqUser } from '@/lib/hq-auth';
+import { isValidFollowUpDueDate } from '@/lib/follow-up-due-date';
 
 export async function loginAction(form:FormData){
  const email=String(form.get('email')??'').trim().toLowerCase();
@@ -117,7 +118,7 @@ export async function convertEnquiryToCustomer(id:string):Promise<{ok:boolean;me
 export async function saveEnquiryFollowUp(id:string,required:boolean,dueDate:string):Promise<MutationResult>{
  const user=await requireHqUser();
  if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
- if(!/^[0-9a-f-]{36}$/i.test(id)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate)&&dueDate!=='')return {ok:false,message:'Invalid follow-up details'};
+ if(!/^[0-9a-f-]{36}$/i.test(id)||!isValidFollowUpDueDate(dueDate))return {ok:false,message:'Invalid follow-up details'};
  const due=required&&dueDate?new Date(dueDate+'T09:00:00+08:00'):null;
  if(due&&Number.isNaN(due.getTime()))return {ok:false,message:'Invalid follow-up date'};
  const db=dbAdmin();
