@@ -8,7 +8,7 @@ import VisitPreview from './visit-preview';
 
 export type TimelineVisit={startIso:string;endIso:string;id:string;day:string;startMinutes:number;endMinutes:number;title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds:string[];address?:string|null;notes?:string|null;conflict?:string|null};
 type Props={toolbarExtras?:React.ReactNode;googleSettings?:{connected:boolean;email:string|null;error:boolean;canManage:boolean};canEdit:boolean;canOverrideNeil:boolean;visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;nowMinutes:number};
-const START=6*60,END=18*60,COMFORTABLE_HOUR_HEIGHT=64;
+const START=0,END=24*60,COMFORTABLE_HOUR_HEIGHT=48;
 const palette=['#1676c4','#a34ecb','#0e9875','#d16a21','#d34876','#6b65c8','#138d9b','#7a8533'];
 const staffColor=(id:string)=>{let h=0;for(const ch of id)h=(h*31+ch.charCodeAt(0))|0;return palette[Math.abs(h)%palette.length]};
 const hourLabel=(h:number)=>`${h%12||12} ${h<12?'am':'pm'}`;
@@ -16,7 +16,7 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
  const router=useRouter();
  const [density,setDensity]=useState<'fit'|'comfortable'>('fit');
  const [hourHeight,setHourHeight]=useState(40);
- useEffect(()=>{const update=()=>{const top=document.querySelector('.ee-timeline-scroll')?.getBoundingClientRect().top??360;const available=Math.max(300,window.innerHeight-top-18-48);setHourHeight(Math.max(28,Math.min(64,Math.floor(available/12))));};update();window.addEventListener('resize',update);const observer=new ResizeObserver(update);const toolbar=document.querySelector('.ee-timeline-toolbar');if(toolbar)observer.observe(toolbar);return()=>{window.removeEventListener('resize',update);observer.disconnect()};},[]);
+ useEffect(()=>{const update=()=>{const top=document.querySelector('.ee-timeline-scroll')?.getBoundingClientRect().top??360;const available=Math.max(300,window.innerHeight-top-18-48);setHourHeight(Math.max(28,Math.min(64,Math.floor(available/24))));};update();window.addEventListener('resize',update);const observer=new ResizeObserver(update);const toolbar=document.querySelector('.ee-timeline-toolbar');if(toolbar)observer.observe(toolbar);return()=>{window.removeEventListener('resize',update);observer.disconnect()};},[]);
  const HOUR_HEIGHT=density==='fit'?hourHeight:COMFORTABLE_HOUR_HEIGHT;
  const [moving,setMoving]=useState<TimelineVisit|null>(null);
  const [proposed,setProposed]=useState<{visit:TimelineVisit;day:string;start:number;end:number;warning:string}|null>(null);
@@ -29,6 +29,7 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
  const [preview,setPreview]=useState<{id:string;day:string;start:number;end:number}|null>(null);
  const [overrides,setOverrides]=useState<Record<string,{day:string;start:number;end:number;startIso:string;endIso:string}>>({});
  const previewRef=useRef<{id:string;day:string;start:number;end:number}|null>(null);
+ const suppressClick=useRef(false);
  const gesture=useRef<{id:string;kind:'move'|'start'|'end';day:string;start:number;end:number;anchorY:number;anchorX:number;anchorMinute:number;originStart:number;originEnd:number;originDay:string;pointerId:number;active:boolean;armed:boolean;touch:boolean}|null>(null);
  const {show:showGoogle,events:googleEvents}=useGoogleCalendar();
  const lanes=useRef<Record<string,HTMLDivElement|null>>({});
@@ -48,6 +49,8 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
  const beginGesture=(e:React.PointerEvent, v:TimelineVisit,kind:'move'|'start'|'end')=>{
   if(!canEdit||pending||(e.pointerType==='mouse'&&e.button!==0))return;
   if(e.pointerType!=='touch')e.preventDefault();e.stopPropagation();
+  const capture=(e.currentTarget as HTMLElement).closest('.ee-timeline-event') as HTMLElement|null;
+  try{capture?.setPointerCapture(e.pointerId);}catch{}
   const lane=lanes.current[v.day];if(!lane)return;
   const rect=lane.getBoundingClientRect();
   gesture.current={id:v.id,kind,day:v.day,start:v.startMinutes,end:v.endMinutes,anchorY:e.clientY,anchorX:e.clientX,anchorMinute:snap(START+(e.clientY-rect.top)/HOUR_HEIGHT*60),originStart:v.startMinutes,originEnd:v.endMinutes,originDay:v.day,pointerId:e.pointerId,active:false,armed:e.pointerType!=='touch',touch:e.pointerType==='touch'};
@@ -83,6 +86,8 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
   clearHold();gesture.current=null;
   const p=previewRef.current;previewRef.current=null;setPreview(null);
   if(!g.active||!p)return;
+  suppressClick.current=true;
+  window.setTimeout(()=>{suppressClick.current=false},0);
   const v=effective.find(x=>x.id===g.id);if(v)confirmTimes(v,p.day,p.start,p.end);
  };
  const [pending,startTransition]=useTransition();
@@ -124,7 +129,7 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
  const controls=<><div className="ee-timeline-toolbar"><div className="ee-timeline-tabs"><button type="button" className={mode==='week'?'active':''} onClick={()=>setMode('week')}>Week</button><button type="button" className={mode==='day'?'active':''} onClick={()=>setMode('day')}>Day</button></div><button type="button" className="ee-timeline-density-shortcut" onClick={()=>setDensity(v=>v==='fit'?'comfortable':'fit')} aria-label={density==='fit'?'Switch to Comfortable spacing':'Fit calendar to screen'} aria-pressed={density==='comfortable'} title={density==='fit'?'Switch to Comfortable spacing':'Fit calendar to screen'}>{density==='fit'?'Fit':'Comfortable'}</button></div>{mode==='day'&&<div className="ee-timeline-day-picker"><button type="button" onClick={()=>setSelected(days[Math.max(0,days.findIndex(d=>d.key===selected)-1)]?.key??selected)} aria-label="Previous day">‹</button><select value={selected} onChange={e=>setSelected(e.target.value)}>{days.map(d=><option value={d.key} key={d.key}>{d.label}</option>)}</select><button type="button" onClick={()=>setSelected(days[Math.min(days.length-1,days.findIndex(d=>d.key===selected)+1)]?.key??selected)} aria-label="Next day">›</button></div>}</>;
  return <section className="ee-timeline">
   {desktopSlot?createPortal(controls,desktopSlot):controls}
-  {visits.some(v=>v.startMinutes<START||v.endMinutes>END)&&<p className="ee-timeline-outside" role="status">Some appointments fall outside 6 am–6 pm. View their full times in By day or By electrician.</p>}
+  {visits.some(v=>v.startMinutes<START||v.endMinutes>END)&&<p className="ee-timeline-outside" role="status">Some appointments fall outside the displayed day. View their full times in By day or By electrician.</p>}
   
   <div className="ee-timeline-scroll"><div className={"ee-timeline-grid"+(mode==="week"?" is-week":" is-day")} style={{gridTemplateColumns:mode==="week"?`62px repeat(${shownDays.length},minmax(0,1fr))`:"62px minmax(0,1fr)"}}>
    <div className="ee-timeline-corner">AWST</div>{shownDays.map(d=><div key={d.key} className={'ee-timeline-day-header'+(d.key===today?' today':'')}>{d.label}<small>{visible.filter(v=>v.day===d.key).length} visits</small></div>)}
@@ -144,7 +149,7 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
      const start=Math.max(START,v.startMinutes),end=Math.min(END,v.endMinutes);
      if(end<=start)return null;
      const {index,count}=dayLayouts.get(d.key)?.get('visit-'+v.id)??{index:0,count:1};
-     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')+(preview?.id===v.id?' is-dragging':'')} key={v.id} onPointerDown={e=>beginGesture(e,v,'move')} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={cancelGesture} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}>{canEdit&&<div className="ee-timeline-resize top" onPointerDown={e=>beginGesture(e,v,'start')} title="Drag to adjust start time"/>}<VisitPreview appointmentId={v.id} startIso={v.startIso} endIso={v.endIso} canEdit={canEdit} staff={staff} title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} conflict={v.conflict} compact/>{canEdit&&<div className="ee-timeline-resize bottom" onPointerDown={e=>beginGesture(e,v,'end')} title="Drag to adjust end time"/>}</div>;
+     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')+(preview?.id===v.id?' is-dragging':'')} key={v.id} onPointerDown={e=>beginGesture(e,v,'move')} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={cancelGesture} onClickCapture={e=>{if(suppressClick.current){e.preventDefault();e.stopPropagation();suppressClick.current=false;}}} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}>{canEdit&&<div className="ee-timeline-resize top" onPointerDown={e=>beginGesture(e,v,'start')} title="Drag to adjust start time"/>}<VisitPreview appointmentId={v.id} startIso={v.startIso} endIso={v.endIso} canEdit={canEdit} staff={staff} title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} conflict={v.conflict} compact/>{canEdit&&<div className="ee-timeline-resize bottom" onPointerDown={e=>beginGesture(e,v,'end')} title="Drag to adjust end time"/>}</div>;
     })}
    </div>)}
   </div></div>
