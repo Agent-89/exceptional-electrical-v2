@@ -101,37 +101,17 @@ export async function convertEnquiryToCustomer(id:string):Promise<{ok:boolean;me
  const {data:e,error}=await db.from('enquiries').select('id,name,email,phone,customer_id').eq('id',id).single();
  if(error||!e)return {ok:false,message:'Enquiry not found'};
  if(e.customer_id)return {ok:true,message:'Already linked to a customer',customerId:e.customer_id};
- const normalizePhone=(value:string)=>{
-  const digits=value.replace(/\D/g,'');
-  return digits.startsWith('61')&&digits.length===11?'0'+digits.slice(2):digits;
- };
- const phone=normalizePhone(String(e.phone??''));
- const email=String(e.email??'').trim().toLowerCase();
- // Query all pages rather than silently ignoring customers beyond the first 500.
- // Keep this read-only until the matching rules can be moved into an indexed database function.
- const matches:{id:string;name:string;email:string|null;phone:string|null}[]=[];
- for(let offset=0;;offset+=500){
-  const {data:page,error:lookupError}=await db.from('customers').select('id,name,email,phone').order('id').range(offset,offset+499);
-  if(lookupError)return {ok:false,message:'Unable to check existing customers'};
-  for(const customer of page??[]){
-   if((phone.length>=8&&normalizePhone(String(customer.phone??''))===phone)||(email&&String(customer.email??'').trim().toLowerCase()===email))matches.push(customer);
-  }
-  if((page??[]).length<500)break;
+ const {data:result,error:conversionError}=await db.rpc('convert_enquiry_customer_atomic',{
+  p_enquiry_id:id,p_actor:user.id
+ });
+ if(conversionError){
+  console.error('Atomic customer conversion failed',conversionError.code);
+  return {ok:false,message:'Could not convert enquiry. No partial changes were saved.'};
  }
- if(matches.length>1)return {ok:false,message:'Multiple matching customers found. Review them before linking.'};
- let customerId=matches[0]?.id as string|undefined;
- let created=false;
- if(!customerId){
-  const {data:createdCustomer,error:createError}=await db.from('customers').insert({name:e.name,email:e.email||null,phone:e.phone||null}).select('id').single();
-  if(createError||!createdCustomer)return {ok:false,message:'Could not create customer'};
-  customerId=createdCustomer.id;created=true;
- }
- const {data:linked,error:linkError}=await db.from('enquiries').update({customer_id:customerId,updated_at:new Date().toISOString()}).eq('id',id).is('customer_id',null).select('id').maybeSingle();
- if(linkError||!linked)return {ok:false,message:created?'Customer created, but enquiry linking failed. Refresh before retrying.':'Enquiry was updated elsewhere. Refresh and try again.'};
- const {error:auditError}=await db.from('enquiry_activity').insert({enquiry_id:id,actor_id:user.id,action:'customer_linked',note:created?'Customer profile created':'Linked to existing customer'});
- if(auditError)console.error('Customer linking audit failed',auditError.code);
+ const outcome=result as {ok:boolean;message:string;customerId?:string}|null;
+ if(!outcome?.ok||!outcome.customerId)return {ok:false,message:outcome?.message||'Could not convert enquiry'};
  revalidatePath('/hq');revalidatePath('/hq/customers');revalidatePath('/hq/enquiries/'+id);
- return {ok:true,message:created?'Customer created and linked':'Existing customer linked',customerId};
+ return {ok:true,message:outcome.message,customerId:outcome.customerId};
 }
 
 export async function saveEnquiryFollowUp(id:string,required:boolean,dueDate:string):Promise<MutationResult>{
