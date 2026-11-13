@@ -21,25 +21,25 @@ begin
   if e.customer_id is not null then
     return pg_catalog.jsonb_build_object('ok',true,'customerId',e.customer_id,'message','Already linked to a customer');
   end if;
-  v_email := pg_catalog.lower(pg_catalog.btrim(pg_catalog.coalesce(e.email,'')));
-  v_phone := pg_catalog.regexp_replace(pg_catalog.coalesce(e.phone,''),'[^0-9]','','g');
+  v_email := pg_catalog.lower(pg_catalog.btrim(coalesce(e.email,'')));
+  v_phone := pg_catalog.regexp_replace(coalesce(e.phone,''),'[^0-9]','','g');
   if pg_catalog.length(v_phone)=11 and pg_catalog.left(v_phone,2)='61' then
     v_phone := '0'||pg_catalog.substr(v_phone,3);
   end if;
   select count(*),min(id) into v_matches,v_id from public.customers c
-  where (v_email<>'' and pg_catalog.lower(pg_catalog.btrim(pg_catalog.coalesce(c.email,'')))=v_email)
+  where (v_email<>'' and pg_catalog.lower(pg_catalog.btrim(coalesce(c.email,'')))=v_email)
      or (pg_catalog.length(v_phone)>=8 and
-       (case when pg_catalog.length(pg_catalog.regexp_replace(pg_catalog.coalesce(c.phone,''),'[^0-9]','','g'))=11
-                 and pg_catalog.left(pg_catalog.regexp_replace(pg_catalog.coalesce(c.phone,''),'[^0-9]','','g'),2)='61'
-          then '0'||pg_catalog.substr(pg_catalog.regexp_replace(pg_catalog.coalesce(c.phone,''),'[^0-9]','','g'),3)
-          else pg_catalog.regexp_replace(pg_catalog.coalesce(c.phone,''),'[^0-9]','','g')
+       (case when pg_catalog.length(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'))=11
+                 and pg_catalog.left(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'),2)='61'
+          then '0'||pg_catalog.substr(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'),3)
+          else pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g')
         end)=v_phone);
   if v_matches>1 then
     return pg_catalog.jsonb_build_object('ok',false,'message','Multiple matching customers found. Review them before linking.');
   end if;
   if v_matches=0 then
     insert into public.customers(name,email,phone)
-    values(e.name,pg_catalog.nullif(e.email,''),pg_catalog.nullif(e.phone,''))
+    values(e.name,nullif(e.email,''),nullif(e.phone,''))
     returning id into v_id;
     v_created := true;
   end if;
