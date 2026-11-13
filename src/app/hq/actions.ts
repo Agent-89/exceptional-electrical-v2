@@ -101,11 +101,23 @@ export async function convertEnquiryToCustomer(id:string):Promise<{ok:boolean;me
  const {data:e,error}=await db.from('enquiries').select('id,name,email,phone,customer_id').eq('id',id).single();
  if(error||!e)return {ok:false,message:'Enquiry not found'};
  if(e.customer_id)return {ok:true,message:'Already linked to a customer',customerId:e.customer_id};
- const phone=String(e.phone??'').replace(/[^0-9+]/g,'');
+ const normalizePhone=(value:string)=>{
+  const digits=value.replace(/\D/g,'');
+  return digits.startsWith('61')&&digits.length===11?'0'+digits.slice(2):digits;
+ };
+ const phone=normalizePhone(String(e.phone??''));
  const email=String(e.email??'').trim().toLowerCase();
- const {data:existing,error:lookupError}=await db.from('customers').select('id,name,email,phone').limit(500);
- if(lookupError)return {ok:false,message:'Unable to check existing customers'};
- const matches=(existing??[]).filter(c=>(phone.length>=8&&String(c.phone??'').replace(/[^0-9+]/g,'')===phone)||(email&&String(c.email??'').trim().toLowerCase()===email));
+ // Query all pages rather than silently ignoring customers beyond the first 500.
+ // Keep this read-only until the matching rules can be moved into an indexed database function.
+ const matches:{id:string;name:string;email:string|null;phone:string|null}[]=[];
+ for(let offset=0;;offset+=500){
+  const {data:page,error:lookupError}=await db.from('customers').select('id,name,email,phone').order('id').range(offset,offset+499);
+  if(lookupError)return {ok:false,message:'Unable to check existing customers'};
+  for(const customer of page??[]){
+   if((phone.length>=8&&normalizePhone(String(customer.phone??''))===phone)||(email&&String(customer.email??'').trim().toLowerCase()===email))matches.push(customer);
+  }
+  if((page??[]).length<500)break;
+ }
  if(matches.length>1)return {ok:false,message:'Multiple matching customers found. Review them before linking.'};
  let customerId=matches[0]?.id as string|undefined;
  let created=false;
