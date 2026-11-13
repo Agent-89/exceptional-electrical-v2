@@ -87,7 +87,7 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
   const p=previewRef.current;previewRef.current=null;setPreview(null);
   if(!g.active||!p)return;
   suppressClick.current=true;
-  window.setTimeout(()=>{suppressClick.current=false},0);
+  window.setTimeout(()=>{suppressClick.current=false},450);
   const v=effective.find(x=>x.id===g.id);if(v)confirmTimes(v,p.day,p.start,p.end);
  };
  const [pending,startTransition]=useTransition();
