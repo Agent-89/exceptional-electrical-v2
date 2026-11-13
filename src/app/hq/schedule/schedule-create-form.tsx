@@ -1,5 +1,5 @@
-import {useRouter} from 'next/navigation';
 'use client';
+import {useRouter} from 'next/navigation';
 import {useRef,useState} from 'react';
 import {addJobAppointment} from '../jobs/actions';
 import {useCloseScheduleModal} from './schedule-visit-modal';
