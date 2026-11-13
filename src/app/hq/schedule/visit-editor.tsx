@@ -1,3 +1,4 @@
+import {useRouter} from 'next/navigation';
 'use client';
 import {useState} from 'react';
 import {updateScheduledVisit,updateVisitStaff} from './actions';
@@ -5,6 +6,7 @@ type Staff={id:string;name:string};
 type Props={id:string;start:string;end:string;notes?:string|null;staffIds:string[];staff:Staff[];onClose:()=>void};
 const perthInput=(iso:string)=>new Date(iso).toLocaleString('sv-SE',{timeZone:'Australia/Perth',hour12:false}).replace(' ','T').slice(0,16);
 export default function VisitEditor({id,start,end,notes,staffIds,staff,onClose}:Props){
+ const router=useRouter();
  const [tab,setTab]=useState<'details'|'crew'>('details');
  const [startValue,setStartValue]=useState(perthInput(start));
  const [endValue,setEndValue]=useState(perthInput(end));
@@ -13,7 +15,7 @@ export default function VisitEditor({id,start,end,notes,staffIds,staff,onClose}:
  const [saving,setSaving]=useState(false);
  const save=async(form:FormData,action:'details'|'crew')=>{
   setError('');setSaving(true);
-  try{if(action==='crew')await updateVisitStaff(form);else await updateScheduledVisit(form);onClose();window.location.reload();}
+  try{if(action==='crew')await updateVisitStaff(form);else await updateScheduledVisit(form);onClose();router.refresh();}
   catch(e){setError(e instanceof Error?e.message:'Unable to save changes.');}
   finally{setSaving(false);}
  };
