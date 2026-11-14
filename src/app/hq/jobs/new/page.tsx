@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
 import JobCreateForm from '../job-create-form';
 import '../../hq.css';
 export const dynamic='force-dynamic';
@@ -7,8 +7,8 @@ export const dynamic='force-dynamic';
 const uuid=/^[0-9a-f-]{36}$/i;
 
 export default async function NewJobPage({searchParams}:{searchParams:Promise<{customer?:string;enquiry?:string;quote?:string}>}){
- const user=await requireHqUser();
- const canEdit=['owner','admin','office'].includes(user.role);
+ await requireOfficeUser();
+ const canEdit=true;
  const params=await searchParams;
  const db=dbAdmin();
  const quoteId=params.quote&&uuid.test(params.quote)?params.quote:'';

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
-import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
+import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 import EnquiryWorkspace from './enquiry-workspace';
 import ConvertCustomer from './convert-customer';
 import '../../hq.css';
@@ -24,7 +24,7 @@ function formattedDate(value:string|null){
 function serviceName(value:string){const names:Record<string,string>={ev_charger:'EV charger installation',power_points:'Power points',fault_finding:'Fault finding',safety_inspection:'Safety inspection',solar_battery:'Solar & battery',switchboard:'Switchboard',lighting:'Lighting',commercial:'Commercial electrical',maintenance:'Maintenance'};return names[value]||value.replaceAll('_',' ')}
 function pretty(value:string|null|undefined){return value?value.charAt(0).toUpperCase()+value.slice(1):'Not provided'}
 export default async function EnquiryDetail({params}:{params:Promise<{id:string}>}){
- const user=await requireHqUser();
+ const user=await requireOfficeUser();
  const {id}=await params;
  if(!/^[0-9a-f-]{36}$/i.test(id))notFound();
  const {data:e,error}=await dbAdmin().from('enquiries').select('*').eq('id',id).maybeSingle();

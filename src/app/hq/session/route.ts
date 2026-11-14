@@ -1,5 +1,6 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {dbAdmin} from '@/lib/hq-auth';
+import {hqHomePath} from '@/lib/hq-roles';
 export const runtime='nodejs';
 export async function GET(request:NextRequest){
  const login=new URL('/hq/login',request.url);
@@ -12,13 +13,13 @@ export async function GET(request:NextRequest){
   response.cookies.set('ee_hq_access','',{path:'/',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/',maxAge:0});
   return response;
  }
- const {data:staff}=await db.from('staff_profiles').select('active').eq('user_id',data.user.id).eq('active',true).maybeSingle();
+ const {data:staff}=await db.from('staff_profiles').select('active,role').eq('user_id',data.user.id).eq('active',true).maybeSingle();
  if(!staff){
   const response=NextResponse.redirect(login);
   response.cookies.set('ee_hq_access','',{path:'/',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/',maxAge:0});
   return response;
  }
- const response=NextResponse.redirect(new URL('/hq',request.url));
+ const response=NextResponse.redirect(new URL(hqHomePath(String(staff.role)),request.url));
  response.cookies.set('ee_hq_access','',{path:'/hq',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
  const opts={httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax' as const,path:'/'};
  response.cookies.set('ee_hq_access',data.session.access_token,{...opts,maxAge:data.session.expires_in});

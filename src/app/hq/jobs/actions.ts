@@ -3,10 +3,10 @@ import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
-import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
 export async function createJob(formData:FormData){
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))throw new Error('You do not have permission to create jobs.');
+ assertOfficeOps(user);
  const title=String(formData.get('title')||'').trim();
  const customerId=String(formData.get('customer_id')||'').trim();
  const description=String(formData.get('description')||'').trim();
@@ -43,7 +43,7 @@ export async function createJob(formData:FormData){
 }
 export async function updateJob(formData:FormData){
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))throw new Error('You do not have permission to update jobs.');
+ assertOfficeOps(user);
  const id=String(formData.get('id')||'');
  const status=String(formData.get('status')||'');
  const note=String(formData.get('note')||'').trim();
@@ -58,7 +58,7 @@ export async function updateJob(formData:FormData){
 }
 
 export async function updateJobDetails(formData:FormData){
- const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
+ const user=await requireHqUser();assertOfficeOps(user);
  const id=String(formData.get('id')||'');const title=String(formData.get('title')||'').trim();const description=String(formData.get('description')||'').trim();const priority=String(formData.get('priority')||'normal');const customerId=String(formData.get('customer_id')||'');const siteAddress=String(formData.get('site_address_text')||'').trim();
  if(siteAddress.length>500)throw new Error('Site address is too long.');
  if(!/^[0-9a-f-]{36}$/i.test(id)||title.length<2||title.length>200||description.length>5000||!['low','normal','high','urgent'].includes(priority))throw new Error('Invalid job details.');
@@ -68,7 +68,7 @@ export async function updateJobDetails(formData:FormData){
  revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+id);
 }
 export async function assignJobStaff(formData:FormData){
- const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
+ const user=await requireHqUser();assertOfficeOps(user);
  const jobId=String(formData.get('job_id')||'');const staffId=String(formData.get('staff_id')||'');
  if(!/^[0-9a-f-]{36}$/i.test(jobId)||!/^[0-9a-f-]{36}$/i.test(staffId))throw new Error('Invalid staff assignment.');
  // job_assignments.staff_id references scheduling_staff.id (not auth / staff_profiles).
@@ -80,7 +80,7 @@ export async function assignJobStaff(formData:FormData){
  revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');
 }
 export async function removeJobStaff(formData:FormData){
- const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
+ const user=await requireHqUser();assertOfficeOps(user);
  const jobId=String(formData.get('job_id')||'');const staffId=String(formData.get('staff_id')||'');
  const db=dbAdmin();const {error}=await db.from('job_assignments').delete().eq('job_id',jobId).eq('staff_id',staffId);
  if(error)throw new Error('Could not remove assignment.');
@@ -89,7 +89,7 @@ export async function removeJobStaff(formData:FormData){
 }
 export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;message:string}>{
  try{
-  const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
+  const user=await requireHqUser();assertOfficeOps(user);
   const jobId=String(formData.get('job_id')||'');const start=String(formData.get('start')||'');const end=String(formData.get('end')||'');const notes=String(formData.get('notes')||'').trim();
   // HTML datetime-local inputs are interpreted in Perth local time, independent of server timezone.
   const parse=(s:string)=>/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(s)?new Date(s+':00+08:00'):new Date(NaN);

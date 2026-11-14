@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
 import {JOB_STATUSES,JOB_STATUS_LABELS} from '@/lib/job-statuses';
 
 import '../hq.css';
 export const dynamic='force-dynamic';
 type Job={id:string;job_number:number;title:string;status:string;priority:string;updated_at:string;customer_id:string|null;scheduled_start:string|null;next_action_at:string|null;source:string};
 export default async function JobsPage({searchParams}:{searchParams:Promise<{q?:string;status?:string}>}){
- await requireHqUser();
+ await requireOfficeUser();
  const params=await searchParams;
  const db=dbAdmin();
  const {data:jobs,error}=await db.from('jobs').select('id,job_number,title,status,priority,updated_at,customer_id,scheduled_start,next_action_at,source').order('updated_at',{ascending:false}).limit(500);

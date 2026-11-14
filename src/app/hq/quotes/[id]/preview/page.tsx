@@ -1,6 +1,6 @@
 import BackToQuote from './back-to-quote';
 import {notFound} from 'next/navigation';
-import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
+import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 import PrintQuoteButton from './print-button';
 export const dynamic='force-dynamic';
 const aud=(c:number)=>(c/100).toLocaleString('en-AU',{style:'currency',currency:'AUD'});
@@ -8,7 +8,7 @@ const FIXED='Fixed-price electrical work';
 const date=(v:string|null)=>v?new Date(v+'T12:00:00').toLocaleDateString('en-AU',{timeZone:'Australia/Perth'}):'—';
 type Item={id:string;description:string;category:string;quantity:number;unit:string;unit_price_cents:number;gst_applicable:boolean;position:number};
 export default async function QuotePreview({params}:{params:Promise<{id:string}>}){
- await requireHqUser();
+ await requireOfficeUser();
  const {id}=await params;
  if(!/^[0-9a-f-]{36}$/i.test(id))notFound();
  const db=dbAdmin();

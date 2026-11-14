@@ -11,8 +11,8 @@ export async function GET(request:NextRequest){
  const db=dbAdmin();
  const {data:{user},error}=await db.auth.getUser(token);
  if(error||!user)return NextResponse.json({error:'Unauthorized'},{status:401,headers:noStore});
- const {data:staff}=await db.from('staff_profiles').select('active').eq('user_id',user.id).eq('active',true).maybeSingle();
- if(!staff)return NextResponse.json({error:'Forbidden'},{status:403,headers:noStore});
+ const {data:staff}=await db.from('staff_profiles').select('active,role').eq('user_id',user.id).eq('active',true).maybeSingle();
+ if(!staff||!['owner','admin','office'].includes(String(staff.role)))return NextResponse.json({error:'Forbidden'},{status:403,headers:noStore});
  const start=request.nextUrl.searchParams.get('start'),end=request.nextUrl.searchParams.get('end');
  if(!start||!end||!Number.isFinite(Date.parse(start))||!Number.isFinite(Date.parse(end))||Date.parse(end)<=Date.parse(start)||Date.parse(end)-Date.parse(start)>32*86400000)
   return NextResponse.json({error:'Invalid date range'},{status:400,headers:noStore});

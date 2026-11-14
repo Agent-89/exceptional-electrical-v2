@@ -1,13 +1,13 @@
 import CustomerCreate from './customer-create';
 import CustomerDirectory from './customer-directory';
 import Link from 'next/link';
-import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
 import {logoutAction} from '../actions';
 import '../hq.css';
 export const dynamic='force-dynamic';
 type Customer={id:string;name:string;email:string|null;phone:string|null;created_at:string};
 export default async function CustomersPage(){
- const user=await requireHqUser();
+ const user=await requireOfficeUser();
  const db=dbAdmin();
  const {data,error}=await db.from('customers').select('id,name,email,phone,created_at').order('created_at',{ascending:false}).limit(500);
  const customers=(data??[]) as Customer[];

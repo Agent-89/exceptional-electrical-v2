@@ -1,17 +1,17 @@
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
-import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
 import {JOB_STATUSES,JOB_STATUS_LABELS} from '@/lib/job-statuses';
 import {updateJob,updateJobDetails,assignJobStaff,removeJobStaff} from '../actions';
 import ScheduleAppointmentForm from './schedule-appointment-form';
 import '../../hq.css';
 export const dynamic='force-dynamic';
 export default async function JobPage({params}:{params:Promise<{id:string}>}){
- const user=await requireHqUser();const {id}=await params;const db=dbAdmin();
+ await requireOfficeUser();const {id}=await params;const db=dbAdmin();
  const {data:job}=await db.from('jobs').select('*').eq('id',id).maybeSingle();if(!job)notFound();
  const [{data:customer},{data:activity},{data:staff},{data:assignments},{data:appointments},{data:customers}]=await Promise.all([job.customer_id?db.from('customers').select('name,email,phone').eq('id',job.customer_id).maybeSingle():Promise.resolve({data:null}),db.from('job_activity').select('id,action,note,created_at').eq('job_id',id).order('created_at',{ascending:false}).limit(50),db.from('scheduling_staff').select('id,full_name').eq('active',true).order('full_name'),db.from('job_assignments').select('staff_id').eq('job_id',id),db.from('job_appointments').select('id,starts_at,ends_at,notes,status').eq('job_id',id).order('starts_at',{ascending:true}),db.from('customers').select('id,name').order('name').limit(1000)]);
 
- const canEdit=['owner','admin','office'].includes(user.role);
+ const canEdit=true; // requireOfficeUser already gates technicians
  const events:Record<string,string>={created:'Job created',status_changed:'Status updated',note_added:'Note added',details_updated:'Job details updated',staff_assigned:'Electrician assigned',staff_unassigned:'Electrician removed',appointment_added:'Appointment scheduled'};
  const assignedNames=(assignments??[]).map(a=>({id:a.staff_id,name:staff?.find(p=>p.id===a.staff_id)?.full_name??'Team member'}));
  const upcoming=(appointments??[]).find(a=>a.status==='scheduled'&&new Date(a.ends_at).getTime()>=Date.now());
