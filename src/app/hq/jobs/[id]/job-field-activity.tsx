@@ -2,16 +2,9 @@ import Link from 'next/link';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import { aggregateLabourByJob } from '@/lib/tech-time-multi';
 import { FIELD_STATUS_LABELS, type FieldStatus } from '@/lib/tech-field-constants';
-import {
-  VISIT_OUTCOME_LABELS,
-  VISIT_OUTCOME_STATUSES,
-  isTerminalVisitOutcome,
-} from '@/lib/tech-visit-report';
-import {
-  addOfficeNoteAction,
-  officeUpdateVisitOutcomeAction,
-  reviewTimeEntryAction,
-} from '@/app/hq/tech/actions';
+import { isTerminalVisitOutcome } from '@/lib/tech-visit-report';
+import { addOfficeNoteAction, reviewTimeEntryAction } from '@/app/hq/tech/actions';
+import OfficeVisitOutcomeForm from './office-visit-outcome-form';
 
 type AppointmentView = {
   id: string;
@@ -126,33 +119,14 @@ export default function JobFieldActivity({
                   Further visit required: {a.followUp ? 'Yes' : 'No'}
                 </p>
                 {!isTerminalVisitOutcome(a.fieldStatus) ? (
-                  <form action={officeUpdateVisitOutcomeAction} className="ee-edit-form" style={{ marginTop: 12 }}>
-                    <input type="hidden" name="appointment_id" value={a.id} />
-                    <input type="hidden" name="expected_field_status" value={a.fieldStatus} />
-                    <input type="hidden" name="expected_completion_note" value={a.completionNote ?? ''} />
-                    <input type="hidden" name="expected_outstanding_work" value={a.outstanding ?? ''} />
-                    <input type="hidden" name="expected_issues" value={a.issues ?? ''} />
-                    {a.followUp ? (
-                      <input type="hidden" name="expected_follow_up_required" value="yes" />
-                    ) : null}
-                    <input type="hidden" name="completion_note" value={a.completionNote ?? ''} />
-                    <input type="hidden" name="outstanding_work" value={a.outstanding ?? ''} />
-                    <input type="hidden" name="issues" value={a.issues ?? ''} />
-                    {a.followUp ? <input type="hidden" name="follow_up_required" value="yes" /> : null}
-                    <label>
-                      Set shared visit outcome
-                      <select name="field_status" defaultValue={a.fieldStatus === 'paused' || a.fieldStatus === 'scheduled' ? 'in_progress' : a.fieldStatus}>
-                        {VISIT_OUTCOME_STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {VISIT_OUTCOME_LABELS[status]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button className="hq-detail-action-primary" type="submit">
-                      Save visit outcome
-                    </button>
-                  </form>
+                  <OfficeVisitOutcomeForm
+                    appointmentId={a.id}
+                    fieldStatus={a.fieldStatus}
+                    completionNote={a.completionNote}
+                    outstanding={a.outstanding}
+                    issues={a.issues}
+                    followUp={a.followUp}
+                  />
                 ) : null}
               </div>
             );

@@ -471,14 +471,18 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
 }
 
 /** Office finalises the shared visit outcome (used when multiple technicians are assigned). */
-export async function officeUpdateVisitOutcomeAction(formData: FormData) {
+export async function officeUpdateVisitOutcomeAction(
+  formData: FormData,
+): Promise<TechFieldActionResult> {
   const user = await requireOfficeUser();
   assertOfficeOps(user);
   const appointmentId = String(formData.get('appointment_id') || '');
   const nextStatus = String(formData.get('field_status') || '');
-  if (!/^[0-9a-f-]{36}$/i.test(appointmentId)) throw new Error('Invalid appointment.');
+  if (!/^[0-9a-f-]{36}$/i.test(appointmentId)) {
+    return failResult('Invalid appointment.', 'validation');
+  }
   if (!isVisitOutcomeStatus(nextStatus)) {
-    throw new Error('Invalid visit outcome.');
+    return failResult('Invalid visit outcome.', 'validation');
   }
 
   const db = dbAdmin();
@@ -487,7 +491,7 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
     .select('id,job_id,status,field_status')
     .eq('id', appointmentId)
     .maybeSingle();
-  if (lookupError || !visit) throw new Error('Visit not found.');
+  if (lookupError || !visit) return failResult('Visit not found.', 'validation');
 
   const completionNote = textField(formData, 'completion_note', 2000);
   const outstanding = textField(formData, 'outstanding_work', 2000);
@@ -505,6 +509,11 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
     currentAppointmentStatus: visit.status,
     completedAtIso: new Date().toISOString(),
   });
+
+  // Guardrail: office visit outcome must never mutate jobs.status.
+  if (visitOutcomeUpdatesJobStatus()) {
+    return failResult('Visit reporting misconfigured: job status must stay unchanged.');
+  }
 
   const patch: Record<string, unknown> = {
     field_status: built.fieldStatus,
@@ -524,10 +533,10 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
     )
     .eq('id', visit.id)
     .maybeSingle();
-  if (currentError || !current) throw new Error('Unable to update visit outcome.');
+  if (currentError || !current) return failResult('Unable to update visit outcome.');
   const currentSnapshot = snapshotFromAppointmentRow(current);
   if (!visitReportSnapshotsMatch(expected, currentSnapshot)) {
-    throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
+    return failResult(VISIT_REPORT_CONFLICT_MESSAGE, 'conflict');
   }
 
   const proposed: VisitReportSnapshot = {
@@ -539,7 +548,7 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
   };
   if (visitReportSaveIsNoop(currentSnapshot, proposed)) {
     revalidateVisit(visit.id, visit.job_id);
-    return;
+    return okResult({ noop: true, message: 'Visit outcome already up to date' });
   }
 
   const { data, error } = await applyVisitReportExpectation(
@@ -548,8 +557,8 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
   )
     .select('id')
     .maybeSingle();
-  if (error) throw new Error('Unable to update visit outcome.');
-  if (!data) throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
+  if (error) return failResult('Unable to update visit outcome.');
+  if (!data) return failResult(VISIT_REPORT_CONFLICT_MESSAGE, 'conflict');
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
@@ -561,6 +570,7 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
   });
 
   revalidateVisit(visit.id, visit.job_id);
+  return okResult({ message: 'Visit outcome saved' });
 }
 
 export async function addTechnicianNoteAction(formData: FormData): Promise<TechFieldActionResult> {
