@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { dbAdmin } from '@/lib/hq-auth';
 export const runtime='nodejs';
 const schema=z.object({
  name:z.string().trim().min(2).max(120),
@@ -20,10 +20,8 @@ export async function POST(req:NextRequest){
  const result=schema.safeParse(raw);
  if(!result.success)return NextResponse.json({error:'Please check the form and try again.'},{status:400});
  if(result.data.website)return NextResponse.json({ok:true},{status:202});
- const url=process.env.NEXT_PUBLIC_SUPABASE_URL;
- const key=process.env.SUPABASE_SECRET_KEY;
- if(!url||!key){console.error('Enquiry storage not configured');return NextResponse.json({error:'Enquiries are temporarily unavailable.'},{status:503});}
- const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+ let db;
+ try{db=dbAdmin();}catch{console.error('Enquiry storage not configured');return NextResponse.json({error:'Enquiries are temporarily unavailable.'},{status:503});}
  const newServiceLabel=result.data.service==='switchboards'?'Switchboard upgrades':result.data.service==='ev_chargers'?'EV charger installation':null;
  const storedService=newServiceLabel?'other':result.data.service;
  const storedMessage=newServiceLabel?`Service requested: ${newServiceLabel}\n\n${result.data.message}`:result.data.message;

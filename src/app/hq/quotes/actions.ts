@@ -50,3 +50,43 @@ export async function saveAndApproveQuote(v:QuoteDraft):Promise<{ok:boolean;mess
  const approved=await approveQuote(saved.id);
  return {...approved,id:saved.id,message:approved.ok?'Quote saved and approved.':approved.message+' Draft was saved.'};
 }
+
+type QuoteLifecycleStatus='sent'|'accepted'|'declined';
+
+async function advanceQuoteStatus(id:string,next:QuoteLifecycleStatus):Promise<{ok:boolean;message:string}>{
+ const user=await requireHqUser();
+ if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'No permission to update quote status.'};
+ if(!validId(id))return {ok:false,message:'Invalid quote reference'};
+ const db=dbAdmin();
+ const {data:q}=await db.from('quotes').select('id,status').eq('id',id).maybeSingle();
+ if(!q)return {ok:false,message:'Quote not found.'};
+
+ const allowedFrom:Record<QuoteLifecycleStatus,string[]>={
+  sent:['approved'],
+  accepted:['approved','sent'],
+  declined:['approved','sent'],
+ };
+ if(!allowedFrom[next].includes(q.status)){
+  return {ok:false,message:`Cannot mark as ${next} from status "${q.status}".`};
+ }
+
+ const now=new Date().toISOString();
+ const patch:Record<string,unknown>={status:next,updated_at:now};
+ if(next==='sent')patch.sent_at=now;
+ if(next==='accepted')patch.accepted_at=now;
+
+ const {data:updated,error}=await db.from('quotes').update(patch).eq('id',id).eq('status',q.status).select('id').maybeSingle();
+ if(error||!updated)return {ok:false,message:'Status update failed or quote was changed. Refresh and try again.'};
+
+ const action=next==='sent'?'marked_sent':next;
+ await db.from('quote_activity').insert({quote_id:id,actor_id:user.id,action});
+ revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);revalidatePath('/hq/quotes/'+id+'/preview');
+ if(next==='sent')return {ok:true,message:'Marked as sent. This does not email the customer.'};
+ if(next==='accepted')return {ok:true,message:'Quote marked as accepted.'};
+ return {ok:true,message:'Quote marked as declined.'};
+}
+
+/** Records that the office issued the quote. Does not send email. */
+export async function markQuoteSent(id:string){return advanceQuoteStatus(id,'sent')}
+export async function markQuoteAccepted(id:string){return advanceQuoteStatus(id,'accepted')}
+export async function markQuoteDeclined(id:string){return advanceQuoteStatus(id,'declined')}

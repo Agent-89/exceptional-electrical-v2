@@ -12,12 +12,31 @@ export async function createJob(formData:FormData){
  const description=String(formData.get('description')||'').trim();
  const priority=String(formData.get('priority')||'normal');
  const siteAddress=String(formData.get('site_address_text')||'').trim();
+ const enquiryId=String(formData.get('enquiry_id')||'').trim();
+ const quoteId=String(formData.get('quote_id')||'').trim();
+ const idempotencyKey=String(formData.get('idempotency_key')||'').trim();
+ const uuid=/^[0-9a-f-]{36}$/i;
  if(siteAddress.length>500)throw new Error('Site address is too long.');
  if(title.length<2||title.length>200||description.length>5000||!['low','normal','high','urgent'].includes(priority))throw new Error('Please check the job details.');
+ if(enquiryId&&!uuid.test(enquiryId))throw new Error('Invalid enquiry link.');
+ if(quoteId&&!uuid.test(quoteId))throw new Error('Invalid quote link.');
+ if(!uuid.test(idempotencyKey))throw new Error('Missing create token. Refresh the page and try again.');
  const db=dbAdmin();
+ const {data:existing}=await db.from('jobs').select('id').eq('create_idempotency_key',idempotencyKey).maybeSingle();
+ if(existing){revalidatePath('/hq/jobs');redirect('/hq/jobs/'+existing.id)}
  if(customerId){const {data:customer}=await db.from('customers').select('id').eq('id',customerId).maybeSingle();if(!customer)throw new Error('Customer not found.');}
- const {data,error}=await db.from('jobs').insert({title,description:description||null,customer_id:customerId||null,site_address_text:siteAddress||null,priority,created_by:user.id}).select('id').single();
- if(error||!data)throw new Error('Unable to create job.');
+ if(enquiryId){const {data:enquiry}=await db.from('enquiries').select('id').eq('id',enquiryId).maybeSingle();if(!enquiry)throw new Error('Enquiry not found.');}
+ if(quoteId){const {data:quote}=await db.from('quotes').select('id').eq('id',quoteId).maybeSingle();if(!quote)throw new Error('Quote not found.');}
+ const {data,error}=await db.from('jobs').insert({title,description:description||null,customer_id:customerId||null,site_address_text:siteAddress||null,priority,enquiry_id:enquiryId||null,quote_id:quoteId||null,create_idempotency_key:idempotencyKey,created_by:user.id}).select('id').single();
+ if(error){
+  // Unique violation on create_idempotency_key: a concurrent retry already inserted this job.
+  if(String(error.code)==='23505'||/create_idempotency_key|duplicate key/i.test(error.message||'')){
+   const {data:raced}=await db.from('jobs').select('id').eq('create_idempotency_key',idempotencyKey).maybeSingle();
+   if(raced){revalidatePath('/hq/jobs');redirect('/hq/jobs/'+raced.id)}
+  }
+  throw new Error('Unable to create job.');
+ }
+ if(!data)throw new Error('Unable to create job.');
  await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'created'});
  revalidatePath('/hq/jobs');
  redirect('/hq/jobs/'+data.id);

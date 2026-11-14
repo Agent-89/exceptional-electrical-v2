@@ -6,3 +6,11 @@ out/
 !.env.example
 *.tsbuildinfo
 .DS_Store
+supabase/.temp/
+# Local-only artefacts — never deploy or migrate remotely
+supabase/baselines/
+supabase/seed.sql
+supabase/migrations_history/
+scripts/seed-local-admin.mjs
+scripts/use-local-supabase-env.mjs
+.gitignore.tmp

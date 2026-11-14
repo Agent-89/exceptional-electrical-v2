@@ -26,14 +26,18 @@ begin
   if pg_catalog.length(v_phone)=11 and pg_catalog.left(v_phone,2)='61' then
     v_phone := '0'||pg_catalog.substr(v_phone,3);
   end if;
-  select count(*),min(id) into v_matches,v_id from public.customers c
-  where (v_email<>'' and pg_catalog.lower(pg_catalog.btrim(coalesce(c.email,'')))=v_email)
-     or (pg_catalog.length(v_phone)>=8 and
-       (case when pg_catalog.length(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'))=11
-                 and pg_catalog.left(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'),2)='61'
-          then '0'||pg_catalog.substr(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'),3)
-          else pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g')
-        end)=v_phone);
+  -- Postgres has no min(uuid); aggregate matching ids, then pick deterministically.
+  select count(*)::integer,
+         (pg_catalog.array_agg(c.id order by c.id))[1]
+    into v_matches, v_id
+    from public.customers c
+   where (v_email<>'' and pg_catalog.lower(pg_catalog.btrim(coalesce(c.email,'')))=v_email)
+      or (pg_catalog.length(v_phone)>=8 and
+        (case when pg_catalog.length(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'))=11
+                  and pg_catalog.left(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'),2)='61'
+           then '0'||pg_catalog.substr(pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'),3)
+           else pg_catalog.regexp_replace(coalesce(c.phone,''),'[^0-9]','','g')
+         end)=v_phone);
   if v_matches>1 then
     return pg_catalog.jsonb_build_object('ok',false,'message','Multiple matching customers found. Review them before linking.');
   end if;

@@ -3,10 +3,21 @@ import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 
+/** Block accidental use of hosted Supabase while developing locally. */
+export function assertDevSupabaseTarget(url:string){
+ if(process.env.NODE_ENV==='production')return;
+ if(process.env.ALLOW_HOSTED_SUPABASE==='1')return;
+ let host='';
+ try{host=new URL(url).hostname;}catch{throw new Error('Invalid NEXT_PUBLIC_SUPABASE_URL');}
+ if(host==='127.0.0.1'||host==='localhost')return;
+ throw new Error('Refusing hosted Supabase in development. Use http://127.0.0.1:54321 or set ALLOW_HOSTED_SUPABASE=1.');
+}
+
 export function dbAdmin() {
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL;
  const key=process.env.SUPABASE_SECRET_KEY;
  if(!url||!key)throw new Error('Supabase server configuration missing');
+ assertDevSupabaseTarget(url);
  return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
 }
 export async function hqUser() {
