@@ -87,52 +87,57 @@ export async function removeJobStaff(formData:FormData){
  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'staff_unassigned'});
  revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');
 }
-export async function addJobAppointment(formData:FormData){
- const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
- const jobId=String(formData.get('job_id')||'');const start=String(formData.get('start')||'');const end=String(formData.get('end')||'');const notes=String(formData.get('notes')||'').trim();
- // HTML datetime-local inputs are interpreted in Perth local time, independent of server timezone.
- const parse=(s:string)=>/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(s)?new Date(s+':00+08:00'):new Date(NaN);
- const begins=parse(start),ends=parse(end);
- if(!Number.isFinite(begins.getTime())||!Number.isFinite(ends.getTime())||ends<=begins||notes.length>2000)throw new Error('Please enter a valid appointment.');
- const db=dbAdmin();
- const explicit=formData.get('explicit_visit_staff')==='yes';
- const chosen=[...new Set(formData.getAll('staff_id').map(String))];
- if(chosen.some(id=>!/^[0-9a-f-]{36}$/i.test(id)))throw new Error('Invalid electrician selection.');
- const {data:job,error:jobError}=await db.from('jobs').select('id,status').eq('id',jobId).maybeSingle();
- if(jobError||!job||!isSchedulableJobStatus(job.status))throw new Error('Select an active job.');
- let staffIds:string[];
- if(explicit)staffIds=chosen;
- else{
-  const {data:jobStaff,error:staffLookupError}=await db.from('job_assignments').select('staff_id').eq('job_id',jobId);
-  if(staffLookupError)throw new Error('Unable to read job electricians.');
-  staffIds=[...new Set((jobStaff??[]).map(a=>a.staff_id))];
- }
- if(staffIds.length){
-  const {data:active,error:staffError}=await db.from('scheduling_staff').select('id').eq('active',true).in('id',staffIds);
-  if(staffError||active?.length!==staffIds.length)throw new Error('Choose active electricians only.');
- }
- const {data:overlapping,error:overlapError}=await db.from('job_appointments').select('id,job_id,starts_at,ends_at').eq('status','scheduled').lt('starts_at',ends.toISOString()).gt('ends_at',begins.toISOString()).limit(200);
- if(overlapError)throw new Error('Unable to check existing bookings. Please retry.');
- if((overlapping??[]).some(v=>v.job_id===jobId&&v.starts_at===begins.toISOString()&&v.ends_at===ends.toISOString()))
-  throw new Error('This job already has a visit booked for exactly these times. No duplicate was created.');
- const overlapIds=(overlapping??[]).map(v=>v.id);
- if(staffIds.length&&overlapIds.length){
-  const {data:booked,error:bookedError}=await db.from('job_appointment_staff').select('appointment_id,staff_id').in('appointment_id',overlapIds);
-  if(bookedError)throw new Error('Unable to check electrician availability.');
-  if((booked??[]).some(a=>staffIds.includes(a.staff_id)))
-   throw new Error('One of the selected electricians already has an overlapping HQ visit. Choose another time or electrician.');
- }
- const conflicts=await requireNeilAvailability(staffIds,begins,ends,formData.get('override_neil_calendar')==='yes',user.role);
- const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();
- if(error||!visit)throw new Error('Could not schedule appointment.');
- if(staffIds.length){
-  const {error:staffError}=await db.from('job_appointment_staff').insert(staffIds.map(staff_id=>({appointment_id:visit.id,staff_id})));
-  if(staffError){
-   const {error:rollbackError}=await db.from('job_appointments').delete().eq('id',visit.id);
-   if(rollbackError)throw new Error('Visit was created but assigning electricians failed. Please review the calendar before retrying.');
-   throw new Error('Unable to assign electricians. No appointment was saved.');
+export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;message:string}>{
+ try{
+  const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
+  const jobId=String(formData.get('job_id')||'');const start=String(formData.get('start')||'');const end=String(formData.get('end')||'');const notes=String(formData.get('notes')||'').trim();
+  // HTML datetime-local inputs are interpreted in Perth local time, independent of server timezone.
+  const parse=(s:string)=>/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(s)?new Date(s+':00+08:00'):new Date(NaN);
+  const begins=parse(start),ends=parse(end);
+  if(!Number.isFinite(begins.getTime())||!Number.isFinite(ends.getTime())||ends<=begins||notes.length>2000)throw new Error('Please enter a valid appointment.');
+  const db=dbAdmin();
+  const explicit=formData.get('explicit_visit_staff')==='yes';
+  const chosen=[...new Set(formData.getAll('staff_id').map(String))];
+  if(chosen.some(id=>!/^[0-9a-f-]{36}$/i.test(id)))throw new Error('Invalid electrician selection.');
+  const {data:job,error:jobError}=await db.from('jobs').select('id,status').eq('id',jobId).maybeSingle();
+  if(jobError||!job||!isSchedulableJobStatus(job.status))throw new Error('Select an active job.');
+  let staffIds:string[];
+  if(explicit)staffIds=chosen;
+  else{
+   const {data:jobStaff,error:staffLookupError}=await db.from('job_assignments').select('staff_id').eq('job_id',jobId);
+   if(staffLookupError)throw new Error('Unable to read job electricians.');
+   staffIds=[...new Set((jobStaff??[]).map(a=>a.staff_id))];
   }
+  if(staffIds.length){
+   const {data:active,error:staffError}=await db.from('scheduling_staff').select('id').eq('active',true).in('id',staffIds);
+   if(staffError||active?.length!==staffIds.length)throw new Error('Choose active electricians only.');
+  }
+  const {data:overlapping,error:overlapError}=await db.from('job_appointments').select('id,job_id,starts_at,ends_at').eq('status','scheduled').lt('starts_at',ends.toISOString()).gt('ends_at',begins.toISOString()).limit(200);
+  if(overlapError)throw new Error('Unable to check existing bookings. Please retry.');
+  if((overlapping??[]).some(v=>v.job_id===jobId&&v.starts_at===begins.toISOString()&&v.ends_at===ends.toISOString()))
+   throw new Error('This job already has a visit booked for exactly these times. No duplicate was created.');
+  const overlapIds=(overlapping??[]).map(v=>v.id);
+  if(staffIds.length&&overlapIds.length){
+   const {data:booked,error:bookedError}=await db.from('job_appointment_staff').select('appointment_id,staff_id').in('appointment_id',overlapIds);
+   if(bookedError)throw new Error('Unable to check electrician availability.');
+   if((booked??[]).some(a=>staffIds.includes(a.staff_id)))
+    throw new Error('One of the selected electricians already has an overlapping HQ visit. Choose another time or electrician.');
+  }
+  const conflicts=await requireNeilAvailability(staffIds,begins,ends,formData.get('override_neil_calendar')==='yes',user.role);
+  const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();
+  if(error||!visit)throw new Error('Could not schedule appointment.');
+  if(staffIds.length){
+   const {error:staffError}=await db.from('job_appointment_staff').insert(staffIds.map(staff_id=>({appointment_id:visit.id,staff_id})));
+   if(staffError){
+    const {error:rollbackError}=await db.from('job_appointments').delete().eq('id',visit.id);
+    if(rollbackError)throw new Error('Visit was created but assigning electricians failed. Please review the calendar before retrying.');
+    throw new Error('Unable to assign electricians. No appointment was saved.');
+   }
+  }
+  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
+  revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');
+  return {ok:true,message:'Job scheduled successfully'};
+ }catch(error){
+  return {ok:false,message:error instanceof Error?error.message:'Could not schedule appointment.'};
  }
- await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
- revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');
 }
