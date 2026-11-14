@@ -613,6 +613,10 @@ html{scroll-padding-top:calc(var(--hq-shell-header-height,76px) + 16px);scroll-p
 .hq-login-refined .hq-login-password-toggle:hover{color:#0877d3;background:#eaf5ff}
 .hq-login-refined .hq-login-remember{display:flex;align-items:center;gap:11px;margin:3px 0 0;font-size:13px;font-weight:600;color:#526a7c;cursor:pointer}
 .hq-login-refined .hq-login-remember input{appearance:auto;width:18px;height:18px;min-width:18px;margin:0;accent-color:#1689ed;cursor:pointer}
+.hq-login-forgot{display:flex;justify-content:flex-end;margin:-6px 0 10px}
+.hq-login-forgot a{font-size:12px;font-weight:700;color:#0877d3;text-decoration:none}
+.hq-login-forgot a:hover{text-decoration:underline;text-underline-offset:3px}
+.hq-login-premium .hq-alert{margin:0 0 18px;padding:12px 14px;border-radius:10px;background:#eef6ff;color:#0d4f7c;font-size:13px;line-height:1.45}
 .hq-login-refined .hq-login-submit{margin-top:22px}
 .hq-login-refined .hq-login-secure{margin-top:18px}
 .hq-login-refined .hq-login-footer{justify-content:center}

@@ -2,6 +2,7 @@
 
 1. Connect this repository to a new Vercel project. Do not point the live business domain here until approved.
 2. Configure `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SECRET_KEY` in Vercel server environment. Secret key must never use `NEXT_PUBLIC_`.
+2a. Password recovery: in Supabase Auth → URL Configuration, keep Site URL on the durable HQ origin (not a temporary Preview URL). Add allowlisted Redirect URLs for `/hq/login/reset` on Production, Preview (`https://exceptional-electrical-v2-git-*-bbdhicks-5600s-projects.vercel.app/**` if supported), and local `http://localhost:3000/hq/login/reset`. Optional: set `NEXT_PUBLIC_HQ_ORIGIN` to the canonical HQ origin.
 3. Apply committed migrations carefully on **new/staging** projects only. Historical job/scheduling migrations are incomplete relative to production (see `docs/tradify-migration-and-google-calendar.md`). Do not rewrite already-applied migration files; a separate forward-only reconciliation migration is required before greenfield clones match live HQ.
 4. Create HQ login users in Supabase Auth, then provision `staff_profiles`. Electricians on jobs/schedule use `scheduling_staff` (optional `auth_user_id`); do not conflate those ids with `staff_profiles.user_id`.
 5. Enquiry endpoint needs production-grade edge rate limiting, bot protection, monitoring and notification delivery before marketing launch.
