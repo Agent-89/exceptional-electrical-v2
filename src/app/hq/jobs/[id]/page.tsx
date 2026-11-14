@@ -2,18 +2,43 @@ import Link from 'next/link';
 import {notFound} from 'next/navigation';
 import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
 import {JOB_STATUSES,JOB_STATUS_LABELS} from '@/lib/job-statuses';
+import {listJobAttachments,listJobNotes,signAttachmentUrls} from '@/lib/tech-field';
+import {listTimeEntriesForJob} from '@/lib/tech-time';
 import {updateJob,updateJobDetails,assignJobStaff,removeJobStaff} from '../actions';
 import ScheduleAppointmentForm from './schedule-appointment-form';
+import JobFieldActivity from './job-field-activity';
 import '../../hq.css';
 export const dynamic='force-dynamic';
 export default async function JobPage({params}:{params:Promise<{id:string}>}){
  await requireOfficeUser();const {id}=await params;const db=dbAdmin();
  const {data:job}=await db.from('jobs').select('*').eq('id',id).maybeSingle();if(!job)notFound();
- const [{data:customer},{data:activity},{data:staff},{data:assignments},{data:appointments},{data:customers}]=await Promise.all([job.customer_id?db.from('customers').select('name,email,phone').eq('id',job.customer_id).maybeSingle():Promise.resolve({data:null}),db.from('job_activity').select('id,action,note,created_at').eq('job_id',id).order('created_at',{ascending:false}).limit(50),db.from('scheduling_staff').select('id,full_name').eq('active',true).order('full_name'),db.from('job_assignments').select('staff_id').eq('job_id',id),db.from('job_appointments').select('id,starts_at,ends_at,notes,status').eq('job_id',id).order('starts_at',{ascending:true}),db.from('customers').select('id,name').order('name').limit(1000)]);
+ const appointmentSelectWithField='id,starts_at,ends_at,notes,status,field_status,field_follow_up_required,field_completion_note,field_outstanding_work,field_issues';
+ const appointmentSelectBase='id,starts_at,ends_at,notes,status';
+ const [{data:customer},{data:activity},{data:staff},{data:assignments},appointmentsResult,{data:customers}]=await Promise.all([job.customer_id?db.from('customers').select('name,email,phone').eq('id',job.customer_id).maybeSingle():Promise.resolve({data:null}),db.from('job_activity').select('id,action,note,created_at').eq('job_id',id).order('created_at',{ascending:false}).limit(80),db.from('scheduling_staff').select('id,full_name').eq('active',true).order('full_name'),db.from('job_assignments').select('staff_id').eq('job_id',id),db.from('job_appointments').select(appointmentSelectWithField).eq('job_id',id).order('starts_at',{ascending:true}),db.from('customers').select('id,name').order('name').limit(1000)]);
+ const appointments=appointmentsResult.error
+  ?(await db.from('job_appointments').select(appointmentSelectBase).eq('job_id',id).order('starts_at',{ascending:true})).data
+  :appointmentsResult.data;
+
+ let timeEntries:Awaited<ReturnType<typeof listTimeEntriesForJob>>=[];
+ let notes:Awaited<ReturnType<typeof listJobNotes>>=[];
+ let photos:Awaited<ReturnType<typeof signAttachmentUrls>>=[];
+ try{
+  const [times,noteRows,attachmentRows]=await Promise.all([
+   listTimeEntriesForJob(id),
+   listJobNotes({jobId:id,includeOfficeOnly:true}),
+   listJobAttachments({jobId:id}),
+  ]);
+  timeEntries=times;
+  notes=noteRows;
+  photos=await signAttachmentUrls(attachmentRows,600);
+ }catch{
+  // Milestone 2 tables may not be applied on hosted yet.
+ }
 
  const canEdit=true; // requireOfficeUser already gates technicians
- const events:Record<string,string>={created:'Job created',status_changed:'Status updated',note_added:'Note added',details_updated:'Job details updated',staff_assigned:'Electrician assigned',staff_unassigned:'Electrician removed',appointment_added:'Appointment scheduled'};
+ const events:Record<string,string>={created:'Job created',status_changed:'Status updated',note_added:'Note added',details_updated:'Job details updated',staff_assigned:'Electrician assigned',staff_unassigned:'Electrician removed',appointment_added:'Appointment scheduled',time_started:'Timer started',time_paused:'Break started',time_resumed:'Work resumed',time_submitted:'Time submitted',time_manual_added:'Manual time added',visit_progress_updated:'Visit progress updated',technician_note_added:'Technician note',technician_note_edited:'Technician note edited',photo_uploaded:'Photo uploaded',office_note_added:'Office note',time_approved:'Time approved',time_rejected:'Time rejected',time_corrected:'Time corrected'};
  const assignedNames=(assignments??[]).map(a=>({id:a.staff_id,name:staff?.find(p=>p.id===a.staff_id)?.full_name??'Team member'}));
+ const staffNameById=new Map((staff??[]).map(s=>[s.id as string,s.full_name as string]));
  const upcoming=(appointments??[]).find(a=>a.status==='scheduled'&&new Date(a.ends_at).getTime()>=Date.now());
  return <main className="hq-detail"><div className="hq-detail-inner ee-workspace">
  <Link className="hq-back" href="/hq/jobs">← All jobs</Link>
@@ -26,10 +51,11 @@ export default async function JobPage({params}:{params:Promise<{id:string}>}){
  </div></section>
  <div className="ee-workspace-columns"><div className="ee-workspace-primary"><section className="hq-panel ee-compact-panel"><div className="ee-section-title"><div><span className="ee-eyebrow">WORKFLOW</span><h2>Job status</h2></div></div>
  {canEdit?<details className="ee-expand"><summary>Change status <span aria-hidden="true">＋</span></summary><form action={updateJob} className="ee-edit-form"><input type="hidden" name="id" value={id}/><label>Status<select name="status" defaultValue={job.status}>{JOB_STATUSES.map(status=><option value={status} key={status}>{JOB_STATUS_LABELS[status]}</option>)}</select></label><label>Note (optional)<textarea name="note" rows={2} maxLength={2000} placeholder="Add context for your team"/></label><button className="hq-detail-action-primary">Save status</button></form></details>:null}</section>
+ <JobFieldActivity jobId={id} appointments={(appointments??[]).map(a=>({id:a.id,startsAt:a.starts_at,endsAt:a.ends_at,status:a.status,fieldStatus:(a as {field_status?:string}).field_status??'scheduled',followUp:Boolean((a as {field_follow_up_required?:boolean}).field_follow_up_required),completionNote:(a as {field_completion_note?:string|null}).field_completion_note??null,outstanding:(a as {field_outstanding_work?:string|null}).field_outstanding_work??null,issues:(a as {field_issues?:string|null}).field_issues??null}))} timeEntries={timeEntries.map(e=>({id:e.id,staffName:staffNameById.get(e.staffId)??'Technician',startedAt:e.startedAt,endedAt:e.endedAt,breakMinutes:e.breakMinutes,workedMinutes:e.workedMinutes,billableMinutes:e.billableMinutes,status:e.status,note:e.note}))} notes={notes.map(n=>({id:n.id,body:n.body,authorName:n.authorName,visibility:n.visibility,createdAt:n.createdAt}))} photos={photos.map(p=>({id:p.id,signedUrl:p.signedUrl??null,caption:p.caption}))}/>
  </div><div className="ee-workspace-secondary"><section id="team" className="hq-panel ee-compact-panel"><div className="ee-section-title"><div><span className="ee-eyebrow">TEAM</span><h2>Assigned electricians</h2></div></div>{assignedNames.length?<div className="ee-team-list">{assignedNames.map(a=><div key={a.id}><span className="ee-avatar">{a.name.charAt(0)}</span><strong>{a.name}</strong>{canEdit&&<form action={removeJobStaff}><input type="hidden" name="job_id" value={id}/><input type="hidden" name="staff_id" value={a.id}/><button type="submit" aria-label={'Remove '+a.name}>Remove</button></form>}</div>)}</div>:<p className="ee-muted">No electricians assigned.</p>}
  {canEdit&&(staff??[]).some(p=>!assignedNames.some(a=>a.id===p.id))&&<details className="ee-expand"><summary>+ Assign electrician</summary><form action={assignJobStaff} className="ee-job-inline"><input type="hidden" name="job_id" value={id}/><select name="staff_id" required defaultValue=""><option value="" disabled>Choose staff member</option>{(staff??[]).filter(p=>!assignedNames.some(a=>a.id===p.id)).map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select><button type="submit">Assign</button></form></details>}{canEdit&&!(staff??[]).length&&<p className="ee-muted">No active scheduling staff available to assign.</p>}</section>
  <section id="appointments" className="hq-panel ee-compact-panel"><div className="ee-section-title"><div><span className="ee-eyebrow">SCHEDULE</span><h2>Appointments</h2></div><span className="ee-muted">{appointments?.length??0} visits</span></div>
- {appointments?.length?appointments.map(a=><div className="ee-visit" key={a.id}><strong>{new Date(a.starts_at).toLocaleDateString('en-AU',{timeZone:'Australia/Perth',weekday:'short',day:'numeric',month:'short',year:'numeric'})}</strong><span>{new Date(a.starts_at).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',hour:'numeric',minute:'2-digit'})} – {new Date(a.ends_at).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',hour:'numeric',minute:'2-digit'})} · {a.status}</span>{a.notes&&<p>{a.notes}</p>}</div>):<p className="ee-muted">No visits scheduled yet.</p>}
+ {appointments?.length?appointments.map(a=><div className="ee-visit" key={a.id}><strong>{new Date(a.starts_at).toLocaleDateString('en-AU',{timeZone:'Australia/Perth',weekday:'short',day:'numeric',month:'short',year:'numeric'})}</strong><span>{new Date(a.starts_at).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',hour:'numeric',minute:'2-digit'})} – {new Date(a.ends_at).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',hour:'numeric',minute:'2-digit'})} · {a.status}{(a as {field_status?:string}).field_status&&(a as {field_status?:string}).field_status!=='scheduled'?' · field '+(a as {field_status?:string}).field_status:''}</span>{a.notes&&<p>{a.notes}</p>}</div>):<p className="ee-muted">No visits scheduled yet.</p>}
  {canEdit&&<details className="ee-expand"><summary>+ Schedule a visit</summary><ScheduleAppointmentForm jobId={id}/></details>}</section>
  </div></div>{canEdit&&<section id="edit-job" className="hq-panel ee-compact-panel"><details className="ee-expand ee-edit-details"><summary>Edit job information <span aria-hidden="true">＋</span></summary><form action={updateJobDetails} className="ee-edit-form"><input type="hidden" name="id" value={id}/><label>Job title<input name="title" defaultValue={job.title} minLength={2} maxLength={200} required/></label><label>Customer<select name="customer_id" defaultValue={job.customer_id??''}><option value="">Not selected</option>{(customers??[]).map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label>Site address<input name="site_address_text" defaultValue={job.site_address_text??''} maxLength={500} placeholder="Street, suburb, postcode"/></label><label>Priority<select name="priority" defaultValue={job.priority}>{['low','normal','high','urgent'].map(p=><option key={p} value={p}>{p[0].toUpperCase()+p.slice(1)}</option>)}</select></label><label>Work description<textarea name="description" defaultValue={job.description??''} maxLength={5000} rows={3}/></label><button className="hq-detail-action-primary">Save job details</button></form></details></section>}
  <section className="hq-panel ee-compact-panel"><div className="ee-section-title"><div><span className="ee-eyebrow">HISTORY</span><h2>Activity</h2></div></div>{activity?.length?activity.map(a=><div className="ee-event" key={a.id}><span className="ee-event-dot"/><div><strong>{events[a.action]??a.action.replaceAll('_',' ')}</strong>{a.note&&<p>{a.note}</p>}<small>{new Date(a.created_at).toLocaleString('en-AU',{timeZone:'Australia/Perth',dateStyle:'medium',timeStyle:'short'})}</small></div></div>):<p className="ee-muted">No activity yet.</p>}</section>

@@ -7,6 +7,11 @@ export type TechAppointmentRow = {
   startsAt: string;
   endsAt: string;
   visitStatus: string;
+  fieldStatus: string;
+  fieldFollowUpRequired: boolean;
+  fieldCompletionNote: string | null;
+  fieldOutstandingWork: string | null;
+  fieldIssues: string | null;
   visitNotes: string | null;
   jobId: string;
   jobNumber: number;
@@ -37,7 +42,15 @@ type AppointmentRow = {
   ends_at: string;
   notes: string | null;
   status: string;
+  field_status?: string | null;
+  field_follow_up_required?: boolean | null;
+  field_completion_note?: string | null;
+  field_outstanding_work?: string | null;
+  field_issues?: string | null;
 };
+
+const APPOINTMENT_SELECT =
+  'id,job_id,starts_at,ends_at,notes,status,field_status,field_follow_up_required,field_completion_note,field_outstanding_work,field_issues';
 
 async function appointmentIdsForStaff(staffId: string): Promise<string[]> {
   const db = dbAdmin();
@@ -102,6 +115,11 @@ async function hydrateFromAppointments(
         startsAt: appt.starts_at,
         endsAt: appt.ends_at,
         visitStatus: appt.status,
+        fieldStatus: appt.field_status ?? 'scheduled',
+        fieldFollowUpRequired: Boolean(appt.field_follow_up_required),
+        fieldCompletionNote: appt.field_completion_note ?? null,
+        fieldOutstandingWork: appt.field_outstanding_work ?? null,
+        fieldIssues: appt.field_issues ?? null,
         visitNotes: appt.notes,
         jobId: job.id,
         jobNumber: job.job_number,
@@ -128,20 +146,20 @@ export async function listTechnicianAppointments(
   if (!ids.length) return [];
 
   const db = dbAdmin();
-  let query = db
-    .from('job_appointments')
-    .select('id,job_id,starts_at,ends_at,notes,status')
-    .in('id', ids);
+  const applyFilters = (select: string) => {
+    let query = db.from('job_appointments').select(select).in('id', ids);
+    if (options?.from) query = query.gte('starts_at', options.from.toISOString());
+    if (options?.to) query = query.lt('starts_at', options.to.toISOString());
+    if (options?.statuses?.length) query = query.in('status', options.statuses);
+    return query.order('starts_at', { ascending: true }).limit(options?.limit ?? 200);
+  };
 
-  if (options?.from) query = query.gte('starts_at', options.from.toISOString());
-  if (options?.to) query = query.lt('starts_at', options.to.toISOString());
-  if (options?.statuses?.length) query = query.in('status', options.statuses);
-
-  const { data, error } = await query
-    .order('starts_at', { ascending: true })
-    .limit(options?.limit ?? 200);
-  if (error) throw new Error('Unable to load technician appointments.');
-  return hydrateFromAppointments((data ?? []) as AppointmentRow[]);
+  const primary = await applyFilters(APPOINTMENT_SELECT);
+  const result = primary.error
+    ? await applyFilters('id,job_id,starts_at,ends_at,notes,status')
+    : primary;
+  if (result.error) throw new Error('Unable to load technician appointments.');
+  return hydrateFromAppointments((result.data ?? []) as unknown as AppointmentRow[]);
 }
 
 export async function getTechnicianAppointment(
@@ -158,15 +176,38 @@ export async function getTechnicianAppointment(
   if (linkError) throw new Error('Unable to verify appointment access.');
   if (!link) return null;
 
-  const { data, error } = await db
+  const primary = await db
     .from('job_appointments')
-    .select('id,job_id,starts_at,ends_at,notes,status')
+    .select(APPOINTMENT_SELECT)
     .eq('id', appointmentId)
     .maybeSingle();
-  if (error) throw new Error('Unable to load appointment.');
-  if (!data) return null;
-  const rows = await hydrateFromAppointments([data as AppointmentRow]);
+  const fallback = primary.error
+    ? await db
+        .from('job_appointments')
+        .select('id,job_id,starts_at,ends_at,notes,status')
+        .eq('id', appointmentId)
+        .maybeSingle()
+    : primary;
+  if (fallback.error) throw new Error('Unable to load appointment.');
+  if (!fallback.data) return null;
+  const rows = await hydrateFromAppointments([fallback.data as unknown as AppointmentRow]);
   return rows[0] ?? null;
+}
+
+/** Active field visits still belong on the technician calendar even if scheduling status changes later. */
+const TECH_CALENDAR_STATUSES = ['scheduled', 'completed'] as const;
+
+export async function listTechnicianDaySchedule(
+  staffId: string,
+  dayKey: string,
+): Promise<TechAppointmentRow[]> {
+  const { start, end } = perthDayBounds(dayKey);
+  return listTechnicianAppointments(staffId, {
+    from: start,
+    to: end,
+    statuses: [...TECH_CALENDAR_STATUSES],
+    limit: 80,
+  });
 }
 
 export async function listTechnicianTodayAndUpcoming(staffId: string): Promise<{
@@ -182,7 +223,7 @@ export async function listTechnicianTodayAndUpcoming(staffId: string): Promise<{
     listTechnicianAppointments(staffId, {
       from: todayStart,
       to: todayEnd,
-      statuses: ['scheduled'],
+      statuses: [...TECH_CALENDAR_STATUSES],
       limit: 50,
     }),
     listTechnicianAppointments(staffId, {
@@ -259,14 +300,23 @@ export async function listAuthorizedJobVisits(
   if (!ids.length) return { sample: null, visits: [] };
 
   const db = dbAdmin();
-  const { data, error } = await db
+  const primary = await db
     .from('job_appointments')
-    .select('id,job_id,starts_at,ends_at,notes,status')
+    .select(APPOINTMENT_SELECT)
     .eq('job_id', jobId)
     .in('id', ids)
     .order('starts_at', { ascending: true })
     .limit(100);
-  if (error) throw new Error('Unable to load job visits.');
-  const visits = await hydrateFromAppointments((data ?? []) as AppointmentRow[]);
+  const result = primary.error
+    ? await db
+        .from('job_appointments')
+        .select('id,job_id,starts_at,ends_at,notes,status')
+        .eq('job_id', jobId)
+        .in('id', ids)
+        .order('starts_at', { ascending: true })
+        .limit(100)
+    : primary;
+  if (result.error) throw new Error('Unable to load job visits.');
+  const visits = await hydrateFromAppointments((result.data ?? []) as unknown as AppointmentRow[]);
   return { sample: visits[0] ?? null, visits };
 }

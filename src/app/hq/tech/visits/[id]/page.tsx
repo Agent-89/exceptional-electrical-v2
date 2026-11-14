@@ -9,7 +9,17 @@ import {
   mapsDirectionsUrl,
 } from '@/lib/perth-day';
 import { JOB_STATUS_LABELS } from '@/lib/job-statuses';
+import { listJobAttachments, listJobNotes, signAttachmentUrls } from '@/lib/tech-field';
+import type { FieldStatus } from '@/lib/tech-field-constants';
+import {
+  getActiveTimeEntryForTechnician,
+  listTimeEntriesForAppointment,
+  liveBreakMinutes,
+  liveWorkedMinutes,
+} from '@/lib/tech-time';
+import { elapsedWholeMinutes } from '@/lib/tech-time-format';
 import TechStyles from '../../tech-styles';
+import VisitFieldOps from './visit-field-ops';
 import '../../../hq.css';
 
 export const dynamic = 'force-dynamic';
@@ -21,9 +31,51 @@ export default async function TechVisitPage({ params }: { params: Promise<{ id: 
 
   const visit = await getTechnicianAppointment(crew.staffId, id);
   if (!visit) {
-    // Deny unassigned / other techs' visits without exposing office job pages.
     notFound();
   }
+
+  const [entries, active, notes, attachments] = await Promise.all([
+    listTimeEntriesForAppointment(visit.appointmentId),
+    getActiveTimeEntryForTechnician(crew.id),
+    listJobNotes({
+      jobId: visit.jobId,
+      appointmentId: visit.appointmentId,
+      includeOfficeOnly: false,
+    }),
+    listJobAttachments({ jobId: visit.jobId, appointmentId: visit.appointmentId }),
+  ]);
+  const photos = await signAttachmentUrls(attachments, 600);
+
+  const activeOnThisVisit =
+    active && active.appointmentId === visit.appointmentId
+      ? {
+          id: active.id,
+          status: active.status,
+          startedAt: active.startedAt,
+          endedAt: active.endedAt,
+          breakMinutes: active.breakMinutes,
+          workedMinutes: active.workedMinutes,
+          liveWorkedMinutes: liveWorkedMinutes(active),
+          liveBreakMinutes: liveBreakMinutes(active),
+          note: active.note,
+          entrySource: active.entrySource,
+        }
+      : null;
+
+  const entryViews = entries.map((e) => ({
+    id: e.id,
+    status: e.status,
+    startedAt: e.startedAt,
+    endedAt: e.endedAt,
+    breakMinutes: e.breakMinutes,
+    workedMinutes: e.workedMinutes,
+    liveWorkedMinutes: liveWorkedMinutes(e),
+    liveBreakMinutes: liveBreakMinutes(e),
+    note: e.note,
+    entrySource: e.entrySource,
+  }));
+
+  const scheduledMinutes = elapsedWholeMinutes(visit.startsAt, visit.endsAt);
 
   return (
     <main className="ee-tech">
@@ -38,9 +90,17 @@ export default async function TechVisitPage({ params }: { params: Promise<{ id: 
           <span className="ee-tech-status">
             {JOB_STATUS_LABELS[visit.jobStatus as keyof typeof JOB_STATUS_LABELS] ?? visit.jobStatus}
           </span>{' '}
-          <span className="ee-tech-muted">· Visit {visit.visitStatus}</span>
+          <span className="ee-tech-muted">
+            · Visit {visit.visitStatus} · Field {visit.fieldStatus.replaceAll('_', ' ')}
+          </span>
         </p>
       </header>
+
+      {active && active.appointmentId !== visit.appointmentId ? (
+        <p className="ee-tech-alert" role="status">
+          You have an active timer on another visit. Finish or pause it before starting work here.
+        </p>
+      ) : null}
 
       <section className="ee-tech-panel">
         <h2>Appointment</h2>
@@ -103,6 +163,33 @@ export default async function TechVisitPage({ params }: { params: Promise<{ id: 
           </div>
         </dl>
       </section>
+
+      <VisitFieldOps
+        appointmentId={visit.appointmentId}
+        scheduledLabel={`${formatPerthTime(visit.startsAt)} – ${formatPerthTime(visit.endsAt)}`}
+        scheduledMinutes={scheduledMinutes}
+        fieldStatus={visit.fieldStatus as FieldStatus}
+        activeEntry={activeOnThisVisit}
+        entries={entryViews}
+        notes={notes.map((n) => ({
+          id: n.id,
+          body: n.body,
+          authorName: n.authorName,
+          createdAt: n.createdAt,
+          editedAt: n.editedAt,
+          isOwn: n.authorId === crew.id,
+        }))}
+        photos={photos.map((p) => ({
+          id: p.id,
+          signedUrl: p.signedUrl ?? null,
+          caption: p.caption,
+          createdAt: p.createdAt,
+        }))}
+        completionNote={visit.fieldCompletionNote}
+        outstandingWork={visit.fieldOutstandingWork}
+        issues={visit.fieldIssues}
+        followUpRequired={visit.fieldFollowUpRequired}
+      />
 
       <div className="ee-tech-actions">
         <Link className="ee-tech-btn ee-tech-btn-secondary" href={'/hq/tech/jobs/' + visit.jobId}>
