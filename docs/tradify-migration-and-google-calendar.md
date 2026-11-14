@@ -1,7 +1,25 @@
 # Exceptional Electrical — Tradify migration and calendar integration
 
-## Verified against connected Supabase (12 Nov 2026)
-Existing tables: customers, customer_addresses, jobs, job_assignments, job_appointments, job_appointment_staff, staff_profiles, job_activity.
+## Verified production schema notes (14 Nov 2026)
+
+Live database relationships used by HQ jobs/scheduling (do **not** assume historical Git migrations are complete):
+
+- `jobs.status` CHECK allows: `unassigned`, `assigned`, `scheduled`, `in_progress`, `on_hold`, `completed`, `cancelled`. There is **no** `archived` status.
+- `job_assignments.staff_id` → `scheduling_staff.id`
+- `job_appointment_staff.staff_id` → `scheduling_staff.id`
+- `scheduling_staff.auth_user_id` is nullable → `auth.users.id` (electricians may exist without an HQ login)
+- `staff_profiles.user_id` remains the HQ login / RBAC identity; it is **not** the crew id used on jobs or visits
+
+Committed historical migrations that **no longer match** live production and must not be rewritten blindly:
+
+- `supabase/migrations/202611100001_jobs_foundation.sql` — status CHECK omits `assigned`
+- `supabase/migrations/202611100002_job_assignments_appointments.sql` — `job_assignments.staff_id` incorrectly references `staff_profiles(user_id)`
+- `scheduling_staff` and `job_appointment_staff` are used in production but are **not** defined in committed migrations
+
+A forward-only reconciliation migration (for staging/greenfield only) is planned separately; do not apply schema changes to production as part of app cleanups.
+
+## Earlier inventory (12 Nov 2026)
+Existing tables: customers, customer_addresses, jobs, job_assignments, job_appointments, job_appointment_staff, staff_profiles, scheduling_staff, job_activity.
 Existing jobs fields include job_number, tradify_id, tradify_reference, source, imported_at, customer_id, site_address_id.
 Customer addresses have no Tradify source key. Staff profiles are keyed to auth.users and must NOT be used to create fictitious login accounts.
 
@@ -17,7 +35,7 @@ Customer addresses have no Tradify source key. Staff profiles are keyed to auth.
 3. Sites: identify by (resolved customer ID, normalized site name, normalized address); flag duplicates/ambiguous matches for manual review. Preserve site name and original source row.
 4. Jobs: retain original Job Number; use an explicit Tradify import mapping. Do not overwrite HQ-created jobs on number collisions. Preserve raw Tradify status, with a separate reviewed HQ operational status.
 5. Schedule strings: parse into staff/date/start/end candidate rows. Group entries representing the same visit, review duplicates, cancelled and external appointments; do not auto-publish historical appointments.
-6. Staff: use an independent staff directory or import identities with nullable auth user ID, verified identity mapping and display colour. Never create login accounts from timesheet names.
+6. Staff: import into `scheduling_staff` (nullable `auth_user_id`). Map visit/job crew to `scheduling_staff.id` only. Never create Auth/`staff_profiles` login accounts from timesheet names.
 7. Before applying any rows: report counts, unmatched customers/sites/staff, collisions, missing dates, duplicate source keys, and expected inserts/updates. Require approval for the final import.
 8. Import must be idempotent and reversible by batch; preserve existing customer, job, appointment and activity records.
 

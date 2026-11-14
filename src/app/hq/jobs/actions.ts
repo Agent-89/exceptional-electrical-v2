@@ -1,5 +1,6 @@
 'use server';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
+import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
 import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
@@ -27,7 +28,7 @@ export async function updateJob(formData:FormData){
  const id=String(formData.get('id')||'');
  const status=String(formData.get('status')||'');
  const note=String(formData.get('note')||'').trim();
- if(!/^[a-f0-9-]{36}$/i.test(id)||!['unassigned','assigned','scheduled','in_progress','on_hold','completed','cancelled'].includes(status)||note.length>2000)throw new Error('Invalid update.');
+ if(!/^[a-f0-9-]{36}$/i.test(id)||!isJobStatus(status)||note.length>2000)throw new Error('Invalid update.');
  const db=dbAdmin();
  const {data:before}=await db.from('jobs').select('status').eq('id',id).maybeSingle();
  if(!before)throw new Error('Job not found.');
@@ -50,12 +51,14 @@ export async function updateJobDetails(formData:FormData){
 export async function assignJobStaff(formData:FormData){
  const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
  const jobId=String(formData.get('job_id')||'');const staffId=String(formData.get('staff_id')||'');
- const db=dbAdmin();const {data:staff}=await db.from('scheduling_staff').select('user_id').eq('id',staffId).eq('active',true).maybeSingle();
+ if(!/^[0-9a-f-]{36}$/i.test(jobId)||!/^[0-9a-f-]{36}$/i.test(staffId))throw new Error('Invalid staff assignment.');
+ // job_assignments.staff_id references scheduling_staff.id (not auth / staff_profiles).
+ const db=dbAdmin();const {data:staff}=await db.from('scheduling_staff').select('id').eq('id',staffId).eq('active',true).maybeSingle();
  if(!staff)throw new Error('Staff member not found.');
- const {error}=await db.from('job_assignments').upsert({job_id:jobId,staff_id:staffId},{onConflict:'job_id,staff_id',ignoreDuplicates:true});
+ const {error}=await db.from('job_assignments').upsert({job_id:jobId,staff_id:staff.id},{onConflict:'job_id,staff_id',ignoreDuplicates:true});
  if(error)throw new Error('Could not assign staff.');
  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'staff_assigned'});
- revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/schedule');
+ revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');
 }
 export async function removeJobStaff(formData:FormData){
  const user=await requireHqUser();if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted.');
@@ -77,7 +80,7 @@ export async function addJobAppointment(formData:FormData){
  const chosen=[...new Set(formData.getAll('staff_id').map(String))];
  if(chosen.some(id=>!/^[0-9a-f-]{36}$/i.test(id)))throw new Error('Invalid electrician selection.');
  const {data:job,error:jobError}=await db.from('jobs').select('id,status').eq('id',jobId).maybeSingle();
- if(jobError||!job||['cancelled','completed','archived'].includes(job.status))throw new Error('Select an active job.');
+ if(jobError||!job||!isSchedulableJobStatus(job.status))throw new Error('Select an active job.');
  let staffIds:string[];
  if(explicit)staffIds=chosen;
  else{
