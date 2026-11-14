@@ -22,6 +22,7 @@ import {
   elapsedWholeMinutes,
   getActiveTimeEntryForTechnician,
   getTimeEntry,
+  syncAppointmentFieldStatusFromLiveTimers,
 } from '@/lib/tech-time';
 
 function revalidateVisit(appointmentId: string, jobId: string) {
@@ -117,11 +118,8 @@ export async function pauseWorkAction(formData: FormData) {
     .maybeSingle();
   if (error || !data) throw new Error('Unable to start break. Timer may already be paused.');
 
-  await db
-    .from('job_appointments')
-    .update({ field_status: 'paused' })
-    .eq('id', visit.id)
-    .eq('field_status', 'in_progress');
+  // Do not mark the shared visit paused while another technician is still working.
+  await syncAppointmentFieldStatusFromLiveTimers(visit.id);
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
@@ -165,11 +163,7 @@ export async function resumeWorkAction(formData: FormData) {
     .maybeSingle();
   if (error || !data) throw new Error('Unable to resume work.');
 
-  await db
-    .from('job_appointments')
-    .update({ field_status: 'in_progress' })
-    .eq('id', visit.id)
-    .in('field_status', ['paused', 'scheduled']);
+  await syncAppointmentFieldStatusFromLiveTimers(visit.id);
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,

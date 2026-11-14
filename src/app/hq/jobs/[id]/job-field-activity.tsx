@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
+import { aggregateLabourByJob } from '@/lib/tech-time-multi';
 import { FIELD_STATUS_LABELS, type FieldStatus } from '@/lib/tech-field-constants';
 import { addOfficeNoteAction, reviewTimeEntryAction } from '@/app/hq/tech/actions';
 
@@ -18,6 +19,8 @@ type AppointmentView = {
 type TimeView = {
   id: string;
   staffName: string;
+  technicianUserId: string;
+  appointmentId: string | null;
   startedAt: string;
   endedAt: string | null;
   breakMinutes: number;
@@ -54,6 +57,18 @@ export default function JobFieldActivity({
   notes: NoteView[];
   photos: PhotoView[];
 }) {
+  const labour = aggregateLabourByJob(
+    timeEntries.map((e) => ({
+      jobId,
+      technicianUserId: e.technicianUserId,
+      appointmentId: e.appointmentId,
+      workedMinutes: e.workedMinutes,
+      billableMinutes: e.billableMinutes,
+      breakMinutes: e.breakMinutes,
+      status: e.status,
+    })),
+  )[0];
+
   return (
     <>
       <section className="hq-panel ee-compact-panel">
@@ -111,6 +126,15 @@ export default function JobFieldActivity({
             Timesheets →
           </Link>
         </div>
+        {labour ? (
+          <p className="ee-muted" style={{ marginTop: 0 }}>
+            Job labour: {formatDurationMinutes(labour.totalWorkedMinutes)} worked across{' '}
+            {labour.technicianCount} technician{labour.technicianCount === 1 ? '' : 's'} (
+            {labour.entryCount} entries). Breaks {formatDurationMinutes(labour.totalBreakMinutes)}.
+            Billable {formatDurationMinutes(labour.totalBillableMinutes)}
+            {labour.billableUnsetCount ? ` · ${labour.billableUnsetCount} unset` : ''}.
+          </p>
+        ) : null}
         {timeEntries.length ? (
           timeEntries.map((e) => (
             <div className="ee-visit" key={e.id}>

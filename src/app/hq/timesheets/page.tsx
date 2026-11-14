@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { dbAdmin, requireOfficeUser } from '@/lib/hq-auth';
 import { formatJobNumber } from '@/lib/perth-day';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
+import { aggregateLabourByJob } from '@/lib/tech-time-multi';
 import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
 import '../hq.css';
 
@@ -97,6 +98,17 @@ export default async function TimesheetsPage({
       { number: j.job_number as number, title: j.title as string },
     ]),
   );
+  const labourByJob = aggregateLabourByJob(
+    list.map((entry) => ({
+      jobId: entry.job_id,
+      technicianUserId: entry.technician_user_id,
+      appointmentId: entry.appointment_id,
+      workedMinutes: entry.worked_minutes,
+      billableMinutes: entry.billable_minutes,
+      breakMinutes: entry.break_minutes,
+      status: entry.status,
+    })),
+  );
 
   return (
     <main className="hq-detail">
@@ -165,11 +177,52 @@ export default async function TimesheetsPage({
           </form>
         </section>
 
+        {labourByJob.length ? (
+          <section className="hq-panel ee-compact-panel">
+            <div className="ee-section-title">
+              <div>
+                <span className="ee-eyebrow">JOB LABOUR</span>
+                <h2>Totals by job</h2>
+              </div>
+            </div>
+            <p className="ee-muted" style={{ marginTop: 0 }}>
+              Individual technician entries are listed below. Worked totals exclude breaks and stay
+              separate from billable hours.
+            </p>
+            {labourByJob.map((row) => {
+              const job = jobMap.get(row.jobId);
+              return (
+                <div className="ee-timesheet-row" key={row.jobId}>
+                  <strong>
+                    {job ? (
+                      <Link href={'/hq/jobs/' + row.jobId}>
+                        {formatJobNumber(job.number)} · {job.title}
+                      </Link>
+                    ) : (
+                      row.jobId
+                    )}
+                  </strong>
+                  <p>
+                    {row.entryCount} entries · {row.technicianCount} technician
+                    {row.technicianCount === 1 ? '' : 's'} · Worked{' '}
+                    {formatDurationMinutes(row.totalWorkedMinutes)} · Breaks{' '}
+                    {formatDurationMinutes(row.totalBreakMinutes)} · Billable{' '}
+                    {formatDurationMinutes(row.totalBillableMinutes)}
+                    {row.billableUnsetCount
+                      ? ` · ${row.billableUnsetCount} without billable set`
+                      : ''}
+                  </p>
+                </div>
+              );
+            })}
+          </section>
+        ) : null}
+
         <section className="hq-panel ee-compact-panel">
           <div className="ee-section-title">
             <div>
               <span className="ee-eyebrow">ENTRIES</span>
-              <h2>{list.length} results</h2>
+              <h2>{list.length} individual results</h2>
             </div>
           </div>
           {list.length === 0 ? (

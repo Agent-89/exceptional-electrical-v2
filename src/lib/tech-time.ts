@@ -1,12 +1,14 @@
 import 'server-only';
 import { dbAdmin } from '@/lib/hq-auth';
 import { computeWorkedMinutes, elapsedWholeMinutes } from '@/lib/tech-time-format';
+import { deriveVisitFieldStatusFromLiveTimers } from '@/lib/tech-time-multi';
 
 export {
   computeWorkedMinutes,
   elapsedWholeMinutes,
   formatDurationMinutes,
 } from '@/lib/tech-time-format';
+export { aggregateLabourByJob, deriveVisitFieldStatusFromLiveTimers } from '@/lib/tech-time-multi';
 
 export type TimeEntryStatus =
   | 'active'
@@ -155,4 +157,36 @@ export async function getTimeEntry(id: string): Promise<JobTimeEntry | null> {
   const { data, error } = await db.from('job_time_entries').select(SELECT).eq('id', id).maybeSingle();
   if (error) throw new Error('Unable to load time entry.');
   return data ? mapTimeEntry(data as DbRow) : null;
+}
+
+/**
+ * Sync shared visit field_status from live timers without letting one
+ * technician's pause flip the visit while another tech is still working.
+ */
+export async function syncAppointmentFieldStatusFromLiveTimers(
+  appointmentId: string,
+): Promise<'in_progress' | 'paused' | null> {
+  const db = dbAdmin();
+  const { data, error } = await db
+    .from('job_time_entries')
+    .select('technician_user_id,status')
+    .eq('appointment_id', appointmentId)
+    .in('status', ['active', 'on_break']);
+  if (error) throw new Error('Unable to inspect live timers for visit.');
+
+  const next = deriveVisitFieldStatusFromLiveTimers(
+    (data ?? []).map((row) => ({
+      technicianUserId: row.technician_user_id as string,
+      status: row.status as 'active' | 'on_break',
+    })),
+  );
+  if (!next) return null;
+
+  const { error: updateError } = await db
+    .from('job_appointments')
+    .update({ field_status: next })
+    .eq('id', appointmentId)
+    .in('field_status', ['scheduled', 'in_progress', 'paused']);
+  if (updateError) throw new Error('Unable to sync visit progress from timers.');
+  return next;
 }

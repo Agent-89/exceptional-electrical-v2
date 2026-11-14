@@ -106,39 +106,132 @@ async function main() {
   assert(photoBucket, 'job-photos bucket missing');
   assert(photoBucket.public === false, 'job-photos bucket must be private');
 
-  // Active unique index: insert one active, second should fail.
-  const entryA = {
-    job_id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0061',
-    appointment_id: TODAY_APPT,
-    staff_id: CREW_ID,
-    technician_user_id: tech.LOCAL_TECH_USER_ID,
-    started_at: new Date().toISOString(),
-    status: 'active',
-    entry_source: 'timer',
-  };
-  await fetch(`${api}/rest/v1/job_time_entries?technician_user_id=eq.${tech.LOCAL_TECH_USER_ID}&status=in.(active,on_break)`, {
-    method: 'DELETE',
-    headers,
+  const CREW_B = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0002';
+  const JOB_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0061';
+  const crewRows = await fetch(
+    `${api}/rest/v1/scheduling_staff?id=in.(${CREW_ID},${CREW_B})&select=id,auth_user_id,full_name`,
+    { headers },
+  ).then((r) => r.json());
+  const crewA = crewRows.find((r) => r.id === CREW_ID);
+  const crewB = crewRows.find((r) => r.id === CREW_B);
+  assert(crewA?.auth_user_id === tech.LOCAL_TECH_USER_ID, 'Crew A auth mapping missing');
+  assert(crewB, 'Crew B missing from seed');
+
+  // Prefer Crew B auth mapping; otherwise borrow any other active staff profile.
+  let techBUserId = crewB.auth_user_id;
+  if (!techBUserId) {
+    const profiles = await fetch(
+      `${api}/rest/v1/staff_profiles?active=eq.true&select=user_id&user_id=neq.${tech.LOCAL_TECH_USER_ID}&limit=1`,
+      { headers },
+    ).then((r) => r.json());
+    techBUserId = profiles[0]?.user_id;
+  }
+  assert(techBUserId, 'Need a second staff_profiles user for multi-tech timer probe');
+
+  // Clean live timers for both technicians before concurrent probes.
+  for (const userId of [tech.LOCAL_TECH_USER_ID, techBUserId]) {
+    await fetch(
+      `${api}/rest/v1/job_time_entries?technician_user_id=eq.${userId}&status=in.(active,on_break)`,
+      { method: 'DELETE', headers },
+    );
+  }
+
+  // Ensure both technicians are assigned to the shared visit for the probe.
+  await fetch(`${api}/rest/v1/job_appointment_staff?on_conflict=appointment_id,staff_id`, {
+    method: 'POST',
+    headers: { ...headers, Prefer: 'resolution=ignore-duplicates' },
+    body: JSON.stringify([
+      { appointment_id: TODAY_APPT, staff_id: CREW_ID },
+      { appointment_id: TODAY_APPT, staff_id: CREW_B },
+    ]),
   });
-  const first = await fetch(`${api}/rest/v1/job_time_entries`, {
+
+  const startedAt = new Date().toISOString();
+  const startA = await fetch(`${api}/rest/v1/rpc/tech_start_time_entry`, {
     method: 'POST',
     headers: { ...headers, Prefer: 'return=representation' },
-    body: JSON.stringify(entryA),
+    body: JSON.stringify({
+      p_job_id: JOB_ID,
+      p_appointment_id: TODAY_APPT,
+      p_staff_id: CREW_ID,
+      p_technician_user_id: tech.LOCAL_TECH_USER_ID,
+      p_started_at: startedAt,
+      p_note: 'multi-tech A',
+    }),
   });
-  assert(first.ok, 'Failed to create first active timer');
-  const second = await fetch(`${api}/rest/v1/job_time_entries`, {
+  const startABody = await startA.text();
+  assert(startA.ok, 'Technician A failed to start timer: ' + startABody);
+  const entryIdA = JSON.parse(startABody);
+
+  const startB = await fetch(`${api}/rest/v1/rpc/tech_start_time_entry`, {
+    method: 'POST',
+    headers: { ...headers, Prefer: 'return=representation' },
+    body: JSON.stringify({
+      p_job_id: JOB_ID,
+      p_appointment_id: TODAY_APPT,
+      p_staff_id: CREW_B,
+      p_technician_user_id: techBUserId,
+      p_started_at: startedAt,
+      p_note: 'multi-tech B',
+    }),
+  });
+  const startBBody = await startB.text();
+  assert(startB.ok, 'Technician B should start concurrently on same visit: ' + startBBody);
+  const entryIdB = JSON.parse(startBBody);
+  assert(entryIdA && entryIdB && entryIdA !== entryIdB, 'Expected distinct active entry IDs');
+
+  const live = await fetch(
+    `${api}/rest/v1/job_time_entries?appointment_id=eq.${TODAY_APPT}&status=eq.active&select=id,technician_user_id,job_id,appointment_id,staff_id`,
+    { headers },
+  ).then((r) => r.json());
+  assert(live.length >= 2, 'Expected two active timers on the shared appointment');
+  assert(
+    live.every((row) => row.job_id && row.appointment_id && row.technician_user_id && row.staff_id),
+    'Each entry must store technician, job and appointment IDs',
+  );
+
+  const dupA = await fetch(`${api}/rest/v1/rpc/tech_start_time_entry`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(entryA),
+    body: JSON.stringify({
+      p_job_id: JOB_ID,
+      p_appointment_id: TODAY_APPT,
+      p_staff_id: CREW_ID,
+      p_technician_user_id: tech.LOCAL_TECH_USER_ID,
+      p_started_at: new Date().toISOString(),
+    }),
   });
-  assert(!second.ok, 'Duplicate active timer should be rejected by unique index');
+  assert(!dupA.ok, 'Same technician must not start a second active session');
 
-  await fetch(`${api}/rest/v1/job_time_entries?technician_user_id=eq.${tech.LOCAL_TECH_USER_ID}&status=eq.active`, {
-    method: 'DELETE',
-    headers,
+  // Pause A only — B remains active.
+  const pauseA = await fetch(`${api}/rest/v1/job_time_entries?id=eq.${entryIdA}`, {
+    method: 'PATCH',
+    headers: { ...headers, Prefer: 'return=representation' },
+    body: JSON.stringify({
+      status: 'on_break',
+      break_started_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
   });
+  assert(pauseA.ok, 'Failed to pause technician A');
+  const bStill = await fetch(
+    `${api}/rest/v1/job_time_entries?id=eq.${entryIdB}&select=id,status,technician_user_id`,
+    { headers },
+  ).then((r) => r.json());
+  assert(bStill[0]?.status === 'active', "Technician A's pause must not affect Technician B");
 
-  console.log('Milestone 2 permission smoke checks passed.');
+  for (const userId of [tech.LOCAL_TECH_USER_ID, techBUserId]) {
+    await fetch(
+      `${api}/rest/v1/job_time_entries?technician_user_id=eq.${userId}&status=in.(active,on_break)`,
+      { method: 'DELETE', headers },
+    );
+  }
+  await fetch(
+    `${api}/rest/v1/job_appointment_staff?appointment_id=eq.${TODAY_APPT}&staff_id=eq.${CREW_B}`,
+    { method: 'DELETE', headers },
+  );
+
+  console.log('Milestone 2 permission smoke checks passed (including multi-tech concurrent timers).');
 }
 
 main().catch((err) => {
