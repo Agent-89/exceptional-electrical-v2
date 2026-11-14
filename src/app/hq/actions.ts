@@ -2,7 +2,8 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { dbAdmin,requireHqUser } from '@/lib/hq-auth';
+import { assertOfficeOps,dbAdmin,requireHqUser } from '@/lib/hq-auth';
+import { canManageOfficeOps, hqHomePath } from '@/lib/hq-roles';
 import { isValidFollowUpDueDate } from '@/lib/follow-up-due-date';
 
 export async function loginAction(form:FormData){
@@ -12,7 +13,7 @@ export async function loginAction(form:FormData){
  const db=dbAdmin();
  const {data,error}=await db.auth.signInWithPassword({email,password});
  if(error||!data.session||!data.user)redirect('/hq/login?error=credentials');
- const {data:staff}=await db.from('staff_profiles').select('active').eq('user_id',data.user.id).eq('active',true).maybeSingle();
+ const {data:staff}=await db.from('staff_profiles').select('active,role').eq('user_id',data.user.id).eq('active',true).maybeSingle();
  if(!staff)redirect('/hq/login?error=access');
  const remember=form.get('remember')==='on';
  const jar=await cookies();
@@ -22,7 +23,7 @@ export async function loginAction(form:FormData){
  jar.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
  jar.set('ee_hq_access',data.session.access_token,{httpOnly:true,secure,sameSite:'lax',path:'/',maxAge:data.session.expires_in});
  jar.set('ee_hq_refresh',data.session.refresh_token,{httpOnly:true,secure,sameSite:'lax',path:'/',...(remember?{maxAge:60*60*24*30}:{})});
- redirect('/hq');
+ redirect(hqHomePath(String(staff.role)));
 }
 export async function logoutAction(){
  const jar=await cookies();
@@ -33,7 +34,7 @@ export async function logoutAction(){
 const allowed=['new','contacted','qualified','scheduled','closed','spam'] as const;
 export async function updateEnquiryAction(form:FormData){
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))throw new Error('Insufficient permissions');
+ assertOfficeOps(user);
  const id=String(form.get('id')??'');
  const status=String(form.get('status')??'');
  if(!/^[0-9a-f-]{36}$/i.test(id)||!allowed.some(x=>x===status))throw new Error('Invalid enquiry update');
@@ -52,7 +53,7 @@ export async function updateEnquiryAction(form:FormData){
 
 export async function addEnquiryNoteAction(form:FormData){
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))throw new Error('Insufficient permissions');
+ assertOfficeOps(user);
  const id=String(form.get('id')??'');
  const note=String(form.get('note')??'').trim();
  if(!/^[0-9a-f-]{36}$/i.test(id)||note.length<2||note.length>3000)throw new Error('Please enter a note between 2 and 3000 characters');
@@ -68,7 +69,7 @@ export async function addEnquiryNoteAction(form:FormData){
 type MutationResult={ok:boolean;message:string;status?:string;activity?:{id:string;actor_id:string|null;action:string;note:string|null;created_at:string;actor_name:string}};
 export async function saveEnquiryStatus(id:string,status:string):Promise<MutationResult>{
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!canManageOfficeOps(user.role))return {ok:false,message:'Insufficient permissions'};
  if(!/^[0-9a-f-]{36}$/i.test(id)||!allowed.some(x=>x===status))return {ok:false,message:'Invalid status'};
  const db=dbAdmin();
  const {data:previous,error:readError}=await db.from('enquiries').select('status').eq('id',id).single();
@@ -83,7 +84,7 @@ export async function saveEnquiryStatus(id:string,status:string):Promise<Mutatio
 }
 export async function saveEnquiryNote(id:string,noteInput:string):Promise<MutationResult>{
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!canManageOfficeOps(user.role))return {ok:false,message:'Insufficient permissions'};
  const note=noteInput.trim();
  if(!/^[0-9a-f-]{36}$/i.test(id)||note.length<2||note.length>3000)return {ok:false,message:'Enter a note between 2 and 3000 characters'};
  const db=dbAdmin();
@@ -96,7 +97,7 @@ export async function saveEnquiryNote(id:string,noteInput:string):Promise<Mutati
 
 export async function convertEnquiryToCustomer(id:string):Promise<{ok:boolean;message:string;customerId?:string}>{
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!canManageOfficeOps(user.role))return {ok:false,message:'Insufficient permissions'};
  if(!/^[0-9a-f-]{36}$/i.test(id))return {ok:false,message:'Invalid enquiry'};
  const db=dbAdmin();
  const {data:e,error}=await db.from('enquiries').select('id,name,email,phone,customer_id').eq('id',id).single();
@@ -117,7 +118,7 @@ export async function convertEnquiryToCustomer(id:string):Promise<{ok:boolean;me
 
 export async function saveEnquiryFollowUp(id:string,required:boolean,dueDate:string):Promise<MutationResult>{
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!canManageOfficeOps(user.role))return {ok:false,message:'Insufficient permissions'};
  if(!/^[0-9a-f-]{36}$/i.test(id)||!isValidFollowUpDueDate(dueDate))return {ok:false,message:'Invalid follow-up details'};
  const due=required&&dueDate?new Date(dueDate+'T09:00:00+08:00'):null;
  if(due&&Number.isNaN(due.getTime()))return {ok:false,message:'Invalid follow-up date'};
@@ -132,7 +133,7 @@ export async function saveEnquiryFollowUp(id:string,required:boolean,dueDate:str
 
 export async function verifyEnquiryCallDetails(id:string):Promise<MutationResult>{
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Insufficient permissions'};
+ if(!canManageOfficeOps(user.role))return {ok:false,message:'Insufficient permissions'};
  if(!/^[0-9a-f-]{36}$/i.test(id))return {ok:false,message:'Invalid enquiry'};
  const db=dbAdmin();
  const {data:updated,error}=await db.from('enquiries').update({intake_needs_review:false,updated_at:new Date().toISOString()}).eq('id',id).eq('intake_needs_review',true).select('id').maybeSingle();

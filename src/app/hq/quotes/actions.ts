@@ -1,12 +1,13 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
+import {canManageAdminOps,canManageOfficeOps} from '@/lib/hq-roles';
 type Line={description:string;category:string;quantity:number;unit:string;price:number;cost:number|null;gst:boolean};
 export type QuoteDraft={id?:string;customerId:string;enquiryId:string;addressId:string;address:string;title:string;scope:string;inclusions:string;exclusions:string;notes:string;internalNotes:string;display:string;mode:string;lines:Line[]};
 const validId=(s:string)=>/^[0-9a-f-]{36}$/i.test(s);
 export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:string;id?:string}>{
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'No permission to edit quotes'};
+ if(!canManageOfficeOps(user.role))return {ok:false,message:'No permission to edit quotes'};
  if((v.id&&!validId(v.id))||(v.customerId&&!validId(v.customerId))||(v.enquiryId&&!validId(v.enquiryId))||(v.addressId&&!validId(v.addressId)))return {ok:false,message:'Invalid record reference'};
  if(!v.title.trim())return {ok:false,message:'Enter a quote title'};
  if(v.title.length>200||v.scope.length>12000||v.address.length>1500||v.internalNotes.length>6000||v.lines.length>100)return {ok:false,message:'Quote exceeds field limits'};
@@ -28,7 +29,7 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
 
 export async function approveQuote(id:string):Promise<{ok:boolean;message:string}>{
  const user=await requireHqUser();
- if(!['owner','admin'].includes(user.role))return {ok:false,message:'Only an owner or admin can approve quotes.'};
+ if(!canManageAdminOps(user.role))return {ok:false,message:'Only an owner or admin can approve quotes.'};
  if(!validId(id))return {ok:false,message:'Invalid quote reference'};
  const db=dbAdmin();
  const {data:q}=await db.from('quotes').select('id,status,customer_id,title,scope_of_work,site_address_snapshot').eq('id',id).maybeSingle();
@@ -44,7 +45,7 @@ export async function approveQuote(id:string):Promise<{ok:boolean;message:string
 }
 export async function saveAndApproveQuote(v:QuoteDraft):Promise<{ok:boolean;message:string;id?:string}>{
  const user=await requireHqUser();
- if(!['owner','admin'].includes(user.role))return {ok:false,message:'Only an owner or admin can approve quotes.'};
+ if(!canManageAdminOps(user.role))return {ok:false,message:'Only an owner or admin can approve quotes.'};
  const saved=await saveQuoteDraft(v);
  if(!saved.ok||!saved.id)return saved;
  const approved=await approveQuote(saved.id);
@@ -55,7 +56,7 @@ type QuoteLifecycleStatus='sent'|'accepted'|'declined';
 
 async function advanceQuoteStatus(id:string,next:QuoteLifecycleStatus):Promise<{ok:boolean;message:string}>{
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'No permission to update quote status.'};
+ if(!canManageOfficeOps(user.role))return {ok:false,message:'No permission to update quote status.'};
  if(!validId(id))return {ok:false,message:'Invalid quote reference'};
  const db=dbAdmin();
  const {data:q}=await db.from('quotes').select('id,status').eq('id',id).maybeSingle();

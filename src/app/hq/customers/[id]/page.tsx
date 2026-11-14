@@ -1,7 +1,7 @@
 import CustomerEditor, {CustomerNoteForm} from './customer-editor';
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
-import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
 import '../../hq.css';
 export const dynamic='force-dynamic';
 
@@ -18,7 +18,7 @@ function quoteAmountIncGst(items:{quantity:number|string;unit_price_cents:number
 const money=(cents:number)=>cents.toLocaleString('en-AU',{style:'currency',currency:'AUD'});
 
 export default async function CustomerDetail({params}:{params:Promise<{id:string}>}){
- await requireHqUser();
+ await requireOfficeUser();
  const {id}=await params;
  if(!/^[0-9a-f-]{36}$/i.test(id))notFound();
  const db=dbAdmin();

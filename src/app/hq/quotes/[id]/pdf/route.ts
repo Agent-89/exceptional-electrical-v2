@@ -2,7 +2,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
-import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
+import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const FIXED='Fixed-price electrical work';
@@ -10,7 +10,7 @@ const fmt=(n:number)=>'$'+(n/100).toLocaleString('en-AU',{minimumFractionDigits:
 const esc=(s:string)=>s.normalize('NFKD').replace(/[^\x20-\x7e]/g,' ').replaceAll('\\','\\\\').replaceAll('(','\\(').replaceAll(')','\\)');
 type Item={description:string;category:string;quantity:number;unit:string;unit_price_cents:number;gst_applicable:boolean};
 export async function GET(_request:NextRequest,{params}:{params:Promise<{id:string}>}){
- await requireHqUser();
+ await requireOfficeUser();
  const {id}=await params;
  if(!/^[0-9a-f-]{36}$/i.test(id))return new NextResponse('Invalid quote',{status:400});
  const db=dbAdmin();

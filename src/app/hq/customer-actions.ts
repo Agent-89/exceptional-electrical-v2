@@ -1,6 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {canManageOfficeOps} from '@/lib/hq-roles';
 import {
   findCustomerMatches,
   normalizeCustomerEmail,
@@ -20,7 +21,7 @@ export type CustomerMutationResult={
 type Result=CustomerMutationResult;
 const uuid=(s:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 const text=(v:FormDataEntryValue|null)=>String(v??'').trim();
-async function staff(){const u=await requireHqUser();return ['owner','admin','office'].includes(u.role)?u:null;}
+async function staff(){const u=await requireHqUser();return canManageOfficeOps(u.role)?u:null;}
 
 function conflictResult(matches:CustomerMatchRecord[],action:'create'|'update'):Result{
  if(matches.length===1){

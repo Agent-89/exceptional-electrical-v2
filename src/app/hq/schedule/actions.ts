@@ -1,11 +1,11 @@
 'use server';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 import {revalidatePath} from 'next/cache';
-import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
 const parsePerth=(s:string)=>/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)?new Date(s+':00+08:00'):new Date(NaN);
 export async function updateScheduledVisit(formData:FormData){
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted to manage scheduling.');
+ assertOfficeOps(user);
  const id=String(formData.get('appointment_id')||'');
  const action=String(formData.get('operation')||'reschedule');
  if(!/^[0-9a-f-]{36}$/i.test(id)||!['reschedule','cancel'].includes(action))throw new Error('Invalid appointment action.');
@@ -33,7 +33,7 @@ export async function updateScheduledVisit(formData:FormData){
 
 export async function updateVisitStaff(formData:FormData){
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted to dispatch staff.');
+ assertOfficeOps(user);
  const id=String(formData.get('appointment_id')||'');
  const staffIds=[...new Set(formData.getAll('staff_id').map(String).filter(Boolean))];
  if(!/^[0-9a-f-]{36}$/i.test(id)||staffIds.some(v=>!/^[0-9a-f-]{36}$/i.test(v)))throw new Error('Invalid visit assignment.');
@@ -62,7 +62,7 @@ export async function updateVisitStaff(formData:FormData){
 /** Persist a calendar drag or resize without changing its crew or notes. */
 export async function setScheduledVisitTimes(id:string,startIso:string,endIso:string,expectedStartIso:string,overrideNeil=false){
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))throw new Error('Not permitted to change visits.');
+ assertOfficeOps(user);
  if(!/^[0-9a-f-]{36}$/i.test(id))throw new Error('Invalid appointment.');
  const start=new Date(startIso),end=new Date(endIso),expected=new Date(expectedStartIso);
  if(![start,end,expected].every(d=>Number.isFinite(d.getTime()))||end<=start||end.getTime()-start.getTime()>7*86400000||start.getTime()%900000!==0||end.getTime()%900000!==0)throw new Error('Choose valid 15-minute appointment times.');

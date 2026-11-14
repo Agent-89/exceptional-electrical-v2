@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import {FilePlus2,UsersRound,Inbox} from 'lucide-react';
-import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
+import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 import './hq.css';
 export const dynamic='force-dynamic';
 type Enquiry={id:string;name:string|null;service:string|null;status:string;follow_up_required:boolean|null;intake_needs_review:boolean|null;created_at:string;suburb:string|null};
 type Quote={id:string;quote_number:string;title:string|null;status:string;updated_at:string};
 export default async function HQ(){
- const user=await requireHqUser();
+ const user=await requireOfficeUser();
  const db=dbAdmin();
  const [enquiryResult,quoteResult,newCount,followUpCount,reviewCount,pendingCount]=await Promise.all([
   db.from('enquiries').select('id,name,service,status,follow_up_required,intake_needs_review,created_at,suburb').order('created_at',{ascending:false}).limit(30),

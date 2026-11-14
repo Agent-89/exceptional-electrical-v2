@@ -1,6 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
+import {canManageOfficeOps} from '@/lib/hq-roles';
 import {
   findCustomerMatches,
   normalizeCustomerEmail,
@@ -16,7 +17,7 @@ export async function createQuoteCustomer(
  allowDuplicate=false
 ):Promise<CustomerMutationResult>{
  const user=await requireHqUser();
- if(!['owner','admin','office'].includes(user.role))return {ok:false,message:'Not authorised'};
+ if(!canManageOfficeOps(user.role))return {ok:false,message:'Not authorised'};
  const trimmedName=name.trim();
  const normalizedEmail=normalizeCustomerEmail(email);
  const trimmedPhone=phone.trim();
