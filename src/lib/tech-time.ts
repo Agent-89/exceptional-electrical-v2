@@ -190,3 +190,23 @@ export async function syncAppointmentFieldStatusFromLiveTimers(
   if (updateError) throw new Error('Unable to sync visit progress from timers.');
   return next;
 }
+
+/** Batch-load scheduling_staff display names for time-entry staff_id values. */
+export async function schedulingStaffNamesByIds(
+  staffIds: string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(staffIds.filter(Boolean))];
+  const map = new Map<string, string>();
+  if (!unique.length) return map;
+  const db = dbAdmin();
+  const { data, error } = await db
+    .from('scheduling_staff')
+    .select('id,full_name')
+    .in('id', unique);
+  if (error) throw new Error('Unable to load technician names.');
+  for (const row of data ?? []) {
+    const name = String(row.full_name ?? '').trim();
+    if (name) map.set(row.id as string, name);
+  }
+  return map;
+}

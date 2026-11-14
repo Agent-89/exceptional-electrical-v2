@@ -8,6 +8,7 @@ import {
   resolveTechnicianVisitOutcome,
   timerFinishCompletesVisit,
   visitOutcomeUpdatesJobStatus,
+  visitReportSaveIsNoop,
   visitReportSnapshotsMatch,
 } from './tech-visit-report.ts';
 
@@ -146,6 +147,25 @@ describe('shared visit report concurrency', () => {
         },
       ),
       true,
+    );
+  });
+
+  it('treats identical proposed saves as no-ops so activity is not duplicated', () => {
+    const current = {
+      fieldStatus: 'in_progress',
+      completionNote: 'Pulled cable',
+      outstandingWork: null,
+      issues: null,
+      furtherVisitRequired: false,
+    };
+    assert.equal(visitReportSaveIsNoop(current, { ...current }), true);
+    assert.equal(
+      visitReportSaveIsNoop(current, { ...current, completionNote: 'Pulled cable ' }),
+      true,
+    );
+    assert.equal(
+      visitReportSaveIsNoop(current, { ...current, completionNote: 'Different note' }),
+      false,
     );
   });
 });

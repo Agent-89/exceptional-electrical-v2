@@ -19,6 +19,7 @@ import {
   normalizeVisitReportText,
   resolveTechnicianVisitOutcome,
   visitOutcomeUpdatesJobStatus,
+  visitReportSaveIsNoop,
   visitReportSnapshotsMatch,
   type VisitReportSnapshot,
 } from '@/lib/tech-visit-report';
@@ -29,6 +30,22 @@ import {
   getTimeEntry,
   syncAppointmentFieldStatusFromLiveTimers,
 } from '@/lib/tech-time';
+
+/** Soft result for tech field actions — avoid throwing expected UX errors (they become 500 digests). */
+export type TechFieldActionResult =
+  | { ok: true; noop?: boolean; message?: string }
+  | { ok: false; error: string; code?: 'conflict' | 'validation' | 'forbidden' | 'unknown' };
+
+function okResult(extra?: { noop?: boolean; message?: string }): TechFieldActionResult {
+  return { ok: true, ...extra };
+}
+
+function failResult(
+  error: string,
+  code: 'conflict' | 'validation' | 'forbidden' | 'unknown' = 'unknown',
+): TechFieldActionResult {
+  return { ok: false, error, code };
+}
 
 function revalidateVisit(appointmentId: string, jobId: string) {
   revalidatePath('/hq/tech');
@@ -58,7 +75,7 @@ async function assertAssignedAppointment(appointmentId: string) {
   return { crew, visit };
 }
 
-export async function startWorkAction(formData: FormData) {
+export async function startWorkAction(formData: FormData): Promise<TechFieldActionResult> {
   const appointmentId = String(formData.get('appointment_id') || '');
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
   const note = textField(formData, 'note', 2000);
@@ -77,9 +94,12 @@ export async function startWorkAction(formData: FormData) {
   if (error) {
     const msg = error.message || '';
     if (msg.includes('ACTIVE_SESSION_EXISTS')) {
-      throw new Error('You already have an active work timer. Finish or pause it before starting another.');
+      return failResult(
+        'You already have an active work timer. Finish or pause it before starting another.',
+        'validation',
+      );
     }
-    throw new Error('Unable to start work timer.');
+    return failResult('Unable to start work timer.');
   }
 
   if (visit.field_status === 'scheduled' || visit.field_status === 'paused') {
@@ -98,13 +118,14 @@ export async function startWorkAction(formData: FormData) {
   });
 
   revalidateVisit(visit.id, visit.job_id);
+  return okResult({ message: 'Work started' });
 }
 
-export async function pauseWorkAction(formData: FormData) {
+export async function pauseWorkAction(formData: FormData): Promise<TechFieldActionResult> {
   const appointmentId = String(formData.get('appointment_id') || '');
   const entryId = String(formData.get('entry_id') || '');
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
-  if (!/^[0-9a-f-]{36}$/i.test(entryId)) throw new Error('Invalid time entry.');
+  if (!/^[0-9a-f-]{36}$/i.test(entryId)) return failResult('Invalid time entry.', 'validation');
 
   const db = dbAdmin();
   const now = new Date().toISOString();
@@ -121,7 +142,9 @@ export async function pauseWorkAction(formData: FormData) {
     .eq('status', 'active')
     .select('id')
     .maybeSingle();
-  if (error || !data) throw new Error('Unable to start break. Timer may already be paused.');
+  if (error || !data) {
+    return failResult('Unable to start break. Timer may already be paused.', 'validation');
+  }
 
   // Do not mark the shared visit paused while another technician is still working.
   await syncAppointmentFieldStatusFromLiveTimers(visit.id);
@@ -134,20 +157,21 @@ export async function pauseWorkAction(formData: FormData) {
   });
 
   revalidateVisit(visit.id, visit.job_id);
+  return okResult({ message: 'Break started' });
 }
 
-export async function resumeWorkAction(formData: FormData) {
+export async function resumeWorkAction(formData: FormData): Promise<TechFieldActionResult> {
   const appointmentId = String(formData.get('appointment_id') || '');
   const entryId = String(formData.get('entry_id') || '');
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
-  if (!/^[0-9a-f-]{36}$/i.test(entryId)) throw new Error('Invalid time entry.');
+  if (!/^[0-9a-f-]{36}$/i.test(entryId)) return failResult('Invalid time entry.', 'validation');
 
   const entry = await getTimeEntry(entryId);
   if (!entry || entry.technicianUserId !== crew.id || entry.appointmentId !== visit.id) {
-    throw new Error('Time entry not found.');
+    return failResult('Time entry not found.', 'forbidden');
   }
   if (entry.status !== 'on_break' || !entry.breakStartedAt) {
-    throw new Error('Timer is not on break.');
+    return failResult('Timer is not on break.', 'validation');
   }
 
   const now = new Date().toISOString();
@@ -166,7 +190,7 @@ export async function resumeWorkAction(formData: FormData) {
     .eq('technician_user_id', crew.id)
     .select('id')
     .maybeSingle();
-  if (error || !data) throw new Error('Unable to resume work.');
+  if (error || !data) return failResult('Unable to resume work.');
 
   await syncAppointmentFieldStatusFromLiveTimers(visit.id);
 
@@ -178,21 +202,22 @@ export async function resumeWorkAction(formData: FormData) {
   });
 
   revalidateVisit(visit.id, visit.job_id);
+  return okResult({ message: 'Work resumed' });
 }
 
-export async function finishWorkAction(formData: FormData) {
+export async function finishWorkAction(formData: FormData): Promise<TechFieldActionResult> {
   const appointmentId = String(formData.get('appointment_id') || '');
   const entryId = String(formData.get('entry_id') || '');
   const note = textField(formData, 'note', 2000);
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
-  if (!/^[0-9a-f-]{36}$/i.test(entryId)) throw new Error('Invalid time entry.');
+  if (!/^[0-9a-f-]{36}$/i.test(entryId)) return failResult('Invalid time entry.', 'validation');
 
   const entry = await getTimeEntry(entryId);
   if (!entry || entry.technicianUserId !== crew.id || entry.appointmentId !== visit.id) {
-    throw new Error('Time entry not found.');
+    return failResult('Time entry not found.', 'forbidden');
   }
   if (entry.status !== 'active' && entry.status !== 'on_break') {
-    throw new Error('Timer is not running.');
+    return failResult('Timer is not running.', 'validation');
   }
 
   const now = new Date().toISOString();
@@ -222,7 +247,7 @@ export async function finishWorkAction(formData: FormData) {
     .eq('technician_user_id', crew.id)
     .select('id')
     .maybeSingle();
-  if (error || !data) throw new Error('Unable to finish work timer.');
+  if (error || !data) return failResult('Unable to finish work timer.');
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
@@ -236,7 +261,7 @@ export async function finishWorkAction(formData: FormData) {
   redirect(`/hq/tech/visits/${visit.id}?time=recorded#visit-report`);
 }
 
-export async function addManualTimeEntryAction(formData: FormData) {
+export async function addManualTimeEntryAction(formData: FormData): Promise<TechFieldActionResult> {
   const appointmentId = String(formData.get('appointment_id') || '');
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
   const startLocal = String(formData.get('started_at') || '');
@@ -245,18 +270,20 @@ export async function addManualTimeEntryAction(formData: FormData) {
   const note = textField(formData, 'note', 2000);
 
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(startLocal) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(endLocal)) {
-    throw new Error('Enter valid start and end times.');
+    return failResult('Enter valid start and end times.', 'validation');
   }
   const startedAt = new Date(startLocal + '+08:00');
   const endedAt = new Date(endLocal + '+08:00');
   if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime()) || endedAt <= startedAt) {
-    throw new Error('End time must be after start time.');
+    return failResult('End time must be after start time.', 'validation');
   }
   const worked = computeWorkedMinutes(startedAt.toISOString(), endedAt.toISOString(), breakMinutes);
-  if (worked <= 0) throw new Error('Worked time must be greater than zero after breaks.');
+  if (worked <= 0) {
+    return failResult('Worked time must be greater than zero after breaks.', 'validation');
+  }
 
   const active = await getActiveTimeEntryForTechnician(crew.id);
-  if (active) throw new Error('Finish your active timer before adding a manual entry.');
+  if (active) return failResult('Finish your active timer before adding a manual entry.', 'validation');
 
   const db = dbAdmin();
   const { data, error } = await db
@@ -281,7 +308,7 @@ export async function addManualTimeEntryAction(formData: FormData) {
     })
     .select('id')
     .maybeSingle();
-  if (error || !data) throw new Error('Unable to save manual time entry.');
+  if (error || !data) return failResult('Unable to save manual time entry.');
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
@@ -291,6 +318,7 @@ export async function addManualTimeEntryAction(formData: FormData) {
   });
 
   revalidateVisit(visit.id, visit.job_id);
+  return okResult({ message: 'Manual time entry saved' });
 }
 
 async function countAppointmentTechnicians(appointmentId: string): Promise<number> {
@@ -346,7 +374,7 @@ function applyVisitReportExpectation(query: any, expected: VisitReportSnapshot) 
   return next;
 }
 
-export async function updateVisitProgressAction(formData: FormData) {
+export async function updateVisitProgressAction(formData: FormData): Promise<TechFieldActionResult> {
   const appointmentId = String(formData.get('appointment_id') || '');
   const requested = String(formData.get('field_status') || '');
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
@@ -355,7 +383,7 @@ export async function updateVisitProgressAction(formData: FormData) {
     requested,
     assignedTechnicianCount: assignedCount,
   });
-  if (!resolved.ok) throw new Error(resolved.error);
+  if (!resolved.ok) return failResult(resolved.error, 'validation');
 
   const completionNote = textField(formData, 'completion_note', 2000);
   const outstanding = textField(formData, 'outstanding_work', 2000);
@@ -376,8 +404,16 @@ export async function updateVisitProgressAction(formData: FormData) {
 
   // Guardrail: visit reporting must never mutate jobs.status.
   if (visitOutcomeUpdatesJobStatus()) {
-    throw new Error('Visit reporting misconfigured: job status must stay unchanged.');
+    return failResult('Visit reporting misconfigured: job status must stay unchanged.');
   }
+
+  const proposed: VisitReportSnapshot = {
+    fieldStatus: built.fieldStatus,
+    completionNote: built.completionNote,
+    outstandingWork: built.outstandingWork,
+    issues: built.issues,
+    furtherVisitRequired: built.furtherVisitRequired,
+  };
 
   const patch: Record<string, unknown> = {
     field_status: built.fieldStatus,
@@ -399,9 +435,16 @@ export async function updateVisitProgressAction(formData: FormData) {
     )
     .eq('id', visit.id)
     .maybeSingle();
-  if (currentError || !current) throw new Error('Unable to save visit report.');
-  if (!visitReportSnapshotsMatch(expected, snapshotFromAppointmentRow(current))) {
-    throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
+  if (currentError || !current) return failResult('Unable to save visit report.');
+  const currentSnapshot = snapshotFromAppointmentRow(current);
+  if (!visitReportSnapshotsMatch(expected, currentSnapshot)) {
+    return failResult(VISIT_REPORT_CONFLICT_MESSAGE, 'conflict');
+  }
+
+  // Identical re-save: keep concurrency check, skip write + activity duplicate.
+  if (visitReportSaveIsNoop(currentSnapshot, proposed)) {
+    revalidateVisit(visit.id, visit.job_id);
+    return okResult({ noop: true, message: 'Visit report already up to date' });
   }
 
   const { data, error } = await applyVisitReportExpectation(
@@ -410,8 +453,8 @@ export async function updateVisitProgressAction(formData: FormData) {
   )
     .select('id')
     .maybeSingle();
-  if (error) throw new Error('Unable to save visit report.');
-  if (!data) throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
+  if (error) return failResult('Unable to save visit report.');
+  if (!data) return failResult(VISIT_REPORT_CONFLICT_MESSAGE, 'conflict');
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
@@ -424,6 +467,7 @@ export async function updateVisitProgressAction(formData: FormData) {
   });
 
   revalidateVisit(visit.id, visit.job_id);
+  return okResult({ message: 'Visit report saved' });
 }
 
 /** Office finalises the shared visit outcome (used when multiple technicians are assigned). */
@@ -481,8 +525,21 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
     .eq('id', visit.id)
     .maybeSingle();
   if (currentError || !current) throw new Error('Unable to update visit outcome.');
-  if (!visitReportSnapshotsMatch(expected, snapshotFromAppointmentRow(current))) {
+  const currentSnapshot = snapshotFromAppointmentRow(current);
+  if (!visitReportSnapshotsMatch(expected, currentSnapshot)) {
     throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
+  }
+
+  const proposed: VisitReportSnapshot = {
+    fieldStatus: built.fieldStatus,
+    completionNote: built.completionNote,
+    outstandingWork: built.outstandingWork,
+    issues: built.issues,
+    furtherVisitRequired: built.furtherVisitRequired,
+  };
+  if (visitReportSaveIsNoop(currentSnapshot, proposed)) {
+    revalidateVisit(visit.id, visit.job_id);
+    return;
   }
 
   const { data, error } = await applyVisitReportExpectation(
@@ -506,10 +563,10 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
   revalidateVisit(visit.id, visit.job_id);
 }
 
-export async function addTechnicianNoteAction(formData: FormData) {
+export async function addTechnicianNoteAction(formData: FormData): Promise<TechFieldActionResult> {
   const appointmentId = String(formData.get('appointment_id') || '');
   const body = textField(formData, 'body', 4000);
-  if (!body) throw new Error('Note cannot be empty.');
+  if (!body) return failResult('Note cannot be empty.', 'validation');
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
   const db = dbAdmin();
   const { data, error } = await db
@@ -524,7 +581,7 @@ export async function addTechnicianNoteAction(formData: FormData) {
     })
     .select('id')
     .maybeSingle();
-  if (error || !data) throw new Error('Unable to save note.');
+  if (error || !data) return failResult('Unable to save note.');
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
@@ -534,6 +591,7 @@ export async function addTechnicianNoteAction(formData: FormData) {
   });
 
   revalidateVisit(visit.id, visit.job_id);
+  return okResult({ message: 'Note saved' });
 }
 
 export async function editOwnNoteAction(formData: FormData) {

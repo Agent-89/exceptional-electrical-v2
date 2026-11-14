@@ -16,6 +16,7 @@ import {
   listTimeEntriesForAppointment,
   liveBreakMinutes,
   liveWorkedMinutes,
+  schedulingStaffNamesByIds,
 } from '@/lib/tech-time';
 import { elapsedWholeMinutes } from '@/lib/tech-time-format';
 import TechStyles from '../../tech-styles';
@@ -51,12 +52,16 @@ export default async function TechVisitPage({
     }),
     listJobAttachments({ jobId: visit.jobId, appointmentId: visit.appointmentId }),
   ]);
-  const photos = await signAttachmentUrls(attachments, 600);
+  const [staffNames, photos] = await Promise.all([
+    schedulingStaffNamesByIds(entries.map((e) => e.staffId)),
+    signAttachmentUrls(attachments, 600),
+  ]);
 
   const activeOnThisVisit =
     active && active.appointmentId === visit.appointmentId
       ? {
           id: active.id,
+          staffName: staffNames.get(active.staffId) ?? 'Technician',
           status: active.status,
           startedAt: active.startedAt,
           endedAt: active.endedAt,
@@ -71,6 +76,7 @@ export default async function TechVisitPage({
 
   const entryViews = entries.map((e) => ({
     id: e.id,
+    staffName: staffNames.get(e.staffId) ?? 'Technician',
     status: e.status,
     startedAt: e.startedAt,
     endedAt: e.endedAt,

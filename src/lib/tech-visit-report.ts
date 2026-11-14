@@ -90,6 +90,14 @@ export function visitReportSnapshotsMatch(
   );
 }
 
+/** True when the proposed save matches what is already stored — skip write + audit. */
+export function visitReportSaveIsNoop(
+  current: VisitReportSnapshot,
+  proposed: VisitReportSnapshot,
+): boolean {
+  return visitReportSnapshotsMatch(current, proposed);
+}
+
 export type VisitReportPatch = VisitReportFields & {
   fieldStatus: FieldStatus;
   fieldCompletedAt: string | null | undefined;

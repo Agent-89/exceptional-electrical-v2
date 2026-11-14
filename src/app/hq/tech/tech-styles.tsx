@@ -93,6 +93,11 @@ export default function TechStyles() {
 .ee-tech-gallery img{width:100%;height:100%;object-fit:cover;display:block}
 .ee-tech-time-row{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid #e8eef3;font-size:13px}
 .ee-tech-time-row strong{font-size:14px}
+.ee-tech-entry-status{display:inline-flex;align-items:center;width:fit-content;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.ee-tech-entry-active{background:#e8f6ee;color:#1f6b3a}
+.ee-tech-entry-break{background:#fff4e5;color:#8a5a12}
+.ee-tech-entry-submitted{background:#eef5fb;color:#0d649f}
+.ee-tech-entry-other{background:#f2f4f6;color:#526a7c}
 @media(min-width:700px){.ee-tech{padding:24px 20px 36px;max-width:860px}.ee-tech-cal-scroll{max-height:min(70vh,720px)}.ee-tech-cal-grid{grid-template-columns:62px minmax(0,1fr)}.ee-tech-gallery{grid-template-columns:repeat(4,minmax(0,1fr))}}
 `}</style>
   );
