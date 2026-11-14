@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  VISIT_REPORT_CONFLICT_MESSAGE,
   buildVisitReportPatch,
   canTechnicianFinaliseSharedVisit,
   defaultVisitOutcomeForForm,
   resolveTechnicianVisitOutcome,
   timerFinishCompletesVisit,
   visitOutcomeUpdatesJobStatus,
+  visitReportSnapshotsMatch,
 } from './tech-visit-report.ts';
 
 describe('visit report outcomes', () => {
@@ -102,5 +104,48 @@ describe('multi-technician shared visit finalisation', () => {
       assignedTechnicianCount: 1,
     });
     assert.equal(bad.ok, false);
+  });
+});
+
+describe('shared visit report concurrency', () => {
+  it('detects when another technician changed the shared report since the form loaded', () => {
+    const expected = {
+      fieldStatus: 'in_progress',
+      completionNote: 'Tech A pulled cable',
+      outstandingWork: null,
+      issues: null,
+      furtherVisitRequired: false,
+    };
+    assert.equal(visitReportSnapshotsMatch(expected, expected), true);
+    assert.equal(
+      visitReportSnapshotsMatch(expected, {
+        ...expected,
+        completionNote: 'Tech B finished switchboard',
+      }),
+      false,
+    );
+    assert.match(VISIT_REPORT_CONFLICT_MESSAGE, /updated by someone else/i);
+  });
+
+  it('treats blank and null report text as equivalent snapshots', () => {
+    assert.equal(
+      visitReportSnapshotsMatch(
+        {
+          fieldStatus: 'in_progress',
+          completionNote: '',
+          outstandingWork: null,
+          issues: '  ',
+          furtherVisitRequired: false,
+        },
+        {
+          fieldStatus: 'in_progress',
+          completionNote: null,
+          outstandingWork: null,
+          issues: null,
+          furtherVisitRequired: false,
+        },
+      ),
+      true,
+    );
   });
 });

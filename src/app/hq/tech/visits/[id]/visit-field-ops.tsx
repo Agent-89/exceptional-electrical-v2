@@ -258,6 +258,13 @@ export default function VisitFieldOps({
         ) : null}
         <form action={updateVisitProgressAction} className="ee-tech-form">
           <input type="hidden" name="appointment_id" value={appointmentId} />
+          <input type="hidden" name="expected_field_status" value={fieldStatus} />
+          <input type="hidden" name="expected_completion_note" value={completionNote ?? ''} />
+          <input type="hidden" name="expected_outstanding_work" value={outstandingWork ?? ''} />
+          <input type="hidden" name="expected_issues" value={issues ?? ''} />
+          {followUpRequired ? (
+            <input type="hidden" name="expected_follow_up_required" value="yes" />
+          ) : null}
           <fieldset className="ee-tech-outcome">
             <legend>Visit outcome</legend>
             {selectableOutcomes.map((key) => (

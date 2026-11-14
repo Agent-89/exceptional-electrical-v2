@@ -62,6 +62,34 @@ export type VisitReportFields = {
   furtherVisitRequired: boolean;
 };
 
+/** Snapshot used for optimistic concurrency on shared visit report rows. */
+export type VisitReportSnapshot = VisitReportFields & {
+  fieldStatus: string;
+};
+
+export const VISIT_REPORT_CONFLICT_MESSAGE =
+  'This visit report was updated by someone else. Refresh the page and try again.';
+
+export function normalizeVisitReportText(value: string | null | undefined): string | null {
+  const trimmed = String(value ?? '').trim();
+  return trimmed ? trimmed : null;
+}
+
+export function visitReportSnapshotsMatch(
+  expected: VisitReportSnapshot,
+  current: VisitReportSnapshot,
+): boolean {
+  return (
+    expected.fieldStatus === current.fieldStatus &&
+    normalizeVisitReportText(expected.completionNote) ===
+      normalizeVisitReportText(current.completionNote) &&
+    normalizeVisitReportText(expected.outstandingWork) ===
+      normalizeVisitReportText(current.outstandingWork) &&
+    normalizeVisitReportText(expected.issues) === normalizeVisitReportText(current.issues) &&
+    Boolean(expected.furtherVisitRequired) === Boolean(current.furtherVisitRequired)
+  );
+}
+
 export type VisitReportPatch = VisitReportFields & {
   fieldStatus: FieldStatus;
   fieldCompletedAt: string | null | undefined;

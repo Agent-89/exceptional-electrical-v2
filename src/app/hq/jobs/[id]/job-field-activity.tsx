@@ -128,6 +128,13 @@ export default function JobFieldActivity({
                 {!isTerminalVisitOutcome(a.fieldStatus) ? (
                   <form action={officeUpdateVisitOutcomeAction} className="ee-edit-form" style={{ marginTop: 12 }}>
                     <input type="hidden" name="appointment_id" value={a.id} />
+                    <input type="hidden" name="expected_field_status" value={a.fieldStatus} />
+                    <input type="hidden" name="expected_completion_note" value={a.completionNote ?? ''} />
+                    <input type="hidden" name="expected_outstanding_work" value={a.outstanding ?? ''} />
+                    <input type="hidden" name="expected_issues" value={a.issues ?? ''} />
+                    {a.followUp ? (
+                      <input type="hidden" name="expected_follow_up_required" value="yes" />
+                    ) : null}
                     <input type="hidden" name="completion_note" value={a.completionNote ?? ''} />
                     <input type="hidden" name="outstanding_work" value={a.outstanding ?? ''} />
                     <input type="hidden" name="issues" value={a.issues ?? ''} />

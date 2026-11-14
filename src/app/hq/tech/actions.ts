@@ -13,10 +13,14 @@ import {
 } from '@/lib/hq-auth';
 import { ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES } from '@/lib/tech-field-constants';
 import {
+  VISIT_REPORT_CONFLICT_MESSAGE,
   buildVisitReportPatch,
   isVisitOutcomeStatus,
+  normalizeVisitReportText,
   resolveTechnicianVisitOutcome,
   visitOutcomeUpdatesJobStatus,
+  visitReportSnapshotsMatch,
+  type VisitReportSnapshot,
 } from '@/lib/tech-visit-report';
 import {
   computeWorkedMinutes,
@@ -300,6 +304,48 @@ async function countAppointmentTechnicians(appointmentId: string): Promise<numbe
   return new Set((data ?? []).map((row) => row.staff_id as string)).size;
 }
 
+function expectedVisitReportSnapshot(formData: FormData): VisitReportSnapshot {
+  return {
+    fieldStatus: String(formData.get('expected_field_status') || ''),
+    completionNote: normalizeVisitReportText(String(formData.get('expected_completion_note') ?? '')),
+    outstandingWork: normalizeVisitReportText(String(formData.get('expected_outstanding_work') ?? '')),
+    issues: normalizeVisitReportText(String(formData.get('expected_issues') ?? '')),
+    furtherVisitRequired: String(formData.get('expected_follow_up_required') || '') === 'yes',
+  };
+}
+
+function snapshotFromAppointmentRow(row: {
+  field_status: string;
+  field_completion_note: string | null;
+  field_outstanding_work: string | null;
+  field_issues: string | null;
+  field_follow_up_required: boolean;
+}): VisitReportSnapshot {
+  return {
+    fieldStatus: row.field_status,
+    completionNote: normalizeVisitReportText(row.field_completion_note),
+    outstandingWork: normalizeVisitReportText(row.field_outstanding_work),
+    issues: normalizeVisitReportText(row.field_issues),
+    furtherVisitRequired: Boolean(row.field_follow_up_required),
+  };
+}
+
+/** Conditional update matching the form's loaded snapshot (null-aware). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyVisitReportExpectation(query: any, expected: VisitReportSnapshot) {
+  let next = query
+    .eq('field_status', expected.fieldStatus)
+    .eq('field_follow_up_required', expected.furtherVisitRequired);
+  next = expected.completionNote
+    ? next.eq('field_completion_note', expected.completionNote)
+    : next.is('field_completion_note', null);
+  next = expected.outstandingWork
+    ? next.eq('field_outstanding_work', expected.outstandingWork)
+    : next.is('field_outstanding_work', null);
+  next = expected.issues ? next.eq('field_issues', expected.issues) : next.is('field_issues', null);
+  return next;
+}
+
 export async function updateVisitProgressAction(formData: FormData) {
   const appointmentId = String(formData.get('appointment_id') || '');
   const requested = String(formData.get('field_status') || '');
@@ -315,6 +361,7 @@ export async function updateVisitProgressAction(formData: FormData) {
   const outstanding = textField(formData, 'outstanding_work', 2000);
   const issues = textField(formData, 'issues', 2000);
   const furtherVisit = String(formData.get('follow_up_required') || '') === 'yes';
+  const expected = expectedVisitReportSnapshot(formData);
   const built = buildVisitReportPatch({
     fieldStatus: resolved.fieldStatus,
     fields: {
@@ -345,13 +392,26 @@ export async function updateVisitProgressAction(formData: FormData) {
   if (built.appointmentStatusCompleted) patch.status = 'completed';
 
   const db = dbAdmin();
-  const { data, error } = await db
+  const { data: current, error: currentError } = await db
     .from('job_appointments')
-    .update(patch)
+    .select(
+      'id,field_status,field_completion_note,field_outstanding_work,field_issues,field_follow_up_required',
+    )
     .eq('id', visit.id)
+    .maybeSingle();
+  if (currentError || !current) throw new Error('Unable to save visit report.');
+  if (!visitReportSnapshotsMatch(expected, snapshotFromAppointmentRow(current))) {
+    throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
+  }
+
+  const { data, error } = await applyVisitReportExpectation(
+    db.from('job_appointments').update(patch).eq('id', visit.id),
+    expected,
+  )
     .select('id')
     .maybeSingle();
-  if (error || !data) throw new Error('Unable to save visit report.');
+  if (error) throw new Error('Unable to save visit report.');
+  if (!data) throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
@@ -389,6 +449,7 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
   const outstanding = textField(formData, 'outstanding_work', 2000);
   const issues = textField(formData, 'issues', 2000);
   const furtherVisit = String(formData.get('follow_up_required') || '') === 'yes';
+  const expected = expectedVisitReportSnapshot(formData);
   const built = buildVisitReportPatch({
     fieldStatus: nextStatus,
     fields: {
@@ -412,13 +473,26 @@ export async function officeUpdateVisitOutcomeAction(formData: FormData) {
   else patch.field_completed_at = null;
   if (built.appointmentStatusCompleted) patch.status = 'completed';
 
-  const { data, error } = await db
+  const { data: current, error: currentError } = await db
     .from('job_appointments')
-    .update(patch)
+    .select(
+      'id,field_status,field_completion_note,field_outstanding_work,field_issues,field_follow_up_required',
+    )
     .eq('id', visit.id)
+    .maybeSingle();
+  if (currentError || !current) throw new Error('Unable to update visit outcome.');
+  if (!visitReportSnapshotsMatch(expected, snapshotFromAppointmentRow(current))) {
+    throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
+  }
+
+  const { data, error } = await applyVisitReportExpectation(
+    db.from('job_appointments').update(patch).eq('id', visit.id),
+    expected,
+  )
     .select('id')
     .maybeSingle();
-  if (error || !data) throw new Error('Unable to update visit outcome.');
+  if (error) throw new Error('Unable to update visit outcome.');
+  if (!data) throw new Error(VISIT_REPORT_CONFLICT_MESSAGE);
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
