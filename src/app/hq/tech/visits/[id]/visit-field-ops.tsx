@@ -13,6 +13,14 @@ import {
 } from '../../actions';
 import { FIELD_STATUS_LABELS, type FieldStatus } from '@/lib/tech-field-constants';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
+import {
+  VISIT_OUTCOME_HINTS,
+  VISIT_OUTCOME_LABELS,
+  VISIT_OUTCOME_STATUSES,
+  canTechnicianFinaliseSharedVisit,
+  defaultVisitOutcomeForForm,
+  type VisitOutcomeStatus,
+} from '@/lib/tech-visit-report';
 
 type TimeEntryView = {
   id: string;
@@ -45,9 +53,12 @@ type PhotoView = {
 
 type Props = {
   appointmentId: string;
+  appointmentDateLabel: string;
   scheduledLabel: string;
   scheduledMinutes: number;
   fieldStatus: FieldStatus;
+  assignedTechnicianCount: number;
+  timeRecorded: boolean;
   activeEntry: TimeEntryView | null;
   entries: TimeEntryView[];
   notes: NoteView[];
@@ -69,9 +80,12 @@ function SubmitButton({ label, className }: { label: string; className: string }
 
 export default function VisitFieldOps({
   appointmentId,
+  appointmentDateLabel,
   scheduledLabel,
   scheduledMinutes,
   fieldStatus,
+  assignedTechnicianCount,
+  timeRecorded,
   activeEntry,
   entries,
   notes,
@@ -81,10 +95,15 @@ export default function VisitFieldOps({
   issues,
   followUpRequired,
 }: Props) {
-  const timerForThisVisit =
-    activeEntry && activeEntry.id
-      ? activeEntry
-      : null;
+  const timerForThisVisit = activeEntry && activeEntry.id ? activeEntry : null;
+  const canFinalise = canTechnicianFinaliseSharedVisit(assignedTechnicianCount);
+  const selectableOutcomes: VisitOutcomeStatus[] = canFinalise
+    ? [...VISIT_OUTCOME_STATUSES]
+    : ['in_progress'];
+  const defaultOutcome = defaultVisitOutcomeForForm(fieldStatus);
+  const formDefault = selectableOutcomes.includes(defaultOutcome)
+    ? defaultOutcome
+    : 'in_progress';
 
   return (
     <div className="ee-tech-stack">
@@ -106,6 +125,15 @@ export default function VisitFieldOps({
             </span>
             <span>Scheduled duration {formatDurationMinutes(scheduledMinutes)} (unchanged by timer)</span>
           </div>
+
+          {timeRecorded && !timerForThisVisit ? (
+            <div className="ee-tech-alert ee-tech-alert-success" role="status">
+              <p style={{ margin: 0 }}>Time recorded. Complete your visit report when you&apos;re ready.</p>
+              <a className="ee-tech-btn ee-tech-btn-secondary" href="#visit-report" style={{ marginTop: 8 }}>
+                Go to Visit Report
+              </a>
+            </div>
+          ) : null}
 
           {!timerForThisVisit ? (
             <form action={startWorkAction} className="ee-tech-actions">
@@ -202,23 +230,52 @@ export default function VisitFieldOps({
         ) : null}
       </section>
 
-      <section className="ee-tech-panel">
-        <h2>Job progress</h2>
+      <section className="ee-tech-panel" id="visit-report">
+        <h2>Visit Report</h2>
+        <dl className="ee-tech-dl" style={{ marginBottom: 12 }}>
+          <div>
+            <dt>Appointment</dt>
+            <dd>
+              {appointmentDateLabel}
+              <br />
+              {scheduledLabel}
+            </dd>
+          </div>
+          <div>
+            <dt>Current visit outcome</dt>
+            <dd>{FIELD_STATUS_LABELS[fieldStatus]}</dd>
+          </div>
+        </dl>
         <p className="ee-tech-muted" style={{ marginTop: 0 }}>
-          Current: <strong>{FIELD_STATUS_LABELS[fieldStatus]}</strong>. Completing a visit does not close the whole job.
+          Completing a visit does not close the overall job. Save anytime — fields are optional while the visit is
+          in progress.
         </p>
+        {!canFinalise ? (
+          <p className="ee-tech-alert" role="status" style={{ marginTop: 0 }}>
+            {assignedTechnicianCount} technicians are assigned to this visit. Save your own work notes here as
+            in progress. The office sets the shared visit outcome when the team is done.
+          </p>
+        ) : null}
         <form action={updateVisitProgressAction} className="ee-tech-form">
           <input type="hidden" name="appointment_id" value={appointmentId} />
-          <label>
-            Visit status
-            <select name="field_status" defaultValue={fieldStatus}>
-              {(Object.keys(FIELD_STATUS_LABELS) as FieldStatus[]).map((key) => (
-                <option key={key} value={key}>
-                  {FIELD_STATUS_LABELS[key]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <fieldset className="ee-tech-outcome">
+            <legend>Visit outcome</legend>
+            {selectableOutcomes.map((key) => (
+              <label key={key} className="ee-tech-outcome-option">
+                <input
+                  type="radio"
+                  name="field_status"
+                  value={key}
+                  defaultChecked={formDefault === key}
+                  required
+                />
+                <span>
+                  <strong>{VISIT_OUTCOME_LABELS[key]}</strong>
+                  <small>{VISIT_OUTCOME_HINTS[key]}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
           <label>
             Work completed / summary
             <textarea name="completion_note" maxLength={2000} defaultValue={completionNote ?? ''} />
@@ -233,9 +290,12 @@ export default function VisitFieldOps({
           </label>
           <label className="ee-tech-check">
             <input type="checkbox" name="follow_up_required" value="yes" defaultChecked={followUpRequired} />
-            Follow-up required
+            Further visit required
           </label>
-          <SubmitButton label="Save progress" className="ee-tech-btn ee-tech-btn-primary" />
+          <SubmitButton
+            label={canFinalise ? 'Save visit report' : 'Save my visit notes'}
+            className="ee-tech-btn ee-tech-btn-primary"
+          />
         </form>
       </section>
 

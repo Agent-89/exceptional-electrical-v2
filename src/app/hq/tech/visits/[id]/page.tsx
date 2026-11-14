@@ -24,9 +24,16 @@ import '../../../hq.css';
 
 export const dynamic = 'force-dynamic';
 
-export default async function TechVisitPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TechVisitPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ time?: string }>;
+}) {
   const crew = await requireTechnicianCrew();
   const { id } = await params;
+  const query = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const visit = await getTechnicianAppointment(crew.staffId, id);
@@ -166,9 +173,12 @@ export default async function TechVisitPage({ params }: { params: Promise<{ id: 
 
       <VisitFieldOps
         appointmentId={visit.appointmentId}
+        appointmentDateLabel={formatPerthDateLong(visit.startsAt)}
         scheduledLabel={`${formatPerthTime(visit.startsAt)} – ${formatPerthTime(visit.endsAt)}`}
         scheduledMinutes={scheduledMinutes}
         fieldStatus={visit.fieldStatus as FieldStatus}
+        assignedTechnicianCount={visit.electricianNames.length || 1}
+        timeRecorded={query.time === 'recorded'}
         activeEntry={activeOnThisVisit}
         entries={entryViews}
         notes={notes.map((n) => ({

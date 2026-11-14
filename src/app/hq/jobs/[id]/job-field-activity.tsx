@@ -2,7 +2,16 @@ import Link from 'next/link';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import { aggregateLabourByJob } from '@/lib/tech-time-multi';
 import { FIELD_STATUS_LABELS, type FieldStatus } from '@/lib/tech-field-constants';
-import { addOfficeNoteAction, reviewTimeEntryAction } from '@/app/hq/tech/actions';
+import {
+  VISIT_OUTCOME_LABELS,
+  VISIT_OUTCOME_STATUSES,
+  isTerminalVisitOutcome,
+} from '@/lib/tech-visit-report';
+import {
+  addOfficeNoteAction,
+  officeUpdateVisitOutcomeAction,
+  reviewTimeEntryAction,
+} from '@/app/hq/tech/actions';
 
 type AppointmentView = {
   id: string;
@@ -75,42 +84,72 @@ export default function JobFieldActivity({
         <div className="ee-section-title">
           <div>
             <span className="ee-eyebrow">FIELD</span>
-            <h2>Visit progress</h2>
+            <h2>Visit reports</h2>
           </div>
         </div>
         {appointments.length ? (
-          appointments.map((a) => (
-            <div className="ee-visit" key={a.id}>
-              <strong>
-                {new Date(a.startsAt).toLocaleDateString('en-AU', {
-                  timeZone: 'Australia/Perth',
-                  weekday: 'short',
-                  day: 'numeric',
-                  month: 'short',
-                })}{' '}
-                ·{' '}
-                {new Date(a.startsAt).toLocaleTimeString('en-AU', {
-                  timeZone: 'Australia/Perth',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}{' '}
-                –{' '}
-                {new Date(a.endsAt).toLocaleTimeString('en-AU', {
-                  timeZone: 'Australia/Perth',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}
-              </strong>
-              <span>
-                Schedule {a.status} · Field{' '}
-                {FIELD_STATUS_LABELS[a.fieldStatus as FieldStatus] ?? a.fieldStatus}
-                {a.followUp ? ' · Follow-up required' : ''}
-              </span>
-              {a.completionNote ? <p>Completed: {a.completionNote}</p> : null}
-              {a.outstanding ? <p>Outstanding: {a.outstanding}</p> : null}
-              {a.issues ? <p>Issues: {a.issues}</p> : null}
-            </div>
-          ))
+          appointments.map((a) => {
+            const entriesForVisit = timeEntries.filter((e) => e.appointmentId === a.id);
+            const techCount = new Set(entriesForVisit.map((e) => e.technicianUserId)).size;
+            return (
+              <div className="ee-visit" key={a.id}>
+                <strong>
+                  {new Date(a.startsAt).toLocaleDateString('en-AU', {
+                    timeZone: 'Australia/Perth',
+                    weekday: 'short',
+                    day: 'numeric',
+                    month: 'short',
+                  })}{' '}
+                  ·{' '}
+                  {new Date(a.startsAt).toLocaleTimeString('en-AU', {
+                    timeZone: 'Australia/Perth',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}{' '}
+                  –{' '}
+                  {new Date(a.endsAt).toLocaleTimeString('en-AU', {
+                    timeZone: 'Australia/Perth',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                </strong>
+                <span>
+                  Schedule {a.status} · Visit outcome{' '}
+                  {FIELD_STATUS_LABELS[a.fieldStatus as FieldStatus] ?? a.fieldStatus}
+                  {a.followUp ? ' · Further visit required' : ''}
+                  {techCount > 1 ? ` · ${techCount} technicians timed` : ''}
+                </span>
+                {a.completionNote ? <p>Work completed: {a.completionNote}</p> : null}
+                {a.outstanding ? <p>Outstanding work: {a.outstanding}</p> : null}
+                {a.issues ? <p>Issues encountered: {a.issues}</p> : null}
+                <p className="ee-muted" style={{ marginBottom: 0 }}>
+                  Further visit required: {a.followUp ? 'Yes' : 'No'}
+                </p>
+                {!isTerminalVisitOutcome(a.fieldStatus) ? (
+                  <form action={officeUpdateVisitOutcomeAction} className="ee-edit-form" style={{ marginTop: 12 }}>
+                    <input type="hidden" name="appointment_id" value={a.id} />
+                    <input type="hidden" name="completion_note" value={a.completionNote ?? ''} />
+                    <input type="hidden" name="outstanding_work" value={a.outstanding ?? ''} />
+                    <input type="hidden" name="issues" value={a.issues ?? ''} />
+                    {a.followUp ? <input type="hidden" name="follow_up_required" value="yes" /> : null}
+                    <label>
+                      Set shared visit outcome
+                      <select name="field_status" defaultValue={a.fieldStatus === 'paused' || a.fieldStatus === 'scheduled' ? 'in_progress' : a.fieldStatus}>
+                        {VISIT_OUTCOME_STATUSES.map((status) => (
+                          <option key={status} value={status}>
+                            {VISIT_OUTCOME_LABELS[status]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button className="hq-detail-action-primary" type="submit">
+                      Save visit outcome
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            );
+          })
         ) : (
           <p className="ee-muted">No visits yet.</p>
         )}
@@ -120,7 +159,7 @@ export default function JobFieldActivity({
         <div className="ee-section-title">
           <div>
             <span className="ee-eyebrow">TIME</span>
-            <h2>Actual worked time</h2>
+            <h2>Individual technician time entries</h2>
           </div>
           <Link href="/hq/timesheets" className="ee-text-action">
             Timesheets →

@@ -11,12 +11,13 @@ import {
   requireTechnicianCrew,
   technicianHasAppointmentAccess,
 } from '@/lib/hq-auth';
+import { ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES } from '@/lib/tech-field-constants';
 import {
-  ALLOWED_PHOTO_TYPES,
-  MAX_PHOTO_BYTES,
-  isFieldStatus,
-  type FieldStatus,
-} from '@/lib/tech-field-constants';
+  buildVisitReportPatch,
+  isVisitOutcomeStatus,
+  resolveTechnicianVisitOutcome,
+  visitOutcomeUpdatesJobStatus,
+} from '@/lib/tech-visit-report';
 import {
   computeWorkedMinutes,
   elapsedWholeMinutes,
@@ -226,7 +227,9 @@ export async function finishWorkAction(formData: FormData) {
     note: `Worked ${worked} min · break ${breakMinutes} min · entry ${entryId}`,
   });
 
+  // Timer finish never completes the visit or the overall job — only records time.
   revalidateVisit(visit.id, visit.job_id);
+  redirect(`/hq/tech/visits/${visit.id}?time=recorded#visit-report`);
 }
 
 export async function addManualTimeEntryAction(formData: FormData) {
@@ -286,32 +289,60 @@ export async function addManualTimeEntryAction(formData: FormData) {
   revalidateVisit(visit.id, visit.job_id);
 }
 
+async function countAppointmentTechnicians(appointmentId: string): Promise<number> {
+  const db = dbAdmin();
+  const { data, error } = await db
+    .from('job_appointment_staff')
+    .select('staff_id')
+    .eq('appointment_id', appointmentId)
+    .limit(50);
+  if (error) throw new Error('Unable to load visit crew.');
+  return new Set((data ?? []).map((row) => row.staff_id as string)).size;
+}
+
 export async function updateVisitProgressAction(formData: FormData) {
   const appointmentId = String(formData.get('appointment_id') || '');
-  const nextStatus = String(formData.get('field_status') || '');
-  if (!isFieldStatus(nextStatus)) throw new Error('Invalid visit progress status.');
+  const requested = String(formData.get('field_status') || '');
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
+  const assignedCount = await countAppointmentTechnicians(visit.id);
+  const resolved = resolveTechnicianVisitOutcome({
+    requested,
+    assignedTechnicianCount: assignedCount,
+  });
+  if (!resolved.ok) throw new Error(resolved.error);
 
   const completionNote = textField(formData, 'completion_note', 2000);
   const outstanding = textField(formData, 'outstanding_work', 2000);
   const issues = textField(formData, 'issues', 2000);
-  const followUp = String(formData.get('follow_up_required') || '') === 'yes';
+  const furtherVisit = String(formData.get('follow_up_required') || '') === 'yes';
+  const built = buildVisitReportPatch({
+    fieldStatus: resolved.fieldStatus,
+    fields: {
+      completionNote,
+      outstandingWork: outstanding,
+      issues,
+      furtherVisitRequired: furtherVisit,
+    },
+    currentAppointmentStatus: visit.status,
+    completedAtIso: new Date().toISOString(),
+  });
+
+  // Guardrail: visit reporting must never mutate jobs.status.
+  if (visitOutcomeUpdatesJobStatus()) {
+    throw new Error('Visit reporting misconfigured: job status must stay unchanged.');
+  }
 
   const patch: Record<string, unknown> = {
-    field_status: nextStatus as FieldStatus,
+    field_status: built.fieldStatus,
+    field_completion_note: built.completionNote,
+    field_outstanding_work: built.outstandingWork,
+    field_issues: built.issues,
+    field_follow_up_required: built.furtherVisitRequired,
   };
-
-  if (nextStatus === 'work_completed' || nextStatus === 'unable_to_complete') {
-    patch.field_completed_at = new Date().toISOString();
-    patch.field_completion_note = completionNote;
-    patch.field_outstanding_work = outstanding;
-    patch.field_issues = issues;
-    patch.field_follow_up_required = followUp;
-    // Visit-level completion only — never flips the parent job to completed.
-    if (nextStatus === 'work_completed' && visit.status === 'scheduled') {
-      patch.status = 'completed';
-    }
-  }
+  if (built.fieldCompletedAt) patch.field_completed_at = built.fieldCompletedAt;
+  else patch.field_completed_at = null;
+  // Visit-level schedule status only — never flips the parent job to completed.
+  if (built.appointmentStatusCompleted) patch.status = 'completed';
 
   const db = dbAdmin();
   const { data, error } = await db
@@ -320,16 +351,82 @@ export async function updateVisitProgressAction(formData: FormData) {
     .eq('id', visit.id)
     .select('id')
     .maybeSingle();
-  if (error || !data) throw new Error('Unable to update visit progress.');
+  if (error || !data) throw new Error('Unable to save visit report.');
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,
     actor_id: crew.id,
     action: 'visit_progress_updated',
     note:
-      `Field status → ${nextStatus}` +
+      `Visit outcome → ${built.fieldStatus}` +
       (completionNote ? ` · ${completionNote}` : '') +
-      (followUp ? ' · Follow-up required' : ''),
+      (furtherVisit ? ' · Further visit required' : ''),
+  });
+
+  revalidateVisit(visit.id, visit.job_id);
+}
+
+/** Office finalises the shared visit outcome (used when multiple technicians are assigned). */
+export async function officeUpdateVisitOutcomeAction(formData: FormData) {
+  const user = await requireOfficeUser();
+  assertOfficeOps(user);
+  const appointmentId = String(formData.get('appointment_id') || '');
+  const nextStatus = String(formData.get('field_status') || '');
+  if (!/^[0-9a-f-]{36}$/i.test(appointmentId)) throw new Error('Invalid appointment.');
+  if (!isVisitOutcomeStatus(nextStatus)) {
+    throw new Error('Invalid visit outcome.');
+  }
+
+  const db = dbAdmin();
+  const { data: visit, error: lookupError } = await db
+    .from('job_appointments')
+    .select('id,job_id,status,field_status')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  if (lookupError || !visit) throw new Error('Visit not found.');
+
+  const completionNote = textField(formData, 'completion_note', 2000);
+  const outstanding = textField(formData, 'outstanding_work', 2000);
+  const issues = textField(formData, 'issues', 2000);
+  const furtherVisit = String(formData.get('follow_up_required') || '') === 'yes';
+  const built = buildVisitReportPatch({
+    fieldStatus: nextStatus,
+    fields: {
+      completionNote,
+      outstandingWork: outstanding,
+      issues,
+      furtherVisitRequired: furtherVisit,
+    },
+    currentAppointmentStatus: visit.status,
+    completedAtIso: new Date().toISOString(),
+  });
+
+  const patch: Record<string, unknown> = {
+    field_status: built.fieldStatus,
+    field_completion_note: built.completionNote,
+    field_outstanding_work: built.outstandingWork,
+    field_issues: built.issues,
+    field_follow_up_required: built.furtherVisitRequired,
+  };
+  if (built.fieldCompletedAt) patch.field_completed_at = built.fieldCompletedAt;
+  else patch.field_completed_at = null;
+  if (built.appointmentStatusCompleted) patch.status = 'completed';
+
+  const { data, error } = await db
+    .from('job_appointments')
+    .update(patch)
+    .eq('id', visit.id)
+    .select('id')
+    .maybeSingle();
+  if (error || !data) throw new Error('Unable to update visit outcome.');
+
+  await db.from('job_activity').insert({
+    job_id: visit.job_id,
+    actor_id: user.id,
+    action: 'visit_outcome_office_updated',
+    note:
+      `Office visit outcome → ${built.fieldStatus}` +
+      (furtherVisit ? ' · Further visit required' : ''),
   });
 
   revalidateVisit(visit.id, visit.job_id);

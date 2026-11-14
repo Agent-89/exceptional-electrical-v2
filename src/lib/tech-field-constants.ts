@@ -12,7 +12,7 @@ export const FIELD_STATUS_LABELS: Record<FieldStatus, string> = {
   scheduled: 'Scheduled',
   in_progress: 'In progress',
   paused: 'Paused',
-  work_completed: 'Work completed',
+  work_completed: 'Visit completed',
   unable_to_complete: 'Unable to complete',
 };
 

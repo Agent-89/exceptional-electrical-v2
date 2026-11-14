@@ -23,6 +23,14 @@ export default function TechStyles() {
 .ee-tech-empty p{margin:0;font-size:13px;line-height:1.5;color:#667e91}
 .ee-tech-alert{padding:12px 14px;margin:0 0 14px;border-radius:10px;background:#fff4e5;color:#8a5a12;font-size:13px}
 .ee-tech-alert-error{background:#fff0f0;color:#9d3030}
+.ee-tech-alert-success{background:#eef8f1;color:#1f6b3a;display:grid;gap:4px}
+.ee-tech-outcome{margin:0;padding:0;border:0;display:grid;gap:8px}
+.ee-tech-outcome legend{padding:0;margin:0 0 2px;font-size:13px;font-weight:700;color:#123047}
+.ee-tech-outcome-option{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;align-items:start;padding:12px;border:1px solid #d5e1eb;border-radius:12px;background:#f8fbfe;font-weight:650}
+.ee-tech-outcome-option input{margin-top:3px;width:18px;height:18px}
+.ee-tech-outcome-option span{display:grid;gap:2px}
+.ee-tech-outcome-option strong{font-size:14px;color:#123047}
+.ee-tech-outcome-option small{font-size:12px;font-weight:500;color:#667e91;line-height:1.4}
 .ee-tech-status{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#eaf2fa;color:#18577d;font-size:11px;font-weight:750;text-transform:capitalize}
 .ee-tech-panel{padding:18px;margin:0 0 12px;background:#fff;border:1px solid #e1eaf1;border-radius:14px}
 .ee-tech-panel h2{margin:0 0 12px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#1689ed}

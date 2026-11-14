@@ -177,6 +177,10 @@ describe('deriveVisitFieldStatusFromLiveTimers', () => {
       'paused',
     );
   });
+
+  it('does not invent a completed visit outcome when timers finish', () => {
+    assert.equal(deriveVisitFieldStatusFromLiveTimers([]), null);
+  });
 });
 
 describe('aggregateLabourByJob', () => {
