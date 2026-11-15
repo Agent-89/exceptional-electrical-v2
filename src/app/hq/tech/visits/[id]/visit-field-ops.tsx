@@ -420,14 +420,16 @@ export default function VisitFieldOps({
 
     try {
       const result = await updateVisitProgressAction(fd);
-      if (!result.ok) {
-        showToast('error', result.error);
-        return;
-      }
-      reportDirty.current = false;
       if (result.techReportUpdatedAt) {
         setExpectedTechUpdatedAt(result.techReportUpdatedAt);
       }
+      if (!result.ok) {
+        // Personal report may already be persisted; keep concurrency token above.
+        showToast('error', result.error);
+        refreshSoft();
+        return;
+      }
+      reportDirty.current = false;
       if (canFinalise && !sharedFinalised) {
         setExpectedStatus(formDefault);
         setExpectedCompletion(completion.trim());

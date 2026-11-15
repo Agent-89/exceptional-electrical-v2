@@ -38,7 +38,13 @@ import { upsertOwnTechWorkReport } from '@/lib/tech-work-reports';
 /** Soft result for tech field actions — avoid throwing expected UX errors (they become 500 digests). */
 export type TechFieldActionResult =
   | { ok: true; noop?: boolean; message?: string; techReportUpdatedAt?: string | null }
-  | { ok: false; error: string; code?: 'conflict' | 'validation' | 'forbidden' | 'unknown' };
+  | {
+      ok: false;
+      error: string;
+      code?: 'conflict' | 'validation' | 'forbidden' | 'unknown';
+      /** Present when the personal report already persisted before a later failure. */
+      techReportUpdatedAt?: string | null;
+    };
 
 function okResult(extra?: {
   noop?: boolean;
@@ -51,9 +57,13 @@ function okResult(extra?: {
 function failResult(
   error: string,
   code: 'conflict' | 'validation' | 'forbidden' | 'unknown' = 'unknown',
+  extra?: { techReportUpdatedAt?: string | null },
 ): TechFieldActionResult {
-  return { ok: false, error, code };
+  return { ok: false, error, code, ...extra };
 }
+
+const PERSONAL_SAVED_SHARED_CONFLICT_MESSAGE =
+  'Your work report was saved, but the shared visit outcome changed. Refresh and try again.';
 
 function revalidateVisit(appointmentId: string, jobId: string) {
   revalidatePath('/hq/tech');
@@ -479,8 +489,10 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
     const currentSnapshot = snapshotFromAppointmentRow(current);
 
     if (!visitReportSnapshotsMatch(expected, currentSnapshot)) {
-      // Personal report already saved — ask for refresh on shared conflict.
-      return failResult(VISIT_REPORT_CONFLICT_MESSAGE, 'conflict');
+      // Personal report already saved — return its updatedAt so the client stays in sync.
+      return failResult(PERSONAL_SAVED_SHARED_CONFLICT_MESSAGE, 'conflict', {
+        techReportUpdatedAt: personalSave.row.updatedAt,
+      });
     }
 
     if (!visitReportSaveIsNoop(currentSnapshot, proposed)) {
@@ -504,12 +516,18 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
         .in('field_status', ['scheduled', 'in_progress', 'paused'])
         .select('id')
         .maybeSingle();
-      if (error) return failResult('Unable to update visit outcome.');
+      if (error) {
+        return failResult('Unable to update visit outcome.', 'unknown', {
+          techReportUpdatedAt: personalSave.row.updatedAt,
+        });
+      }
       if (!data) {
         if (isTerminalVisitOutcome(current.field_status)) {
           // Personal report saved; shared already finalised — leave shared alone.
         } else {
-          return failResult(VISIT_REPORT_CONFLICT_MESSAGE, 'conflict');
+          return failResult(PERSONAL_SAVED_SHARED_CONFLICT_MESSAGE, 'conflict', {
+            techReportUpdatedAt: personalSave.row.updatedAt,
+          });
         }
       } else {
         sharedUpdated = true;
