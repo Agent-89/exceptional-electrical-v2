@@ -98,7 +98,76 @@ export default function TechStyles() {
 .ee-tech-entry-break{background:#fff4e5;color:#8a5a12}
 .ee-tech-entry-submitted{background:#eef5fb;color:#0d649f}
 .ee-tech-entry-other{background:#f2f4f6;color:#526a7c}
-@media(min-width:700px){.ee-tech{padding:24px 20px 36px;max-width:860px}.ee-tech-cal-scroll{max-height:min(70vh,720px)}.ee-tech-cal-grid{grid-template-columns:62px minmax(0,1fr)}.ee-tech-gallery{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.ee-tech-visit-page{padding-bottom:36px}
+.ee-tech-overview{margin:4px 0 14px;display:grid;gap:10px}
+.ee-tech-overview-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.ee-tech-overview h1{margin:0;font-size:clamp(24px,6vw,32px);letter-spacing:-.03em;line-height:1.15}
+.ee-tech-overview-meta{display:grid;gap:8px}
+.ee-tech-overview-line{display:grid;gap:2px;margin:0;font-size:14px;line-height:1.4;color:#435a6d}
+.ee-tech-overview-label{font-size:11px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:#718294}
+.ee-tech-overview-line a{color:#0875c9;font-weight:700;text-decoration:none}
+.ee-tech-status-field{background:#e8f3ff;color:#0d649f}
+.ee-tech-timer-hero{display:grid;gap:12px;padding:16px;border-radius:16px;background:#fff;border:1px solid #d7e5f1;box-shadow:0 1px 0 rgba(16,43,64,.04)}
+.ee-tech-timer-hero-working{border-color:#95c9f0;background:linear-gradient(180deg,#f3f9ff 0%,#fff 55%)}
+.ee-tech-timer-hero-on_break{border-color:#f0d4a8;background:linear-gradient(180deg,#fff8ee 0%,#fff 55%)}
+.ee-tech-timer-hero-finished{border-color:#b7dfc4;background:linear-gradient(180deg,#f1faf4 0%,#fff 55%)}
+.ee-tech-timer-hero-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ee-tech-timer-hero-head h2{margin:0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#1689ed}
+.ee-tech-timer-phase{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:750;background:#eaf2fa;color:#18577d}
+.ee-tech-timer-phase-working{background:#e8f6ee;color:#1f6b3a}
+.ee-tech-timer-phase-on_break{background:#fff4e5;color:#8a5a12}
+.ee-tech-timer-phase-finished{background:#eef8f1;color:#1f6b3a}
+.ee-tech-timer-phase-not_started{background:#eef5fb;color:#0d649f}
+.ee-tech-timer-readout-hero{padding:18px 14px;text-align:center;border-radius:14px;background:#f4f8fc;border:1px solid #e1eaf1}
+.ee-tech-timer-readout-hero strong{display:block;font-size:clamp(40px,12vw,52px);letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1;color:#123047}
+.ee-tech-timer-sub{display:block;margin-top:8px;font-size:13px;color:#667e91}
+.ee-tech-actions-timer{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:0}
+.ee-tech-actions-timer .ee-tech-btn{width:100%;min-height:52px;font-size:15px}
+.ee-tech-quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ee-tech-quick-btn{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:56px;padding:10px 8px;border-radius:12px;border:1px solid #d3e4f2;background:#eef5fb;color:#0d649f;font-size:13px;font-weight:750;cursor:pointer}
+.ee-tech-quick-btn:active{background:#e0eef9}
+.ee-tech-quick-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#1689ed;color:#fff;font-size:11px;font-weight:800}
+.ee-tech-fold{margin:0;border:1px solid #e1eaf1;border-radius:14px;background:#fff;overflow:hidden}
+.ee-tech-fold>summary{list-style:none;cursor:pointer;padding:14px 16px;font-size:13px;font-weight:750;color:#123047;user-select:none}
+.ee-tech-fold>summary::-webkit-details-marker{display:none}
+.ee-tech-fold>summary::after{content:'▾';float:right;color:#718294;font-weight:700}
+.ee-tech-fold[open]>summary::after{content:'▴'}
+.ee-tech-fold-body{padding:0 16px 16px;border-top:1px solid #eef3f7}
+.ee-tech-section-block{padding:16px;border:1px solid #e1eaf1;border-radius:14px;background:#fff;scroll-margin-top:72px}
+.ee-tech-section-block h2{margin:0 0 12px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#1689ed}
+.ee-tech-dl-compact{gap:10px}
+.ee-tech-subhead{margin:0 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#5f7a8f}
+.ee-tech-footer-link{margin-top:8px}
+.ee-tech-footer-link .ee-tech-btn{width:100%}
+@media(min-width:700px){.ee-tech{padding:24px 20px 36px;max-width:860px}.ee-tech-cal-scroll{max-height:min(70vh,720px)}.ee-tech-cal-grid{grid-template-columns:62px minmax(0,1fr)}.ee-tech-gallery{grid-template-columns:repeat(4,minmax(0,1fr))}.ee-tech-quick{max-width:420px}}
+@media(prefers-color-scheme:dark){
+.ee-tech{color:#e7eef5}
+.ee-tech-head h1,.ee-tech-overview h1,.ee-tech-card h3,.ee-tech-empty strong,.ee-tech-cal-day strong,.ee-tech-cal-empty strong,.ee-tech-timer-readout-hero strong,.ee-tech-fold>summary,.ee-tech-outcome-option strong,.ee-tech-form label,.ee-tech-outcome legend{color:#eef4fa}
+.ee-tech-head p,.ee-tech-card-meta span,.ee-tech-muted,.ee-tech-overview-line,.ee-tech-timer-sub,.ee-tech-note small,.ee-tech-cal-day span,.ee-tech-cal-meta,.ee-tech-cal-empty,.ee-tech-cal-empty p{color:#9ab6c7}
+.ee-tech-overview-label,.ee-tech-dl dt,.ee-tech-subhead,.ee-tech-section h2{color:#8aa0b3}
+.ee-tech-card,.ee-tech-panel,.ee-tech-section-block,.ee-tech-fold,.ee-tech-timer-hero,.ee-tech-empty,.ee-tech-cal-scroll,.ee-tech-cal-arrow,.ee-tech-outcome-option{background:#152433;border-color:#2a3f52}
+.ee-tech-timer-hero-working{background:linear-gradient(180deg,#163248 0%,#152433 60%);border-color:#2f6fa0}
+.ee-tech-timer-hero-on_break{background:linear-gradient(180deg,#2f2718 0%,#152433 60%);border-color:#8a6a2e}
+.ee-tech-timer-hero-finished{background:linear-gradient(180deg,#173226 0%,#152433 60%);border-color:#3d7a55}
+.ee-tech-timer-readout,.ee-tech-timer-readout-hero,.ee-tech-cal-hours{background:#101c28;border-color:#2a3f52}
+.ee-tech-btn-secondary,.ee-tech-quick-btn,.ee-tech-cal-today{background:#1b3144;border-color:#35536b;color:#8ec7f3}
+.ee-tech-btn-ghost{background:#152433;border-color:#35536b;color:#c5d5e3}
+.ee-tech-btn-danger{background:#3a1f22;border-color:#6e3a3f;color:#f0a8a8}
+.ee-tech-form input,.ee-tech-form textarea,.ee-tech-form select{background:#101c28;border-color:#35536b;color:#eef4fa}
+.ee-tech-alert{background:#3a2c14;color:#f0d19a}
+.ee-tech-alert-error{background:#3a1f22;color:#f0a8a8}
+.ee-tech-alert-success{background:#173226;color:#9fd6b2}
+.ee-tech-note,.ee-tech-time-row,.ee-tech-fold-body{border-color:#243746}
+.ee-tech-gallery a,.ee-tech-gallery figure{background:#101c28;border-color:#2a3f52}
+.ee-tech-dl a,.ee-tech-overview-line a{color:#6eb8f0}
+.ee-tech-status,.ee-tech-status-field,.ee-tech-timer-phase-not_started{background:#1b3144;color:#8ec7f3}
+.ee-tech-timer-phase-working,.ee-tech-entry-active{background:#173226;color:#9fd6b2}
+.ee-tech-timer-phase-on_break,.ee-tech-entry-break{background:#3a2c14;color:#f0d19a}
+.ee-tech-timer-phase-finished{background:#173226;color:#9fd6b2}
+.ee-tech-cal-lane{background-image:linear-gradient(to bottom,#2a3f52 1px,transparent 1px)}
+.ee-tech-cal-block{background:#1b3144;border-color:#2f6fa0;color:#e7eef5}
+.ee-tech-cal-status{background:#101c28;color:#8ec7f3}
+}
 `}</style>
   );
 }

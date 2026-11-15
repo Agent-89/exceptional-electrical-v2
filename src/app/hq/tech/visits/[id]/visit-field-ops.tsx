@@ -31,6 +31,15 @@ import {
   defaultVisitOutcomeForForm,
   type VisitOutcomeStatus,
 } from '@/lib/tech-visit-report';
+import {
+  TIMER_ACTION_LABELS,
+  TIMER_PENDING_LABELS,
+  isPrimaryTimerAction,
+  resolveTimerUiPhase,
+  timerPhaseStatusLabel,
+  timerPrimaryActions,
+  type TimerPrimaryAction,
+} from '@/lib/tech-visit-ui';
 
 /** Soft poll while live timers exist — keeps multi-tech status fresh without Realtime. */
 const LIVE_TIMER_POLL_MS = 20_000;
@@ -81,6 +90,9 @@ type Props = {
   outstandingWork: string | null;
   issues: string | null;
   followUpRequired: boolean;
+  visitNotes: string | null;
+  jobDescription: string | null;
+  electricianNames: string[];
 };
 
 type BusyKind = 'timer' | 'report' | 'note' | 'manual' | 'photo' | null;
@@ -108,6 +120,17 @@ function isNextRedirectError(error: unknown): boolean {
   );
 }
 
+function scrollToSection(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (el instanceof HTMLDetailsElement) el.open = true;
+  const focusable = el.querySelector<HTMLElement>(
+    'textarea, input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), button, select',
+  );
+  focusable?.focus({ preventScroll: true });
+}
+
 export default function VisitFieldOps({
   appointmentId,
   appointmentDateLabel,
@@ -124,12 +147,15 @@ export default function VisitFieldOps({
   outstandingWork,
   issues,
   followUpRequired,
+  visitNotes,
+  jobDescription,
+  electricianNames,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [toast, setToast] = useState<HqToastMessage | null>(null);
   const [busy, setBusy] = useState<BusyKind>(null);
-  const [timerPendingLabel, setTimerPendingLabel] = useState<string | null>(null);
+  const [timerPendingAction, setTimerPendingAction] = useState<TimerPrimaryAction | null>(null);
   const [reportPending, setReportPending] = useState(false);
   const [reportSavedFlash, setReportSavedFlash] = useState(false);
   const [lastTimerMs, setLastTimerMs] = useState<number | null>(null);
@@ -210,11 +236,15 @@ export default function VisitFieldOps({
     kind: BusyKind,
     action: (fd: FormData) => Promise<TechFieldActionResult>,
     formData: FormData,
-    opts?: { pendingLabel?: string; successToast?: string; onSuccess?: () => void },
+    opts?: {
+      pendingAction?: TimerPrimaryAction;
+      successToast?: string;
+      onSuccess?: () => void;
+    },
   ): Promise<boolean> {
     if (busy) return false;
     setBusy(kind);
-    if (opts?.pendingLabel) setTimerPendingLabel(opts.pendingLabel);
+    if (opts?.pendingAction) setTimerPendingAction(opts.pendingAction);
     const started = performance.now();
     try {
       const result = await action(formData);
@@ -236,11 +266,16 @@ export default function VisitFieldOps({
       return false;
     } finally {
       setBusy(null);
-      setTimerPendingLabel(null);
+      setTimerPendingAction(null);
     }
   }
 
   const timerForThisVisit = activeEntry && activeEntry.id ? activeEntry : null;
+  const timerPhase = resolveTimerUiPhase({
+    activeStatus: timerForThisVisit?.status ?? null,
+    timeRecorded,
+  });
+  const phaseActions = timerPrimaryActions(timerPhase);
   const canFinalise = canTechnicianFinaliseSharedVisit(assignedTechnicianCount);
   const selectableOutcomes: VisitOutcomeStatus[] = canFinalise
     ? [...VISIT_OUTCOME_STATUSES]
@@ -248,45 +283,41 @@ export default function VisitFieldOps({
   const formDefault = selectableOutcomes.includes(outcome) ? outcome : 'in_progress';
   const timerLocked = busy === 'timer';
 
-  async function onStartWork() {
-    const fd = new FormData();
-    fd.set('appointment_id', appointmentId);
-    await runAction('timer', startWorkAction, fd, {
-      pendingLabel: 'Starting…',
-      successToast: 'Work started',
-    });
-  }
+  async function onTimerAction(action: TimerPrimaryAction) {
+    if (action === 'start') {
+      const fd = new FormData();
+      fd.set('appointment_id', appointmentId);
+      await runAction('timer', startWorkAction, fd, {
+        pendingAction: 'start',
+        successToast: 'Work started',
+      });
+      return;
+    }
 
-  async function onPauseWork() {
     if (!timerForThisVisit) return;
     const fd = new FormData();
     fd.set('appointment_id', appointmentId);
     fd.set('entry_id', timerForThisVisit.id);
-    await runAction('timer', pauseWorkAction, fd, {
-      pendingLabel: 'Starting break…',
-      successToast: 'Break started',
-    });
-  }
 
-  async function onResumeWork() {
-    if (!timerForThisVisit) return;
-    const fd = new FormData();
-    fd.set('appointment_id', appointmentId);
-    fd.set('entry_id', timerForThisVisit.id);
-    await runAction('timer', resumeWorkAction, fd, {
-      pendingLabel: 'Resuming…',
-      successToast: 'Work resumed',
-    });
-  }
+    if (action === 'take_break') {
+      await runAction('timer', pauseWorkAction, fd, {
+        pendingAction: 'take_break',
+        successToast: 'Break started',
+      });
+      return;
+    }
 
-  async function onFinishWork() {
-    if (!timerForThisVisit) return;
-    const fd = new FormData();
-    fd.set('appointment_id', appointmentId);
-    fd.set('entry_id', timerForThisVisit.id);
+    if (action === 'resume') {
+      await runAction('timer', resumeWorkAction, fd, {
+        pendingAction: 'resume',
+        successToast: 'Work resumed',
+      });
+      return;
+    }
+
     if (busy) return;
     setBusy('timer');
-    setTimerPendingLabel('Finishing…');
+    setTimerPendingAction('finish');
     const started = performance.now();
     try {
       await finishWorkAction(fd);
@@ -295,7 +326,7 @@ export default function VisitFieldOps({
       if (isNextRedirectError(error)) throw error;
       showToast('error', 'Unable to finish work timer.');
       setBusy(null);
-      setTimerPendingLabel(null);
+      setTimerPendingAction(null);
     }
   }
 
@@ -395,197 +426,229 @@ export default function VisitFieldOps({
     }
   }
 
+  const workedDisplay = timerForThisVisit
+    ? formatDurationMinutes(timerForThisVisit.liveWorkedMinutes)
+    : formatDurationMinutes(0);
+  const breakDisplay = timerForThisVisit
+    ? formatDurationMinutes(timerForThisVisit.liveBreakMinutes)
+    : formatDurationMinutes(0);
+
   return (
     <div className="ee-tech-stack">
       <HqToast toast={toast} onDismiss={() => setToast(null)} />
 
-      <section className="ee-tech-panel">
-        <h2>Work timer</h2>
-        <div className="ee-tech-timer">
-          <div className="ee-tech-timer-readout">
-            <span>Scheduled · {scheduledLabel}</span>
-            <strong>
-              {timerForThisVisit
-                ? formatDurationMinutes(timerForThisVisit.liveWorkedMinutes)
-                : formatDurationMinutes(0)}
-            </strong>
-            <span>
-              Actual worked
-              {timerForThisVisit
-                ? ` · Break ${formatDurationMinutes(timerForThisVisit.liveBreakMinutes)} · ${statusLabel(timerForThisVisit.status)}`
-                : ' · No active timer on this visit'}
-            </span>
-            <span>Scheduled duration {formatDurationMinutes(scheduledMinutes)} (unchanged by timer)</span>
-            {lastTimerMs != null ? (
-              <span className="ee-tech-muted">Last timer action · {lastTimerMs} ms</span>
-            ) : null}
-          </div>
-
-          {timeRecorded && !timerForThisVisit ? (
-            <div className="ee-tech-alert ee-tech-alert-success" role="status">
-              <p style={{ margin: 0 }}>Time recorded. Complete your visit report when you&apos;re ready.</p>
-              <a className="ee-tech-btn ee-tech-btn-secondary" href="#visit-report" style={{ marginTop: 8 }}>
-                Go to Visit Report
-              </a>
-            </div>
-          ) : null}
-
-          {!timerForThisVisit ? (
-            <div className="ee-tech-actions">
-              <button
-                type="button"
-                className="ee-tech-btn ee-tech-btn-primary"
-                disabled={timerLocked}
-                onClick={onStartWork}
-              >
-                {timerPendingLabel === 'Starting…' ? 'Starting…' : 'Start work'}
-              </button>
-            </div>
-          ) : timerForThisVisit.status === 'active' ? (
-            <div className="ee-tech-actions">
-              <button
-                type="button"
-                className="ee-tech-btn ee-tech-btn-secondary"
-                disabled={timerLocked}
-                onClick={onPauseWork}
-              >
-                {timerPendingLabel === 'Starting break…' ? 'Starting break…' : 'Start break'}
-              </button>
-              <button
-                type="button"
-                className="ee-tech-btn ee-tech-btn-primary"
-                disabled={timerLocked}
-                onClick={onFinishWork}
-              >
-                {timerPendingLabel === 'Finishing…' ? 'Finishing…' : 'Finish work'}
-              </button>
-            </div>
-          ) : (
-            <div className="ee-tech-actions">
-              <button
-                type="button"
-                className="ee-tech-btn ee-tech-btn-primary"
-                disabled={timerLocked}
-                onClick={onResumeWork}
-              >
-                {timerPendingLabel === 'Resuming…' ? 'Resuming…' : 'Resume work'}
-              </button>
-              <button
-                type="button"
-                className="ee-tech-btn ee-tech-btn-secondary"
-                disabled={timerLocked}
-                onClick={onFinishWork}
-              >
-                {timerPendingLabel === 'Finishing…' ? 'Finishing…' : 'Finish work'}
-              </button>
-            </div>
-          )}
-
-          <details>
-            <summary>Add manual time entry</summary>
-            <form onSubmit={onManualEntry} className="ee-tech-form" style={{ marginTop: 12 }}>
-              <label>
-                Started (Perth)
-                <input type="datetime-local" name="started_at" required step={60} />
-              </label>
-              <label>
-                Ended (Perth)
-                <input type="datetime-local" name="ended_at" required step={60} />
-              </label>
-              <label>
-                Break minutes
-                <input type="number" name="break_minutes" min={0} max={1440} defaultValue={0} />
-              </label>
-              <label>
-                Note (optional)
-                <input name="note" maxLength={2000} />
-              </label>
-              <button
-                type="submit"
-                className="ee-tech-btn ee-tech-btn-secondary"
-                disabled={busy !== null}
-              >
-                {busy === 'manual' ? 'Saving…' : 'Save manual entry'}
-              </button>
-            </form>
-          </details>
+      {/* 2. Work timer and primary actions */}
+      <section
+        className={`ee-tech-timer-hero ee-tech-timer-hero-${timerPhase}`}
+        aria-labelledby="work-timer-heading"
+      >
+        <div className="ee-tech-timer-hero-head">
+          <h2 id="work-timer-heading">Work timer</h2>
+          <span className={`ee-tech-timer-phase ee-tech-timer-phase-${timerPhase}`}>
+            {timerPhaseStatusLabel(timerPhase)}
+          </span>
         </div>
 
-        {entries.length ? (
-          <div style={{ marginTop: 14 }}>
-            <h3
-              style={{
-                margin: '0 0 6px',
-                fontSize: 12,
-                letterSpacing: '.08em',
-                textTransform: 'uppercase',
-                color: '#5f7a8f',
-              }}
+        <div className="ee-tech-timer-readout ee-tech-timer-readout-hero">
+          <strong aria-live="polite">{workedDisplay}</strong>
+          <span className="ee-tech-timer-sub">
+            {timerPhase === 'finished'
+              ? 'Session complete'
+              : timerForThisVisit
+                ? `Break ${breakDisplay} · Scheduled ${scheduledLabel}`
+                : `Scheduled ${scheduledLabel} · ${formatDurationMinutes(scheduledMinutes)}`}
+          </span>
+        </div>
+
+        {timerPhase === 'finished' ? (
+          <div className="ee-tech-alert ee-tech-alert-success" role="status">
+            <p style={{ margin: 0 }}>
+              Time recorded. Complete your visit report when you&apos;re ready.
+            </p>
+            <button
+              type="button"
+              className="ee-tech-btn ee-tech-btn-secondary"
+              style={{ marginTop: 8 }}
+              onClick={() => scrollToSection('visit-report')}
             >
-              Recorded time
-            </h3>
-            {entries.map((e) => (
-              <div className="ee-tech-time-row" key={e.id}>
-                <strong>
-                  {e.staffName} · {formatDurationMinutes(e.workedMinutes ?? e.liveWorkedMinutes)} worked
-                </strong>
-                <span className={`ee-tech-entry-status ${statusClass(e.status)}`}>
-                  {statusLabel(e.status)}
-                </span>
-                <span>
-                  {new Date(e.startedAt).toLocaleString('en-AU', {
-                    timeZone: 'Australia/Perth',
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  })}
-                  {e.endedAt
-                    ? ' – ' +
-                      new Date(e.endedAt).toLocaleTimeString('en-AU', {
-                        timeZone: 'Australia/Perth',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      })
-                    : ' – running'}
-                  {' · Break '}
-                  {formatDurationMinutes(
-                    e.status === 'active' || e.status === 'on_break'
-                      ? e.liveBreakMinutes
-                      : e.breakMinutes,
-                  )}
-                  {' · '}
-                  {e.entrySource}
-                </span>
-                {e.note ? <span>{e.note}</span> : null}
-              </div>
-            ))}
+              Go to Visit Report
+            </button>
           </div>
-        ) : null}
+        ) : (
+          <div className="ee-tech-actions ee-tech-actions-timer">
+            {phaseActions.map((action) => {
+              const primary = isPrimaryTimerAction(timerPhase, action);
+              const pending = timerPendingAction === action;
+              return (
+                <button
+                  key={action}
+                  type="button"
+                  className={
+                    primary ? 'ee-tech-btn ee-tech-btn-primary' : 'ee-tech-btn ee-tech-btn-secondary'
+                  }
+                  disabled={timerLocked}
+                  onClick={() => onTimerAction(action)}
+                >
+                  {pending ? TIMER_PENDING_LABELS[action] : TIMER_ACTION_LABELS[action]}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </section>
 
-      <section className="ee-tech-panel" id="visit-report">
-        <h2>Visit Report</h2>
-        <dl className="ee-tech-dl" style={{ marginBottom: 12 }}>
-          <div>
-            <dt>Appointment</dt>
-            <dd>
-              {appointmentDateLabel}
-              <br />
-              {scheduledLabel}
-            </dd>
+      {/* 3. Quick actions */}
+      <nav className="ee-tech-quick" aria-label="Quick actions">
+        <button type="button" className="ee-tech-quick-btn" onClick={() => scrollToSection('add-photo')}>
+          Add Photo
+          {photos.length ? <span className="ee-tech-quick-count">{photos.length}</span> : null}
+        </button>
+        <button type="button" className="ee-tech-quick-btn" onClick={() => scrollToSection('add-note')}>
+          Add Note
+          {notes.length ? <span className="ee-tech-quick-count">{notes.length}</span> : null}
+        </button>
+        <button
+          type="button"
+          className="ee-tech-quick-btn"
+          onClick={() => scrollToSection('visit-report')}
+        >
+          Visit Report
+        </button>
+      </nav>
+
+      {/* 4. Visit details and progress */}
+      <details className="ee-tech-fold" open>
+        <summary>Visit details</summary>
+        <div className="ee-tech-fold-body">
+          <dl className="ee-tech-dl ee-tech-dl-compact">
+            <div>
+              <dt>Current outcome</dt>
+              <dd>{FIELD_STATUS_LABELS[fieldStatus]}</dd>
+            </div>
+            <div>
+              <dt>Instructions</dt>
+              <dd>{visitNotes || 'No appointment instructions.'}</dd>
+            </div>
+            <div>
+              <dt>Work description</dt>
+              <dd>{jobDescription || 'No work description added yet.'}</dd>
+            </div>
+            {electricianNames.length ? (
+              <div>
+                <dt>Assigned electricians</dt>
+                <dd>{electricianNames.join(', ')}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+      </details>
+
+      <section className="ee-tech-section-block" id="add-photo">
+        <h2>Photos</h2>
+        <form onSubmit={onUploadPhoto} className="ee-tech-form" encType="multipart/form-data">
+          <label>
+            Upload from camera or library
+            <input type="file" name="photo" accept="image/*" capture="environment" required />
+          </label>
+          <label>
+            Caption (optional)
+            <input name="caption" maxLength={500} />
+          </label>
+          <button
+            type="submit"
+            className="ee-tech-btn ee-tech-btn-secondary"
+            disabled={busy !== null}
+          >
+            {busy === 'photo' ? 'Uploading…' : 'Upload photo'}
+          </button>
+        </form>
+        {photos.length ? (
+          <div className="ee-tech-gallery" style={{ marginTop: 12 }}>
+            {photos.map((p) =>
+              p.signedUrl ? (
+                <a
+                  key={p.id}
+                  href={p.signedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={p.caption ?? 'Job photo'}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.signedUrl} alt={p.caption || 'Job photo'} />
+                </a>
+              ) : (
+                <figure key={p.id}>
+                  <span
+                    className="ee-tech-muted"
+                    style={{ display: 'grid', placeItems: 'center', height: '100%', fontSize: 12 }}
+                  >
+                    Unavailable
+                  </span>
+                </figure>
+              ),
+            )}
           </div>
-          <div>
-            <dt>Current visit outcome</dt>
-            <dd>{FIELD_STATUS_LABELS[fieldStatus]}</dd>
-          </div>
-        </dl>
+        ) : (
+          <p className="ee-tech-muted">No photos uploaded for this visit yet.</p>
+        )}
+      </section>
+
+      <section className="ee-tech-section-block" id="add-note">
+        <h2>Notes</h2>
+        <form onSubmit={onAddNote} className="ee-tech-form">
+          <label>
+            Add note
+            <textarea
+              name="body"
+              required
+              maxLength={4000}
+              placeholder="What did you find on site?"
+              value={noteBody}
+              onChange={(e) => {
+                noteDirty.current = true;
+                setNoteBody(e.target.value);
+              }}
+            />
+          </label>
+          <button
+            type="submit"
+            className="ee-tech-btn ee-tech-btn-secondary"
+            disabled={busy !== null || !noteBody.trim()}
+          >
+            {busy === 'note' ? 'Saving…' : 'Add note'}
+          </button>
+        </form>
+        {notes.length ? (
+          notes.map((n) => (
+            <div className="ee-tech-note" key={n.id}>
+              <p>{n.body}</p>
+              <small>
+                {n.authorName ?? 'Technician'} ·{' '}
+                {new Date(n.createdAt).toLocaleString('en-AU', {
+                  timeZone: 'Australia/Perth',
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}
+                {n.editedAt ? ' · edited' : ''}
+                {n.isOwn ? ' · yours' : ''}
+              </small>
+            </div>
+          ))
+        ) : (
+          <p className="ee-tech-muted">No technician notes yet.</p>
+        )}
+      </section>
+
+      <section className="ee-tech-section-block" id="visit-report">
+        <h2>Visit report</h2>
         <p className="ee-tech-muted" style={{ marginTop: 0 }}>
-          Completing a visit does not close the overall job. Save anytime — fields are optional while the visit is
-          in progress.
+          {appointmentDateLabel} · {scheduledLabel}. Completing a visit does not close the overall
+          job.
         </p>
         {!canFinalise ? (
           <p className="ee-tech-alert" role="status" style={{ marginTop: 0 }}>
-            {assignedTechnicianCount} technicians are assigned to this visit. Save your own work notes here as
-            in progress. The office sets the shared visit outcome when the team is done.
+            {assignedTechnicianCount} technicians are assigned to this visit. Save your own work notes
+            here as in progress. The office sets the shared visit outcome when the team is done.
           </p>
         ) : null}
         <form onSubmit={onSaveReport} className="ee-tech-form">
@@ -676,101 +739,85 @@ export default function VisitFieldOps({
         </form>
       </section>
 
-      <section className="ee-tech-panel">
-        <h2>Work notes</h2>
-        <form onSubmit={onAddNote} className="ee-tech-form">
-          <label>
-            Add note
-            <textarea
-              name="body"
-              required
-              maxLength={4000}
-              placeholder="What did you find on site?"
-              value={noteBody}
-              onChange={(e) => {
-                noteDirty.current = true;
-                setNoteBody(e.target.value);
-              }}
-            />
-          </label>
-          <button
-            type="submit"
-            className="ee-tech-btn ee-tech-btn-secondary"
-            disabled={busy !== null || !noteBody.trim()}
-          >
-            {busy === 'note' ? 'Saving…' : 'Add note'}
-          </button>
-        </form>
-        {notes.length ? (
-          notes.map((n) => (
-            <div className="ee-tech-note" key={n.id}>
-              <p>{n.body}</p>
-              <small>
-                {n.authorName ?? 'Technician'} ·{' '}
-                {new Date(n.createdAt).toLocaleString('en-AU', {
-                  timeZone: 'Australia/Perth',
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
-                {n.editedAt ? ' · edited' : ''}
-                {n.isOwn ? ' · yours' : ''}
-              </small>
-            </div>
-          ))
-        ) : (
-          <p className="ee-tech-muted">No technician notes yet.</p>
-        )}
-      </section>
+      {/* 5. Collapsible time history and advanced controls */}
+      <details className="ee-tech-fold">
+        <summary>Time history &amp; manual entry</summary>
+        <div className="ee-tech-fold-body">
+          <p className="ee-tech-muted" style={{ marginTop: 0 }}>
+            Scheduled duration {formatDurationMinutes(scheduledMinutes)} is unchanged by the timer.
+            {lastTimerMs != null ? ` Last timer action · ${lastTimerMs} ms.` : ''}
+          </p>
 
-      <section className="ee-tech-panel">
-        <h2>Job photos</h2>
-        <form onSubmit={onUploadPhoto} className="ee-tech-form" encType="multipart/form-data">
-          <label>
-            Upload from camera or library
-            <input type="file" name="photo" accept="image/*" capture="environment" required />
-          </label>
-          <label>
-            Caption (optional)
-            <input name="caption" maxLength={500} />
-          </label>
-          <button
-            type="submit"
-            className="ee-tech-btn ee-tech-btn-secondary"
-            disabled={busy !== null}
-          >
-            {busy === 'photo' ? 'Uploading…' : 'Upload photo'}
-          </button>
-        </form>
-        {photos.length ? (
-          <div className="ee-tech-gallery" style={{ marginTop: 12 }}>
-            {photos.map((p) =>
-              p.signedUrl ? (
-                <a
-                  key={p.id}
-                  href={p.signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={p.caption ?? 'Job photo'}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.signedUrl} alt={p.caption || 'Job photo'} />
-                </a>
-              ) : (
-                <figure key={p.id}>
-                  <span
-                    className="ee-tech-muted"
-                    style={{ display: 'grid', placeItems: 'center', height: '100%', fontSize: 12 }}
-                  >
-                    Unavailable
+          <form onSubmit={onManualEntry} className="ee-tech-form">
+            <label>
+              Started (Perth)
+              <input type="datetime-local" name="started_at" required step={60} />
+            </label>
+            <label>
+              Ended (Perth)
+              <input type="datetime-local" name="ended_at" required step={60} />
+            </label>
+            <label>
+              Break minutes
+              <input type="number" name="break_minutes" min={0} max={1440} defaultValue={0} />
+            </label>
+            <label>
+              Note (optional)
+              <input name="note" maxLength={2000} />
+            </label>
+            <button
+              type="submit"
+              className="ee-tech-btn ee-tech-btn-secondary"
+              disabled={busy !== null}
+            >
+              {busy === 'manual' ? 'Saving…' : 'Save manual entry'}
+            </button>
+          </form>
+
+          {entries.length ? (
+            <div style={{ marginTop: 14 }}>
+              <h3 className="ee-tech-subhead">Recorded time</h3>
+              {entries.map((e) => (
+                <div className="ee-tech-time-row" key={e.id}>
+                  <strong>
+                    {e.staffName} ·{' '}
+                    {formatDurationMinutes(e.workedMinutes ?? e.liveWorkedMinutes)} worked
+                  </strong>
+                  <span className={`ee-tech-entry-status ${statusClass(e.status)}`}>
+                    {statusLabel(e.status)}
                   </span>
-                </figure>
-              ),
-            )}
-          </div>
-        ) : (
-          <p className="ee-tech-muted">No photos uploaded for this visit yet.</p>
-        )}
-      </section>
+                  <span>
+                    {new Date(e.startedAt).toLocaleString('en-AU', {
+                      timeZone: 'Australia/Perth',
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                    {e.endedAt
+                      ? ' – ' +
+                        new Date(e.endedAt).toLocaleTimeString('en-AU', {
+                          timeZone: 'Australia/Perth',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })
+                      : ' – running'}
+                    {' · Break '}
+                    {formatDurationMinutes(
+                      e.status === 'active' || e.status === 'on_break'
+                        ? e.liveBreakMinutes
+                        : e.breakMinutes,
+                    )}
+                    {' · '}
+                    {e.entrySource}
+                  </span>
+                  {e.note ? <span>{e.note}</span> : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="ee-tech-muted">No time entries recorded yet.</p>
+          )}
+        </div>
+      </details>
     </div>
   );
 }

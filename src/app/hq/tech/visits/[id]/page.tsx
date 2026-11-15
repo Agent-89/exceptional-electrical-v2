@@ -8,9 +8,9 @@ import {
   formatPerthTime,
   mapsDirectionsUrl,
 } from '@/lib/perth-day';
-import { JOB_STATUS_LABELS } from '@/lib/job-statuses';
 import { listJobAttachments, listJobNotes, signAttachmentUrls } from '@/lib/tech-field';
 import type { FieldStatus } from '@/lib/tech-field-constants';
+import { FIELD_STATUS_LABELS } from '@/lib/tech-field-constants';
 import {
   getActiveTimeEntryForTechnician,
   listTimeEntriesForAppointment,
@@ -89,24 +89,59 @@ export default async function TechVisitPage({
   }));
 
   const scheduledMinutes = elapsedWholeMinutes(visit.startsAt, visit.endsAt);
+  const fieldStatus = visit.fieldStatus as FieldStatus;
+  const jobNumber = formatJobNumber(visit.jobNumber);
+  const appointmentTime = `${formatPerthTime(visit.startsAt)} – ${formatPerthTime(visit.endsAt)}`;
 
   return (
-    <main className="ee-tech">
+    <main className="ee-tech ee-tech-visit-page">
       <TechStyles />
       <Link className="hq-back" href="/hq/tech">
         ← Today
       </Link>
-      <header className="ee-tech-head">
-        <div className="hq-kicker">VISIT · {formatJobNumber(visit.jobNumber)}</div>
-        <h1>{visit.title}</h1>
-        <p>
-          <span className="ee-tech-status">
-            {JOB_STATUS_LABELS[visit.jobStatus as keyof typeof JOB_STATUS_LABELS] ?? visit.jobStatus}
-          </span>{' '}
-          <span className="ee-tech-muted">
-            · Visit {visit.visitStatus} · Field {visit.fieldStatus.replaceAll('_', ' ')}
+
+      <header className="ee-tech-overview" aria-labelledby="visit-job-title">
+        <div className="ee-tech-overview-top">
+          <span className="hq-kicker">JOB {jobNumber}</span>
+          <span className="ee-tech-status ee-tech-status-field" title="Current visit status">
+            {FIELD_STATUS_LABELS[fieldStatus] ?? fieldStatus.replaceAll('_', ' ')}
           </span>
-        </p>
+        </div>
+        <h1 id="visit-job-title">{visit.title}</h1>
+        <div className="ee-tech-overview-meta">
+          <p className="ee-tech-overview-line">
+            <span className="ee-tech-overview-label">Customer</span>
+            <span>
+              {visit.customerName ?? 'Not assigned'}
+              {visit.customerPhone ? (
+                <>
+                  {' · '}
+                  <a href={'tel:' + visit.customerPhone}>{visit.customerPhone}</a>
+                </>
+              ) : null}
+            </span>
+          </p>
+          <p className="ee-tech-overview-line">
+            <span className="ee-tech-overview-label">Site</span>
+            <span>
+              {visit.siteAddress || 'Address needed'}
+              {visit.siteAddress ? (
+                <>
+                  {' · '}
+                  <a href={mapsDirectionsUrl(visit.siteAddress)} target="_blank" rel="noopener noreferrer">
+                    Directions
+                  </a>
+                </>
+              ) : null}
+            </span>
+          </p>
+          <p className="ee-tech-overview-line">
+            <span className="ee-tech-overview-label">Appointment</span>
+            <span>
+              {formatPerthDateLong(visit.startsAt)} · {appointmentTime}
+            </span>
+          </p>
+        </div>
       </header>
 
       {active && active.appointmentId !== visit.appointmentId ? (
@@ -115,74 +150,12 @@ export default async function TechVisitPage({
         </p>
       ) : null}
 
-      <section className="ee-tech-panel">
-        <h2>Appointment</h2>
-        <dl className="ee-tech-dl">
-          <div>
-            <dt>Date</dt>
-            <dd>{formatPerthDateLong(visit.startsAt)}</dd>
-          </div>
-          <div>
-            <dt>Scheduled time</dt>
-            <dd>
-              {formatPerthTime(visit.startsAt)} – {formatPerthTime(visit.endsAt)}
-            </dd>
-          </div>
-          <div>
-            <dt>Instructions</dt>
-            <dd>{visit.visitNotes || 'No appointment instructions.'}</dd>
-          </div>
-          {visit.electricianNames.length ? (
-            <div>
-              <dt>Assigned electricians</dt>
-              <dd>{visit.electricianNames.join(', ')}</dd>
-            </div>
-          ) : null}
-        </dl>
-      </section>
-
-      <section className="ee-tech-panel">
-        <h2>Job details</h2>
-        <dl className="ee-tech-dl">
-          <div>
-            <dt>Customer</dt>
-            <dd>
-              {visit.customerName ?? 'Not assigned'}
-              {visit.customerPhone ? (
-                <>
-                  <br />
-                  <a href={'tel:' + visit.customerPhone}>{visit.customerPhone}</a>
-                </>
-              ) : null}
-            </dd>
-          </div>
-          <div>
-            <dt>Worksite</dt>
-            <dd>
-              {visit.siteAddress || 'Address needed'}
-              {visit.siteAddress ? (
-                <>
-                  <br />
-                  <a href={mapsDirectionsUrl(visit.siteAddress)} target="_blank" rel="noopener noreferrer">
-                    Open directions ↗
-                  </a>
-                </>
-              ) : null}
-            </dd>
-          </div>
-          <div>
-            <dt>Description</dt>
-            <dd>{visit.description || 'No work description added yet.'}</dd>
-          </div>
-        </dl>
-      </section>
-
       <VisitFieldOps
         appointmentId={visit.appointmentId}
         appointmentDateLabel={formatPerthDateLong(visit.startsAt)}
-        scheduledLabel={`${formatPerthTime(visit.startsAt)} – ${formatPerthTime(visit.endsAt)}`}
+        scheduledLabel={appointmentTime}
         scheduledMinutes={scheduledMinutes}
-        fieldStatus={visit.fieldStatus as FieldStatus}
+        fieldStatus={fieldStatus}
         assignedTechnicianCount={visit.electricianNames.length || 1}
         timeRecorded={query.time === 'recorded'}
         activeEntry={activeOnThisVisit}
@@ -205,10 +178,13 @@ export default async function TechVisitPage({
         outstandingWork={visit.fieldOutstandingWork}
         issues={visit.fieldIssues}
         followUpRequired={visit.fieldFollowUpRequired}
+        visitNotes={visit.visitNotes}
+        jobDescription={visit.description}
+        electricianNames={visit.electricianNames}
       />
 
-      <div className="ee-tech-actions">
-        <Link className="ee-tech-btn ee-tech-btn-secondary" href={'/hq/tech/jobs/' + visit.jobId}>
+      <div className="ee-tech-actions ee-tech-footer-link">
+        <Link className="ee-tech-btn ee-tech-btn-ghost" href={'/hq/tech/jobs/' + visit.jobId}>
           All your visits on this job
         </Link>
       </div>
