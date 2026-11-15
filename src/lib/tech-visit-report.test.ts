@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  TECH_WORK_REPORT_CONFLICT_MESSAGE,
   VISIT_REPORT_CONFLICT_MESSAGE,
   buildVisitReportPatch,
   canTechnicianFinaliseSharedVisit,
+  canTechnicianWriteSharedVisitFields,
   defaultVisitOutcomeForForm,
   resolveTechnicianVisitOutcome,
+  seedTechWorkReportFromShared,
+  techWorkReportSaveIsNoop,
+  techWorkReportSnapshotsMatch,
   timerFinishCompletesVisit,
   visitOutcomeUpdatesJobStatus,
   visitReportSaveIsNoop,
@@ -83,7 +88,7 @@ describe('multi-technician shared visit finalisation', () => {
       assignedTechnicianCount: 2,
     });
     assert.equal(completed.ok, false);
-    if (!completed.ok) assert.match(completed.error, /office will close/i);
+    if (!completed.ok) assert.match(completed.error, /office will close|own work report/i);
 
     const unable = resolveTechnicianVisitOutcome({
       requested: 'unable_to_complete',
@@ -167,5 +172,77 @@ describe('shared visit report concurrency', () => {
       visitReportSaveIsNoop(current, { ...current, completionNote: 'Different note' }),
       false,
     );
+  });
+});
+
+describe('individual technician work reports', () => {
+  it('blocks technicians from writing shared fields when the visit is already finalised', () => {
+    const blocked = canTechnicianWriteSharedVisitFields({
+      assignedTechnicianCount: 1,
+      currentSharedFieldStatus: 'work_completed',
+      requestedPersonalStatus: 'in_progress',
+    });
+    assert.equal(blocked.writeShared, false);
+    assert.equal(blocked.finaliseShared, false);
+  });
+
+  it('lets a solo technician finalise a non-terminal shared visit', () => {
+    const solo = canTechnicianWriteSharedVisitFields({
+      assignedTechnicianCount: 1,
+      currentSharedFieldStatus: 'in_progress',
+      requestedPersonalStatus: 'work_completed',
+    });
+    assert.equal(solo.writeShared, true);
+    assert.equal(solo.finaliseShared, true);
+  });
+
+  it('keeps multi-tech saves on personal reports only', () => {
+    const multi = canTechnicianWriteSharedVisitFields({
+      assignedTechnicianCount: 2,
+      currentSharedFieldStatus: 'in_progress',
+      requestedPersonalStatus: 'work_completed',
+    });
+    assert.equal(multi.writeShared, false);
+    assert.equal(multi.finaliseShared, false);
+  });
+
+  it('detects concurrent personal report edits via updatedAt', () => {
+    const base = {
+      workSummary: 'Pulled cable',
+      outstandingWork: null,
+      issues: null,
+      followUpRequired: false,
+      progressStatus: 'in_progress' as const,
+      updatedAt: '2026-11-15T01:00:00.000Z',
+    };
+    assert.equal(techWorkReportSnapshotsMatch(base, base), true);
+    assert.equal(
+      techWorkReportSnapshotsMatch(base, {
+        ...base,
+        updatedAt: '2026-11-15T01:05:00.000Z',
+      }),
+      false,
+    );
+    assert.equal(techWorkReportSaveIsNoop(base, { ...base, workSummary: 'Pulled cable ' }), true);
+    assert.equal(
+      techWorkReportSaveIsNoop(base, { ...base, workSummary: 'Different' }),
+      false,
+    );
+    assert.match(TECH_WORK_REPORT_CONFLICT_MESSAGE, /refresh/i);
+  });
+
+  it('seeds an empty personal form from legacy shared field text without inventing values', () => {
+    const seeded = seedTechWorkReportFromShared({
+      completionNote: ' Legacy summary ',
+      outstandingWork: null,
+      issues: '',
+      followUpRequired: true,
+      fieldStatus: 'paused',
+    });
+    assert.equal(seeded.workSummary, 'Legacy summary');
+    assert.equal(seeded.outstandingWork, null);
+    assert.equal(seeded.issues, null);
+    assert.equal(seeded.followUpRequired, true);
+    assert.equal(seeded.progressStatus, 'in_progress');
   });
 });

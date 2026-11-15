@@ -32,7 +32,7 @@ import {
   VISIT_OUTCOME_LABELS,
   VISIT_OUTCOME_STATUSES,
   canTechnicianFinaliseSharedVisit,
-  defaultVisitOutcomeForForm,
+  isTerminalVisitOutcome,
   type VisitOutcomeStatus,
 } from '@/lib/tech-visit-report';
 import {
@@ -99,6 +99,13 @@ type Props = {
   outstandingWork: string | null;
   issues: string | null;
   followUpRequired: boolean;
+  personalProgressStatus: VisitOutcomeStatus;
+  techReportUpdatedAt: string | null;
+  sharedCompletionNote: string | null;
+  sharedOutstandingWork: string | null;
+  sharedIssues: string | null;
+  sharedFollowUpRequired: boolean;
+  hasPersonalReport: boolean;
   visitNotes: string | null;
   jobDescription: string | null;
   electricianNames: string[];
@@ -146,6 +153,13 @@ export default function VisitFieldOps({
   outstandingWork,
   issues,
   followUpRequired,
+  personalProgressStatus,
+  techReportUpdatedAt,
+  sharedCompletionNote,
+  sharedOutstandingWork,
+  sharedIssues,
+  sharedFollowUpRequired,
+  hasPersonalReport,
   visitNotes,
   jobDescription,
   electricianNames,
@@ -169,15 +183,15 @@ export default function VisitFieldOps({
   const reportDirty = useRef(false);
   const noteDirty = useRef(false);
 
+  // Shared appointment snapshot (for solo finalisation concurrency).
   const [expectedStatus, setExpectedStatus] = useState(fieldStatus);
-  const [expectedCompletion, setExpectedCompletion] = useState(completionNote ?? '');
-  const [expectedOutstanding, setExpectedOutstanding] = useState(outstandingWork ?? '');
-  const [expectedIssues, setExpectedIssues] = useState(issues ?? '');
-  const [expectedFollowUp, setExpectedFollowUp] = useState(followUpRequired);
+  const [expectedCompletion, setExpectedCompletion] = useState(sharedCompletionNote ?? '');
+  const [expectedOutstanding, setExpectedOutstanding] = useState(sharedOutstandingWork ?? '');
+  const [expectedIssues, setExpectedIssues] = useState(sharedIssues ?? '');
+  const [expectedFollowUp, setExpectedFollowUp] = useState(sharedFollowUpRequired);
+  const [expectedTechUpdatedAt, setExpectedTechUpdatedAt] = useState(techReportUpdatedAt);
 
-  const [outcome, setOutcome] = useState<VisitOutcomeStatus>(
-    defaultVisitOutcomeForForm(fieldStatus),
-  );
+  const [outcome, setOutcome] = useState<VisitOutcomeStatus>(personalProgressStatus);
   const [completion, setCompletion] = useState(completionNote ?? '');
   const [outstanding, setOutstanding] = useState(outstandingWork ?? '');
   const [issuesText, setIssuesText] = useState(issues ?? '');
@@ -192,17 +206,29 @@ export default function VisitFieldOps({
   useEffect(() => {
     if (reportDirty.current) return;
     setExpectedStatus(fieldStatus);
-    setExpectedCompletion(completionNote ?? '');
-    setExpectedOutstanding(outstandingWork ?? '');
-    setExpectedIssues(issues ?? '');
-    setExpectedFollowUp(followUpRequired);
-    const nextDefault = defaultVisitOutcomeForForm(fieldStatus);
-    setOutcome(nextDefault);
+    setExpectedCompletion(sharedCompletionNote ?? '');
+    setExpectedOutstanding(sharedOutstandingWork ?? '');
+    setExpectedIssues(sharedIssues ?? '');
+    setExpectedFollowUp(sharedFollowUpRequired);
+    setExpectedTechUpdatedAt(techReportUpdatedAt);
+    setOutcome(personalProgressStatus);
     setCompletion(completionNote ?? '');
     setOutstanding(outstandingWork ?? '');
     setIssuesText(issues ?? '');
     setFollowUp(followUpRequired);
-  }, [fieldStatus, completionNote, outstandingWork, issues, followUpRequired]);
+  }, [
+    fieldStatus,
+    completionNote,
+    outstandingWork,
+    issues,
+    followUpRequired,
+    personalProgressStatus,
+    techReportUpdatedAt,
+    sharedCompletionNote,
+    sharedOutstandingWork,
+    sharedIssues,
+    sharedFollowUpRequired,
+  ]);
 
   const refreshSoft = useCallback(() => {
     startTransition(() => {
@@ -311,9 +337,9 @@ export default function VisitFieldOps({
   });
   const phaseActions = timerPrimaryActions(timerPhase);
   const canFinalise = canTechnicianFinaliseSharedVisit(assignedTechnicianCount);
-  const selectableOutcomes: VisitOutcomeStatus[] = canFinalise
-    ? [...VISIT_OUTCOME_STATUSES]
-    : ['in_progress'];
+  const sharedFinalised = isTerminalVisitOutcome(fieldStatus);
+  // Personal work report always allows the full progress set.
+  const selectableOutcomes: VisitOutcomeStatus[] = [...VISIT_OUTCOME_STATUSES];
   const formDefault = selectableOutcomes.includes(outcome) ? outcome : 'in_progress';
   const timerLocked = busy === 'timer';
 
@@ -390,23 +416,31 @@ export default function VisitFieldOps({
     fd.set('expected_outstanding_work', expectedOutstanding);
     fd.set('expected_issues', expectedIssues);
     if (expectedFollowUp) fd.set('expected_follow_up_required', 'yes');
+    if (expectedTechUpdatedAt) fd.set('expected_tech_report_updated_at', expectedTechUpdatedAt);
 
     try {
       const result = await updateVisitProgressAction(fd);
+      if (result.techReportUpdatedAt) {
+        setExpectedTechUpdatedAt(result.techReportUpdatedAt);
+      }
       if (!result.ok) {
+        // Personal report may already be persisted; keep concurrency token above.
         showToast('error', result.error);
+        refreshSoft();
         return;
       }
       reportDirty.current = false;
-      setExpectedStatus(formDefault);
-      setExpectedCompletion(completion.trim());
-      setExpectedOutstanding(outstanding.trim());
-      setExpectedIssues(issuesText.trim());
-      setExpectedFollowUp(followUp);
+      if (canFinalise && !sharedFinalised) {
+        setExpectedStatus(formDefault);
+        setExpectedCompletion(completion.trim());
+        setExpectedOutstanding(outstanding.trim());
+        setExpectedIssues(issuesText.trim());
+        setExpectedFollowUp(followUp);
+      }
       setReportSavedFlash(true);
       showToast(
         'success',
-        result.noop ? 'Work report already up to date' : 'Work report saved',
+        result.noop ? 'Work report already up to date' : result.message || 'Work report saved',
       );
       refreshSoft();
     } catch (error) {
@@ -764,17 +798,25 @@ export default function VisitFieldOps({
         <summary>My Work Report</summary>
         <div className="ee-tech-fold-body">
           <p className="ee-tech-muted" style={{ marginTop: 0 }}>
-            {appointmentDateLabel} · {scheduledLabel}. Completing this report does not close the
-            overall job.
+            {appointmentDateLabel} · {scheduledLabel}. This is your personal work report. Completing
+            it does not close the overall job.
+            {!hasPersonalReport
+              ? ' Fields may be pre-filled from an earlier shared summary — editing saves as your report only.'
+              : null}
           </p>
           {!canFinalise ? (
             <p className="ee-tech-hint" role="status">
               Shared visit · office sets the final outcome. Record your own work here.
             </p>
           ) : null}
+          {sharedFinalised ? (
+            <p className="ee-tech-hint" role="status">
+              Shared visit outcome is finalised. You can still update your personal work report.
+            </p>
+          ) : null}
           <form onSubmit={onSaveReport} className="ee-tech-form">
             <fieldset className="ee-tech-outcome">
-              <legend>{canFinalise ? 'Visit outcome' : 'Your progress'}</legend>
+              <legend>{canFinalise && !sharedFinalised ? 'Visit outcome' : 'My progress'}</legend>
               {selectableOutcomes.map((key) => (
                 <label key={key} className="ee-tech-outcome-option">
                   <input
@@ -790,7 +832,13 @@ export default function VisitFieldOps({
                   />
                   <span>
                     <strong>{VISIT_OUTCOME_LABELS[key]}</strong>
-                    <small>{VISIT_OUTCOME_HINTS[key]}</small>
+                    <small>
+                      {canFinalise && !sharedFinalised
+                        ? VISIT_OUTCOME_HINTS[key]
+                        : key === 'work_completed'
+                          ? 'Marks your own work as finished (does not close a shared visit).'
+                          : VISIT_OUTCOME_HINTS[key]}
+                    </small>
                   </span>
                 </label>
               ))}

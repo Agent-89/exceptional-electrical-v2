@@ -27,6 +27,7 @@ export type JobAttachmentRow = {
   jobId: string;
   appointmentId: string | null;
   uploadedBy: string;
+  uploadedByName: string | null;
   storagePath: string;
   contentType: string;
   byteSize: number;
@@ -86,11 +87,18 @@ export async function listJobAttachments(options: {
   if (options.appointmentId) query = query.eq('appointment_id', options.appointmentId);
   const { data, error } = await query;
   if (error) throw new Error('Unable to load job photos.');
-  return (data ?? []).map((r) => ({
+  const rows = data ?? [];
+  const uploaderIds = [...new Set(rows.map((r) => r.uploaded_by as string))];
+  const { data: uploaders } = uploaderIds.length
+    ? await db.from('staff_profiles').select('user_id,full_name').in('user_id', uploaderIds)
+    : { data: [] as { user_id: string; full_name: string }[] };
+  const nameMap = new Map((uploaders ?? []).map((a) => [a.user_id, a.full_name]));
+  return rows.map((r) => ({
     id: r.id as string,
     jobId: r.job_id as string,
     appointmentId: (r.appointment_id as string | null) ?? null,
     uploadedBy: r.uploaded_by as string,
+    uploadedByName: nameMap.get(r.uploaded_by as string) ?? null,
     storagePath: r.storage_path as string,
     contentType: r.content_type as string,
     byteSize: r.byte_size as number,

@@ -13,14 +13,17 @@ import {
 } from '@/lib/hq-auth';
 import { ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES } from '@/lib/tech-field-constants';
 import {
+  TECH_WORK_REPORT_CONFLICT_MESSAGE,
   VISIT_REPORT_CONFLICT_MESSAGE,
   buildVisitReportPatch,
+  canTechnicianWriteSharedVisitFields,
+  isTerminalVisitOutcome,
   isVisitOutcomeStatus,
   normalizeVisitReportText,
-  resolveTechnicianVisitOutcome,
   visitOutcomeUpdatesJobStatus,
   visitReportSaveIsNoop,
   visitReportSnapshotsMatch,
+  type VisitOutcomeStatus,
   type VisitReportSnapshot,
 } from '@/lib/tech-visit-report';
 import {
@@ -30,22 +33,37 @@ import {
   getTimeEntry,
   syncAppointmentFieldStatusFromLiveTimers,
 } from '@/lib/tech-time';
+import { upsertOwnTechWorkReport } from '@/lib/tech-work-reports';
 
 /** Soft result for tech field actions — avoid throwing expected UX errors (they become 500 digests). */
 export type TechFieldActionResult =
-  | { ok: true; noop?: boolean; message?: string }
-  | { ok: false; error: string; code?: 'conflict' | 'validation' | 'forbidden' | 'unknown' };
+  | { ok: true; noop?: boolean; message?: string; techReportUpdatedAt?: string | null }
+  | {
+      ok: false;
+      error: string;
+      code?: 'conflict' | 'validation' | 'forbidden' | 'unknown';
+      /** Present when the personal report already persisted before a later failure. */
+      techReportUpdatedAt?: string | null;
+    };
 
-function okResult(extra?: { noop?: boolean; message?: string }): TechFieldActionResult {
+function okResult(extra?: {
+  noop?: boolean;
+  message?: string;
+  techReportUpdatedAt?: string | null;
+}): TechFieldActionResult {
   return { ok: true, ...extra };
 }
 
 function failResult(
   error: string,
   code: 'conflict' | 'validation' | 'forbidden' | 'unknown' = 'unknown',
+  extra?: { techReportUpdatedAt?: string | null },
 ): TechFieldActionResult {
-  return { ok: false, error, code };
+  return { ok: false, error, code, ...extra };
 }
+
+const PERSONAL_SAVED_SHARED_CONFLICT_MESSAGE =
+  'Your work report was saved, but the shared visit outcome changed. Refresh and try again.';
 
 function revalidateVisit(appointmentId: string, jobId: string) {
   revalidatePath('/hq/tech');
@@ -379,95 +397,173 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
   const requested = String(formData.get('field_status') || '');
   const { crew, visit } = await assertAssignedAppointment(appointmentId);
   const assignedCount = await countAppointmentTechnicians(visit.id);
-  const resolved = resolveTechnicianVisitOutcome({
-    requested,
-    assignedTechnicianCount: assignedCount,
-  });
-  if (!resolved.ok) return failResult(resolved.error, 'validation');
+
+  if (!isVisitOutcomeStatus(requested)) {
+    return failResult('Invalid visit outcome.', 'validation');
+  }
+  const personalStatus: VisitOutcomeStatus = requested;
 
   const completionNote = textField(formData, 'completion_note', 2000);
   const outstanding = textField(formData, 'outstanding_work', 2000);
   const issues = textField(formData, 'issues', 2000);
   const furtherVisit = String(formData.get('follow_up_required') || '') === 'yes';
-  const expected = expectedVisitReportSnapshot(formData);
-  const built = buildVisitReportPatch({
-    fieldStatus: resolved.fieldStatus,
-    fields: {
-      completionNote,
-      outstandingWork: outstanding,
-      issues,
-      furtherVisitRequired: furtherVisit,
-    },
-    currentAppointmentStatus: visit.status,
-    completedAtIso: new Date().toISOString(),
-  });
+  const expectedUpdatedAtRaw = String(formData.get('expected_tech_report_updated_at') || '').trim();
+  const expectedUpdatedAt = expectedUpdatedAtRaw || null;
 
   // Guardrail: visit reporting must never mutate jobs.status.
   if (visitOutcomeUpdatesJobStatus()) {
     return failResult('Visit reporting misconfigured: job status must stay unchanged.');
   }
 
-  const proposed: VisitReportSnapshot = {
-    fieldStatus: built.fieldStatus,
-    completionNote: built.completionNote,
-    outstandingWork: built.outstandingWork,
-    issues: built.issues,
-    furtherVisitRequired: built.furtherVisitRequired,
-  };
-
-  const patch: Record<string, unknown> = {
-    field_status: built.fieldStatus,
-    field_completion_note: built.completionNote,
-    field_outstanding_work: built.outstandingWork,
-    field_issues: built.issues,
-    field_follow_up_required: built.furtherVisitRequired,
-  };
-  if (built.fieldCompletedAt) patch.field_completed_at = built.fieldCompletedAt;
-  else patch.field_completed_at = null;
-  // Visit-level schedule status only — never flips the parent job to completed.
-  if (built.appointmentStatusCompleted) patch.status = 'completed';
-
   const db = dbAdmin();
   const { data: current, error: currentError } = await db
     .from('job_appointments')
     .select(
-      'id,field_status,field_completion_note,field_outstanding_work,field_issues,field_follow_up_required',
+      'id,status,field_status,field_completion_note,field_outstanding_work,field_issues,field_follow_up_required',
     )
     .eq('id', visit.id)
     .maybeSingle();
-  if (currentError || !current) return failResult('Unable to save visit report.');
-  const currentSnapshot = snapshotFromAppointmentRow(current);
-  if (!visitReportSnapshotsMatch(expected, currentSnapshot)) {
-    return failResult(VISIT_REPORT_CONFLICT_MESSAGE, 'conflict');
-  }
+  if (currentError || !current) return failResult('Unable to save work report.');
 
-  // Identical re-save: keep concurrency check, skip write + activity duplicate.
-  if (visitReportSaveIsNoop(currentSnapshot, proposed)) {
-    revalidateVisit(visit.id, visit.job_id);
-    return okResult({ noop: true, message: 'Visit report already up to date' });
-  }
-
-  const { data, error } = await applyVisitReportExpectation(
-    db.from('job_appointments').update(patch).eq('id', visit.id),
-    expected,
-  )
-    .select('id')
-    .maybeSingle();
-  if (error) return failResult('Unable to save visit report.');
-  if (!data) return failResult(VISIT_REPORT_CONFLICT_MESSAGE, 'conflict');
-
-  await db.from('job_activity').insert({
-    job_id: visit.job_id,
-    actor_id: crew.id,
-    action: 'visit_progress_updated',
-    note:
-      `Visit outcome → ${built.fieldStatus}` +
-      (completionNote ? ` · ${completionNote}` : '') +
-      (furtherVisit ? ' · Further visit required' : ''),
+  const sharedWrite = canTechnicianWriteSharedVisitFields({
+    assignedTechnicianCount: assignedCount,
+    currentSharedFieldStatus: current.field_status,
+    requestedPersonalStatus: personalStatus,
   });
 
+  // Personal work report — always scoped to this technician.
+  const personalSave = await upsertOwnTechWorkReport({
+    appointmentId: visit.id,
+    jobId: visit.job_id,
+    staffId: crew.staffId,
+    technicianUserId: crew.id,
+    fields: {
+      workSummary: completionNote,
+      outstandingWork: outstanding,
+      issues,
+      followUpRequired: furtherVisit,
+      progressStatus: personalStatus,
+    },
+    expectedUpdatedAt,
+  });
+  if (!personalSave.ok) {
+    return failResult(
+      personalSave.error || TECH_WORK_REPORT_CONFLICT_MESSAGE,
+      personalSave.conflict ? 'conflict' : 'unknown',
+    );
+  }
+
+  let sharedUpdated = false;
+  if (sharedWrite.writeShared) {
+    const expected = expectedVisitReportSnapshot(formData);
+    // When only nudging in-progress (solo, non-terminal), keep existing shared text
+    // unless finalising — personal text lives on the tech report row.
+    const sharedFields = sharedWrite.finaliseShared
+      ? {
+          completionNote,
+          outstandingWork: outstanding,
+          issues,
+          furtherVisitRequired: furtherVisit,
+        }
+      : {
+          completionNote: normalizeVisitReportText(current.field_completion_note),
+          outstandingWork: normalizeVisitReportText(current.field_outstanding_work),
+          issues: normalizeVisitReportText(current.field_issues),
+          furtherVisitRequired: Boolean(current.field_follow_up_required),
+        };
+
+    const built = buildVisitReportPatch({
+      fieldStatus: sharedWrite.finaliseShared ? personalStatus : 'in_progress',
+      fields: sharedFields,
+      currentAppointmentStatus: current.status,
+      completedAtIso: new Date().toISOString(),
+    });
+
+    const proposed: VisitReportSnapshot = {
+      fieldStatus: built.fieldStatus,
+      completionNote: built.completionNote,
+      outstandingWork: built.outstandingWork,
+      issues: built.issues,
+      furtherVisitRequired: built.furtherVisitRequired,
+    };
+    const currentSnapshot = snapshotFromAppointmentRow(current);
+
+    if (!visitReportSnapshotsMatch(expected, currentSnapshot)) {
+      // Personal report already saved — return its updatedAt so the client stays in sync.
+      return failResult(PERSONAL_SAVED_SHARED_CONFLICT_MESSAGE, 'conflict', {
+        techReportUpdatedAt: personalSave.row.updatedAt,
+      });
+    }
+
+    if (!visitReportSaveIsNoop(currentSnapshot, proposed)) {
+      const patch: Record<string, unknown> = {
+        field_status: built.fieldStatus,
+        field_completion_note: built.completionNote,
+        field_outstanding_work: built.outstandingWork,
+        field_issues: built.issues,
+        field_follow_up_required: built.furtherVisitRequired,
+      };
+      if (sharedWrite.finaliseShared) {
+        patch.field_completed_at = built.fieldCompletedAt ?? null;
+      }
+      if (built.appointmentStatusCompleted) patch.status = 'completed';
+
+      // Never overwrite an office-finalised shared outcome.
+      const { data, error } = await applyVisitReportExpectation(
+        db.from('job_appointments').update(patch).eq('id', visit.id),
+        expected,
+      )
+        .in('field_status', ['scheduled', 'in_progress', 'paused'])
+        .select('id')
+        .maybeSingle();
+      if (error) {
+        return failResult('Unable to update visit outcome.', 'unknown', {
+          techReportUpdatedAt: personalSave.row.updatedAt,
+        });
+      }
+      if (!data) {
+        if (isTerminalVisitOutcome(current.field_status)) {
+          // Personal report saved; shared already finalised — leave shared alone.
+        } else {
+          return failResult(PERSONAL_SAVED_SHARED_CONFLICT_MESSAGE, 'conflict', {
+            techReportUpdatedAt: personalSave.row.updatedAt,
+          });
+        }
+      } else {
+        sharedUpdated = true;
+      }
+    }
+  }
+
+  if (!personalSave.noop || sharedUpdated) {
+    await db.from('job_activity').insert({
+      job_id: visit.job_id,
+      actor_id: crew.id,
+      action: 'technician_work_report_saved',
+      note:
+        `Work report → ${personalStatus}` +
+        (sharedUpdated
+          ? sharedWrite.finaliseShared
+            ? ' · shared visit finalised'
+            : ' · shared visit updated'
+          : ' · personal report only') +
+        (completionNote ? ` · ${completionNote}` : '') +
+        (furtherVisit ? ' · Further visit required' : ''),
+    });
+  }
+
   revalidateVisit(visit.id, visit.job_id);
-  return okResult({ message: 'Visit report saved' });
+  if (personalSave.noop && !sharedUpdated) {
+    return okResult({
+      noop: true,
+      message: 'Work report already up to date',
+      techReportUpdatedAt: personalSave.row.updatedAt,
+    });
+  }
+  return okResult({
+    message: sharedWrite.finaliseShared ? 'Work report saved and visit finalised' : 'Work report saved',
+    techReportUpdatedAt: personalSave.row.updatedAt,
+  });
 }
 
 /** Office finalises the shared visit outcome (used when multiple technicians are assigned). */

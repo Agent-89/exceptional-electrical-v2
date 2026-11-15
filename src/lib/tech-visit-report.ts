@@ -106,14 +106,27 @@ export type VisitReportPatch = VisitReportFields & {
 
 /**
  * Resolve the shared field_status a technician is allowed to write.
- * Multi-tech crews may save in-progress reports but cannot finalise the visit.
+ * Multi-tech crews may save personal reports but cannot finalise the shared visit.
+ * Terminal shared outcomes are office-owned and must not be overwritten.
  */
 export function resolveTechnicianVisitOutcome(input: {
   requested: string;
   assignedTechnicianCount: number;
+  currentSharedFieldStatus?: string;
 }): { ok: true; fieldStatus: VisitOutcomeStatus } | { ok: false; error: string } {
   if (!isVisitOutcomeStatus(input.requested)) {
     return { ok: false, error: 'Invalid visit outcome.' };
+  }
+  if (
+    input.currentSharedFieldStatus &&
+    isTerminalVisitOutcome(input.currentSharedFieldStatus) &&
+    isTerminalVisitOutcome(input.requested) &&
+    !canTechnicianFinaliseSharedVisit(input.assignedTechnicianCount)
+  ) {
+    return {
+      ok: false,
+      error: 'This visit outcome was already finalised by the office.',
+    };
   }
   if (
     isTerminalVisitOutcome(input.requested) &&
@@ -122,10 +135,111 @@ export function resolveTechnicianVisitOutcome(input: {
     return {
       ok: false,
       error:
-        'This visit has multiple technicians. Save your notes as in progress — the office will close the shared visit outcome.',
+        'This visit has multiple technicians. Save your own work report — the office will close the shared visit outcome.',
     };
   }
   return { ok: true, fieldStatus: input.requested };
+}
+
+/** Personal work-report fields (per technician, not the shared visit outcome). */
+export type TechWorkReportFields = {
+  workSummary: string | null;
+  outstandingWork: string | null;
+  issues: string | null;
+  followUpRequired: boolean;
+  progressStatus: VisitOutcomeStatus;
+};
+
+export type TechWorkReportSnapshot = TechWorkReportFields & {
+  updatedAt: string | null;
+};
+
+export const TECH_WORK_REPORT_CONFLICT_MESSAGE =
+  'Your work report was updated elsewhere. Refresh the page and try again.';
+
+export function techWorkReportSnapshotsMatch(
+  expected: TechWorkReportSnapshot,
+  current: TechWorkReportSnapshot,
+): boolean {
+  return (
+    expected.progressStatus === current.progressStatus &&
+    normalizeVisitReportText(expected.workSummary) ===
+      normalizeVisitReportText(current.workSummary) &&
+    normalizeVisitReportText(expected.outstandingWork) ===
+      normalizeVisitReportText(current.outstandingWork) &&
+    normalizeVisitReportText(expected.issues) === normalizeVisitReportText(current.issues) &&
+    Boolean(expected.followUpRequired) === Boolean(current.followUpRequired) &&
+    (expected.updatedAt ?? null) === (current.updatedAt ?? null)
+  );
+}
+
+export function techWorkReportSaveIsNoop(
+  current: TechWorkReportSnapshot,
+  proposed: TechWorkReportSnapshot,
+): boolean {
+  return (
+    current.progressStatus === proposed.progressStatus &&
+    normalizeVisitReportText(current.workSummary) ===
+      normalizeVisitReportText(proposed.workSummary) &&
+    normalizeVisitReportText(current.outstandingWork) ===
+      normalizeVisitReportText(proposed.outstandingWork) &&
+    normalizeVisitReportText(current.issues) === normalizeVisitReportText(proposed.issues) &&
+    Boolean(current.followUpRequired) === Boolean(proposed.followUpRequired)
+  );
+}
+
+/**
+ * Whether a technician save may also write shared job_appointments.field_*.
+ * Never when the shared outcome is already terminal (office-owned).
+ * Solo techs may finalise; multi-tech may only nudge non-terminal status to in_progress.
+ */
+export function canTechnicianWriteSharedVisitFields(input: {
+  assignedTechnicianCount: number;
+  currentSharedFieldStatus: string;
+  requestedPersonalStatus: VisitOutcomeStatus;
+}): { writeShared: boolean; finaliseShared: boolean; reason?: string } {
+  if (isTerminalVisitOutcome(input.currentSharedFieldStatus)) {
+    return {
+      writeShared: false,
+      finaliseShared: false,
+      reason: 'Shared visit outcome is already finalised by the office.',
+    };
+  }
+  const solo = canTechnicianFinaliseSharedVisit(input.assignedTechnicianCount);
+  if (solo && isTerminalVisitOutcome(input.requestedPersonalStatus)) {
+    return { writeShared: true, finaliseShared: true };
+  }
+  if (solo) {
+    return { writeShared: true, finaliseShared: false };
+  }
+  // Multi-tech: personal report only. Shared status is driven by timers / office.
+  return { writeShared: false, finaliseShared: false };
+}
+
+/**
+ * Seed a technician's empty personal form from legacy shared field_* text.
+ * Read-only compatibility — does not mutate the database until the tech saves.
+ */
+export function seedTechWorkReportFromShared(shared: {
+  completionNote: string | null;
+  outstandingWork: string | null;
+  issues: string | null;
+  followUpRequired: boolean;
+  fieldStatus: string;
+}): TechWorkReportFields {
+  return {
+    workSummary: normalizeVisitReportText(shared.completionNote),
+    outstandingWork: normalizeVisitReportText(shared.outstandingWork),
+    issues: normalizeVisitReportText(shared.issues),
+    followUpRequired: Boolean(shared.followUpRequired),
+    progressStatus: defaultVisitOutcomeForForm(
+      (['scheduled', 'in_progress', 'paused', 'work_completed', 'unable_to_complete'].includes(
+        shared.fieldStatus,
+      )
+        ? shared.fieldStatus
+        : 'in_progress') as FieldStatus,
+    ),
+  };
 }
 
 /** Build the appointment patch for a visit report save. Never includes jobs.status. */
