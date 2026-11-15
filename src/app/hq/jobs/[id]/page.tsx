@@ -23,21 +23,20 @@ export default async function JobPage({params}:{params:Promise<{id:string}>}){
  let timeEntries:Awaited<ReturnType<typeof listTimeEntriesForJob>>=[];
  let notes:Awaited<ReturnType<typeof listJobNotes>>=[];
  let photos:Awaited<ReturnType<typeof signAttachmentUrls>>=[];
- let techReports:Awaited<ReturnType<typeof listTechWorkReportsForJob>>=[];
  try{
-  const [times,noteRows,attachmentRows,reportRows]=await Promise.all([
+  const [times,noteRows,attachmentRows]=await Promise.all([
    listTimeEntriesForJob(id),
    listJobNotes({jobId:id,includeOfficeOnly:true}),
    listJobAttachments({jobId:id}),
-   listTechWorkReportsForJob(id),
   ]);
   timeEntries=times;
   notes=noteRows;
   photos=await signAttachmentUrls(attachmentRows,600);
-  techReports=reportRows;
  }catch{
   // Milestone 2 tables may not be applied on hosted yet.
  }
+ // Soft-empty only when the relation is absent; other schema failures must surface.
+ const techReports=await listTechWorkReportsForJob(id);
 
  const canEdit=true; // requireOfficeUser already gates technicians
  const events:Record<string,string>={created:'Job created',status_changed:'Status updated',note_added:'Note added',details_updated:'Job details updated',staff_assigned:'Electrician assigned',staff_unassigned:'Electrician removed',appointment_added:'Appointment scheduled',time_started:'Timer started',time_paused:'Break started',time_resumed:'Work resumed',time_submitted:'Time submitted',time_manual_added:'Manual time added',visit_progress_updated:'Visit progress updated',technician_work_report_saved:'Technician work report saved',technician_note_added:'Technician note',technician_note_edited:'Technician note edited',photo_uploaded:'Photo uploaded',office_note_added:'Office note',time_approved:'Time approved',time_rejected:'Time rejected',time_corrected:'Time corrected'};

@@ -7,6 +7,11 @@ import {
   type TechWorkReportSnapshot,
   type VisitOutcomeStatus,
 } from '@/lib/tech-visit-report';
+import {
+  isMissingTechReportsRelation,
+  TECH_REPORTS_MIGRATION_REQUIRED,
+} from '@/lib/tech-work-reports-errors';
+export { isMissingTechReportsRelation } from '@/lib/tech-work-reports-errors';
 
 export type TechWorkReportRow = {
   id: string;
@@ -84,8 +89,8 @@ export async function getTechWorkReportForTechnician(input: {
     .eq('technician_user_id', input.technicianUserId)
     .maybeSingle();
   if (error) {
-    // Table may not exist yet on older environments.
-    if (error.message?.includes('job_appointment_tech_reports')) return null;
+    // Unmigrated environments only — partial/failed schema errors must throw.
+    if (isMissingTechReportsRelation(error)) return null;
     throw new Error('Unable to load technician work report.');
   }
   if (!data) return null;
@@ -104,7 +109,7 @@ export async function listTechWorkReportsForJob(jobId: string): Promise<TechWork
     .order('updated_at', { ascending: false })
     .limit(200);
   if (error) {
-    if (error.message?.includes('job_appointment_tech_reports')) return [];
+    if (isMissingTechReportsRelation(error)) return [];
     throw new Error('Unable to load technician work reports.');
   }
   const rows = (data ?? []) as DbTechReport[];
@@ -125,7 +130,7 @@ export async function listTechWorkReportsForAppointment(
     .order('updated_at', { ascending: false })
     .limit(50);
   if (error) {
-    if (error.message?.includes('job_appointment_tech_reports')) return [];
+    if (isMissingTechReportsRelation(error)) return [];
     throw new Error('Unable to load technician work reports.');
   }
   const rows = (data ?? []) as DbTechReport[];
@@ -219,6 +224,9 @@ export async function upsertOwnTechWorkReport(input: {
           error: 'Your work report was updated elsewhere. Refresh the page and try again.',
         };
       }
+      if (isMissingTechReportsRelation(error)) {
+        return { ok: false, conflict: false, error: TECH_REPORTS_MIGRATION_REQUIRED };
+      }
       return { ok: false, conflict: false, error: 'Unable to save work report.' };
     }
     const names = await nameMapFor([input.technicianUserId]);
@@ -263,7 +271,12 @@ export async function upsertOwnTechWorkReport(input: {
       'id,appointment_id,job_id,staff_id,technician_user_id,work_summary,outstanding_work,issues,follow_up_required,progress_status,created_at,updated_at',
     )
     .maybeSingle();
-  if (error) return { ok: false, conflict: false, error: 'Unable to save work report.' };
+  if (error) {
+    if (isMissingTechReportsRelation(error)) {
+      return { ok: false, conflict: false, error: TECH_REPORTS_MIGRATION_REQUIRED };
+    }
+    return { ok: false, conflict: false, error: 'Unable to save work report.' };
+  }
   if (!data) {
     return {
       ok: false,
