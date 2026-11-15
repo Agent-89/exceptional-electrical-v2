@@ -3,8 +3,10 @@ import { describe, it } from 'node:test';
 import {
   isPrimaryTimerAction,
   resolveTimerUiPhase,
+  timerBreakCaption,
   timerPhaseStatusLabel,
   timerPrimaryActions,
+  timerWorkCaption,
   TIMER_ACTION_LABELS,
 } from './tech-visit-ui.ts';
 
@@ -47,5 +49,11 @@ describe('timerPrimaryActions', () => {
   it('hides timer actions once finished', () => {
     assert.deepEqual(timerPrimaryActions('finished'), []);
     assert.equal(timerPhaseStatusLabel('finished'), 'Time recorded');
+  });
+
+  it('labels work and break captions by phase', () => {
+    assert.equal(timerWorkCaption('working'), 'Work time elapsed');
+    assert.equal(timerBreakCaption('on_break'), 'Break time (running)');
+    assert.equal(timerWorkCaption('finished'), 'Work time recorded');
   });
 });

@@ -22,7 +22,11 @@ import {
   type TechFieldActionResult,
 } from '../../actions';
 import { FIELD_STATUS_LABELS, type FieldStatus } from '@/lib/tech-field-constants';
-import { formatDurationMinutes } from '@/lib/tech-time-format';
+import {
+  displayLiveBreakMinutes,
+  displayLiveWorkedMinutes,
+  formatDurationMinutes,
+} from '@/lib/tech-time-format';
 import {
   VISIT_OUTCOME_HINTS,
   VISIT_OUTCOME_LABELS,
@@ -36,13 +40,17 @@ import {
   TIMER_PENDING_LABELS,
   isPrimaryTimerAction,
   resolveTimerUiPhase,
+  timerBreakCaption,
   timerPhaseStatusLabel,
   timerPrimaryActions,
+  timerWorkCaption,
   type TimerPrimaryAction,
 } from '@/lib/tech-visit-ui';
 
 /** Soft poll while live timers exist — keeps multi-tech status fresh without Realtime. */
 const LIVE_TIMER_POLL_MS = 20_000;
+/** Client display tick — recomputes elapsed minutes without changing stored values. */
+const DISPLAY_TICK_MS = 1_000;
 
 type TimeEntryView = {
   id: string;
@@ -50,6 +58,7 @@ type TimeEntryView = {
   status: string;
   startedAt: string;
   endedAt: string | null;
+  breakStartedAt: string | null;
   breakMinutes: number;
   workedMinutes: number | null;
   liveWorkedMinutes: number;
@@ -96,6 +105,7 @@ type Props = {
 };
 
 type BusyKind = 'timer' | 'report' | 'note' | 'manual' | 'photo' | null;
+type FoldSection = 'photo' | 'note' | 'report';
 
 function statusLabel(status: string): string {
   if (status === 'active') return 'Active';
@@ -118,17 +128,6 @@ function isNextRedirectError(error: unknown): boolean {
     'digest' in error &&
     String((error as { digest?: string }).digest || '').startsWith('NEXT_REDIRECT')
   );
-}
-
-function scrollToSection(id: string) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  if (el instanceof HTMLDetailsElement) el.open = true;
-  const focusable = el.querySelector<HTMLElement>(
-    'textarea, input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), button, select',
-  );
-  focusable?.focus({ preventScroll: true });
 }
 
 export default function VisitFieldOps({
@@ -159,6 +158,14 @@ export default function VisitFieldOps({
   const [reportPending, setReportPending] = useState(false);
   const [reportSavedFlash, setReportSavedFlash] = useState(false);
   const [lastTimerMs, setLastTimerMs] = useState<number | null>(null);
+  const [nowIso, setNowIso] = useState(() => new Date().toISOString());
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoCaption, setPhotoCaption] = useState('');
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
   const reportDirty = useRef(false);
   const noteDirty = useRef(false);
 
@@ -227,10 +234,37 @@ export default function VisitFieldOps({
     return () => window.clearInterval(id);
   }, [activeEntry, entries, busy, refreshSoft]);
 
+  // Local display clock — same calculation rules, no server writes.
+  useEffect(() => {
+    if (!activeEntry || (activeEntry.status !== 'active' && activeEntry.status !== 'on_break')) {
+      return;
+    }
+    setNowIso(new Date().toISOString());
+    const id = window.setInterval(() => setNowIso(new Date().toISOString()), DISPLAY_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [activeEntry]);
+
   const markReportDirty = () => {
     reportDirty.current = true;
     setReportSavedFlash(false);
   };
+
+  function openSection(section: FoldSection) {
+    if (section === 'photo') setPhotoOpen(true);
+    if (section === 'note') setNoteOpen(true);
+    if (section === 'report') setReportOpen(true);
+    const id =
+      section === 'photo' ? 'add-photo' : section === 'note' ? 'add-note' : 'visit-report';
+    window.requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const focusable = el.querySelector<HTMLElement>(
+        'textarea, button:not([disabled]), input:not([type="hidden"]):not([type="file"]):not([type="radio"]):not([type="checkbox"])',
+      );
+      focusable?.focus({ preventScroll: true });
+    });
+  }
 
   async function runAction(
     kind: BusyKind,
@@ -282,6 +316,15 @@ export default function VisitFieldOps({
     : ['in_progress'];
   const formDefault = selectableOutcomes.includes(outcome) ? outcome : 'in_progress';
   const timerLocked = busy === 'timer';
+
+  const workedMinutes = timerForThisVisit
+    ? displayLiveWorkedMinutes(timerForThisVisit, nowIso)
+    : 0;
+  const breakMinutes = timerForThisVisit
+    ? displayLiveBreakMinutes(timerForThisVisit, nowIso)
+    : 0;
+  const workedDisplay = formatDurationMinutes(workedMinutes);
+  const breakDisplay = formatDurationMinutes(breakMinutes);
 
   async function onTimerAction(action: TimerPrimaryAction) {
     if (action === 'start') {
@@ -404,17 +447,30 @@ export default function VisitFieldOps({
     if (ok) form.reset();
   }
 
+  function onPickPhoto(fileList: FileList | null) {
+    const file = fileList?.[0] ?? null;
+    setPhotoFile(file);
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (libraryInputRef.current) libraryInputRef.current.value = '';
+  }
+
   async function onUploadPhoto(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    if (!photoFile) {
+      showToast('error', 'Choose a photo first.');
+      return;
+    }
     setBusy('photo');
-    const form = event.currentTarget;
-    const fd = new FormData(form);
+    const fd = new FormData();
     fd.set('appointment_id', appointmentId);
+    fd.set('photo', photoFile);
+    if (photoCaption.trim()) fd.set('caption', photoCaption.trim());
     try {
       await uploadJobPhotoAction(fd);
       showToast('success', 'Photo uploaded');
-      form.reset();
+      setPhotoFile(null);
+      setPhotoCaption('');
       refreshSoft();
     } catch (error) {
       if (isNextRedirectError(error)) throw error;
@@ -426,18 +482,10 @@ export default function VisitFieldOps({
     }
   }
 
-  const workedDisplay = timerForThisVisit
-    ? formatDurationMinutes(timerForThisVisit.liveWorkedMinutes)
-    : formatDurationMinutes(0);
-  const breakDisplay = timerForThisVisit
-    ? formatDurationMinutes(timerForThisVisit.liveBreakMinutes)
-    : formatDurationMinutes(0);
-
   return (
     <div className="ee-tech-stack">
       <HqToast toast={toast} onDismiss={() => setToast(null)} />
 
-      {/* 2. Work timer and primary actions */}
       <section
         className={`ee-tech-timer-hero ee-tech-timer-hero-${timerPhase}`}
         aria-labelledby="work-timer-heading"
@@ -450,14 +498,27 @@ export default function VisitFieldOps({
         </div>
 
         <div className="ee-tech-timer-readout ee-tech-timer-readout-hero">
-          <strong aria-live="polite">{workedDisplay}</strong>
-          <span className="ee-tech-timer-sub">
-            {timerPhase === 'finished'
-              ? 'Session complete'
-              : timerForThisVisit
-                ? `Break ${breakDisplay} · Scheduled ${scheduledLabel}`
-                : `Scheduled ${scheduledLabel} · ${formatDurationMinutes(scheduledMinutes)}`}
-          </span>
+          <div className="ee-tech-timer-primary">
+            <span className="ee-tech-timer-caption">{timerWorkCaption(timerPhase)}</span>
+            <strong aria-live="polite">{workedDisplay}</strong>
+          </div>
+          <div className="ee-tech-timer-metrics">
+            <div
+              className={
+                timerPhase === 'on_break'
+                  ? 'ee-tech-timer-metric is-live'
+                  : 'ee-tech-timer-metric'
+              }
+            >
+              <span>{timerBreakCaption(timerPhase)}</span>
+              <strong aria-live="polite">{breakDisplay}</strong>
+            </div>
+            <div className="ee-tech-timer-metric">
+              <span>Scheduled</span>
+              <strong>{formatDurationMinutes(scheduledMinutes)}</strong>
+            </div>
+          </div>
+          <span className="ee-tech-timer-schedule">Appointment {scheduledLabel}</span>
         </div>
 
         {timerPhase === 'finished' ? (
@@ -469,7 +530,7 @@ export default function VisitFieldOps({
               type="button"
               className="ee-tech-btn ee-tech-btn-secondary"
               style={{ marginTop: 8 }}
-              onClick={() => scrollToSection('visit-report')}
+              onClick={() => openSection('report')}
             >
               Go to Visit Report
             </button>
@@ -497,27 +558,21 @@ export default function VisitFieldOps({
         )}
       </section>
 
-      {/* 3. Quick actions */}
       <nav className="ee-tech-quick" aria-label="Quick actions">
-        <button type="button" className="ee-tech-quick-btn" onClick={() => scrollToSection('add-photo')}>
+        <button type="button" className="ee-tech-quick-btn" onClick={() => openSection('photo')}>
           Add Photo
           {photos.length ? <span className="ee-tech-quick-count">{photos.length}</span> : null}
         </button>
-        <button type="button" className="ee-tech-quick-btn" onClick={() => scrollToSection('add-note')}>
+        <button type="button" className="ee-tech-quick-btn" onClick={() => openSection('note')}>
           Add Note
           {notes.length ? <span className="ee-tech-quick-count">{notes.length}</span> : null}
         </button>
-        <button
-          type="button"
-          className="ee-tech-quick-btn"
-          onClick={() => scrollToSection('visit-report')}
-        >
+        <button type="button" className="ee-tech-quick-btn" onClick={() => openSection('report')}>
           Visit Report
         </button>
       </nav>
 
-      {/* 4. Visit details and progress */}
-      <details className="ee-tech-fold" open>
+      <details className="ee-tech-fold">
         <summary>Visit details</summary>
         <div className="ee-tech-fold-body">
           <dl className="ee-tech-dl ee-tech-dl-compact">
@@ -543,203 +598,271 @@ export default function VisitFieldOps({
         </div>
       </details>
 
-      <section className="ee-tech-section-block" id="add-photo">
-        <h2>Photos</h2>
-        <form onSubmit={onUploadPhoto} className="ee-tech-form" encType="multipart/form-data">
-          <label>
-            Upload from camera or library
-            <input type="file" name="photo" accept="image/*" capture="environment" required />
-          </label>
-          <label>
-            Caption (optional)
-            <input name="caption" maxLength={500} />
-          </label>
-          <button
-            type="submit"
-            className="ee-tech-btn ee-tech-btn-secondary"
-            disabled={busy !== null}
-          >
-            {busy === 'photo' ? 'Uploading…' : 'Upload photo'}
-          </button>
-        </form>
-        {photos.length ? (
-          <div className="ee-tech-gallery" style={{ marginTop: 12 }}>
-            {photos.map((p) =>
-              p.signedUrl ? (
-                <a
-                  key={p.id}
-                  href={p.signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={p.caption ?? 'Job photo'}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.signedUrl} alt={p.caption || 'Job photo'} />
-                </a>
-              ) : (
-                <figure key={p.id}>
-                  <span
-                    className="ee-tech-muted"
-                    style={{ display: 'grid', placeItems: 'center', height: '100%', fontSize: 12 }}
-                  >
-                    Unavailable
-                  </span>
-                </figure>
-              ),
-            )}
-          </div>
-        ) : (
-          <p className="ee-tech-muted">No photos uploaded for this visit yet.</p>
-        )}
-      </section>
-
-      <section className="ee-tech-section-block" id="add-note">
-        <h2>Notes</h2>
-        <form onSubmit={onAddNote} className="ee-tech-form">
-          <label>
-            Add note
-            <textarea
-              name="body"
-              required
-              maxLength={4000}
-              placeholder="What did you find on site?"
-              value={noteBody}
-              onChange={(e) => {
-                noteDirty.current = true;
-                setNoteBody(e.target.value);
-              }}
-            />
-          </label>
-          <button
-            type="submit"
-            className="ee-tech-btn ee-tech-btn-secondary"
-            disabled={busy !== null || !noteBody.trim()}
-          >
-            {busy === 'note' ? 'Saving…' : 'Add note'}
-          </button>
-        </form>
-        {notes.length ? (
-          notes.map((n) => (
-            <div className="ee-tech-note" key={n.id}>
-              <p>{n.body}</p>
-              <small>
-                {n.authorName ?? 'Technician'} ·{' '}
-                {new Date(n.createdAt).toLocaleString('en-AU', {
-                  timeZone: 'Australia/Perth',
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
-                {n.editedAt ? ' · edited' : ''}
-                {n.isOwn ? ' · yours' : ''}
-              </small>
-            </div>
-          ))
-        ) : (
-          <p className="ee-tech-muted">No technician notes yet.</p>
-        )}
-      </section>
-
-      <section className="ee-tech-section-block" id="visit-report">
-        <h2>Visit report</h2>
-        <p className="ee-tech-muted" style={{ marginTop: 0 }}>
-          {appointmentDateLabel} · {scheduledLabel}. Completing a visit does not close the overall
-          job.
-        </p>
-        {!canFinalise ? (
-          <p className="ee-tech-alert" role="status" style={{ marginTop: 0 }}>
-            {assignedTechnicianCount} technicians are assigned to this visit. Save your own work notes
-            here as in progress. The office sets the shared visit outcome when the team is done.
-          </p>
-        ) : null}
-        <form onSubmit={onSaveReport} className="ee-tech-form">
-          <fieldset className="ee-tech-outcome">
-            <legend>Visit outcome</legend>
-            {selectableOutcomes.map((key) => (
-              <label key={key} className="ee-tech-outcome-option">
-                <input
-                  type="radio"
-                  name="field_status"
-                  value={key}
-                  checked={formDefault === key}
-                  required
-                  onChange={() => {
-                    markReportDirty();
-                    setOutcome(key);
-                  }}
-                />
-                <span>
-                  <strong>{VISIT_OUTCOME_LABELS[key]}</strong>
-                  <small>{VISIT_OUTCOME_HINTS[key]}</small>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-          <label>
-            Work completed / summary
-            <textarea
-              name="completion_note"
-              maxLength={2000}
-              value={completion}
-              onChange={(e) => {
-                markReportDirty();
-                setCompletion(e.target.value);
-              }}
-            />
-          </label>
-          <label>
-            Outstanding work
-            <textarea
-              name="outstanding_work"
-              maxLength={2000}
-              value={outstanding}
-              onChange={(e) => {
-                markReportDirty();
-                setOutstanding(e.target.value);
-              }}
-            />
-          </label>
-          <label>
-            Issues encountered
-            <textarea
-              name="issues"
-              maxLength={2000}
-              value={issuesText}
-              onChange={(e) => {
-                markReportDirty();
-                setIssuesText(e.target.value);
-              }}
-            />
-          </label>
-          <label className="ee-tech-check">
+      <details
+        className="ee-tech-fold"
+        id="add-photo"
+        open={photoOpen}
+        onToggle={(e) => setPhotoOpen(e.currentTarget.open)}
+      >
+        <summary>
+          Photos{photos.length ? ` · ${photos.length}` : ''}
+        </summary>
+        <div className="ee-tech-fold-body">
+          <form onSubmit={onUploadPhoto} className="ee-tech-form">
             <input
-              type="checkbox"
-              name="follow_up_required"
-              value="yes"
-              checked={followUp}
-              onChange={(e) => {
-                markReportDirty();
-                setFollowUp(e.target.checked);
-              }}
+              ref={cameraInputRef}
+              className="ee-tech-file-hidden"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              tabIndex={-1}
+              onChange={(e) => onPickPhoto(e.target.files)}
             />
-            Further visit required
-          </label>
-          <button
-            type="submit"
-            className="ee-tech-btn ee-tech-btn-primary"
-            disabled={busy !== null}
-          >
-            {reportPending
-              ? 'Saving…'
-              : reportSavedFlash
-                ? 'Saved'
-                : canFinalise
-                  ? 'Save visit report'
-                  : 'Save my visit notes'}
-          </button>
-        </form>
-      </section>
+            <input
+              ref={libraryInputRef}
+              className="ee-tech-file-hidden"
+              type="file"
+              accept="image/*"
+              tabIndex={-1}
+              onChange={(e) => onPickPhoto(e.target.files)}
+            />
+            <div className="ee-tech-photo-actions">
+              <button
+                type="button"
+                className="ee-tech-btn ee-tech-btn-secondary"
+                onClick={() => cameraInputRef.current?.click()}
+              >
+                Take Photo
+              </button>
+              <button
+                type="button"
+                className="ee-tech-btn ee-tech-btn-secondary"
+                onClick={() => libraryInputRef.current?.click()}
+              >
+                Choose From Library
+              </button>
+            </div>
+            {photoFile ? (
+              <p className="ee-tech-photo-chosen" role="status">
+                Selected · {photoFile.name}
+              </p>
+            ) : (
+              <p className="ee-tech-muted" style={{ margin: 0 }}>
+                Use the camera or photo library, then upload.
+              </p>
+            )}
+            <label>
+              Caption (optional)
+              <input
+                name="caption"
+                maxLength={500}
+                value={photoCaption}
+                onChange={(e) => setPhotoCaption(e.target.value)}
+              />
+            </label>
+            <button
+              type="submit"
+              className="ee-tech-btn ee-tech-btn-primary"
+              disabled={busy !== null || !photoFile}
+            >
+              {busy === 'photo' ? 'Uploading…' : 'Upload photo'}
+            </button>
+          </form>
+          {photos.length ? (
+            <div className="ee-tech-gallery" style={{ marginTop: 12 }}>
+              {photos.map((p) =>
+                p.signedUrl ? (
+                  <a
+                    key={p.id}
+                    href={p.signedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={p.caption ?? 'Job photo'}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.signedUrl} alt={p.caption || 'Job photo'} />
+                  </a>
+                ) : (
+                  <figure key={p.id}>
+                    <span
+                      className="ee-tech-muted"
+                      style={{ display: 'grid', placeItems: 'center', height: '100%', fontSize: 12 }}
+                    >
+                      Unavailable
+                    </span>
+                  </figure>
+                ),
+              )}
+            </div>
+          ) : (
+            <p className="ee-tech-muted">No photos uploaded for this visit yet.</p>
+          )}
+        </div>
+      </details>
 
-      {/* 5. Collapsible time history and advanced controls */}
+      <details
+        className="ee-tech-fold"
+        id="add-note"
+        open={noteOpen}
+        onToggle={(e) => setNoteOpen(e.currentTarget.open)}
+      >
+        <summary>
+          Notes{notes.length ? ` · ${notes.length}` : ''}
+        </summary>
+        <div className="ee-tech-fold-body">
+          <form onSubmit={onAddNote} className="ee-tech-form">
+            <label>
+              Add note
+              <textarea
+                name="body"
+                required
+                maxLength={4000}
+                placeholder="What did you find on site?"
+                value={noteBody}
+                onChange={(e) => {
+                  noteDirty.current = true;
+                  setNoteBody(e.target.value);
+                }}
+              />
+            </label>
+            <button
+              type="submit"
+              className="ee-tech-btn ee-tech-btn-secondary"
+              disabled={busy !== null || !noteBody.trim()}
+            >
+              {busy === 'note' ? 'Saving…' : 'Add note'}
+            </button>
+          </form>
+          {notes.length ? (
+            notes.map((n) => (
+              <div className="ee-tech-note" key={n.id}>
+                <p>{n.body}</p>
+                <small>
+                  {n.authorName ?? 'Technician'} ·{' '}
+                  {new Date(n.createdAt).toLocaleString('en-AU', {
+                    timeZone: 'Australia/Perth',
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                  {n.editedAt ? ' · edited' : ''}
+                  {n.isOwn ? ' · yours' : ''}
+                </small>
+              </div>
+            ))
+          ) : (
+            <p className="ee-tech-muted">No technician notes yet.</p>
+          )}
+        </div>
+      </details>
+
+      <details
+        className="ee-tech-fold"
+        id="visit-report"
+        open={reportOpen}
+        onToggle={(e) => setReportOpen(e.currentTarget.open)}
+      >
+        <summary>Visit report</summary>
+        <div className="ee-tech-fold-body">
+          <p className="ee-tech-muted" style={{ marginTop: 0 }}>
+            {appointmentDateLabel} · {scheduledLabel}. Completing a visit does not close the overall
+            job.
+          </p>
+          {!canFinalise ? (
+            <p className="ee-tech-alert" role="status" style={{ marginTop: 0 }}>
+              {assignedTechnicianCount} technicians are assigned to this visit. Save your own work
+              notes here as in progress. The office sets the shared visit outcome when the team is
+              done.
+            </p>
+          ) : null}
+          <form onSubmit={onSaveReport} className="ee-tech-form">
+            <fieldset className="ee-tech-outcome">
+              <legend>Visit outcome</legend>
+              {selectableOutcomes.map((key) => (
+                <label key={key} className="ee-tech-outcome-option">
+                  <input
+                    type="radio"
+                    name="field_status"
+                    value={key}
+                    checked={formDefault === key}
+                    required
+                    onChange={() => {
+                      markReportDirty();
+                      setOutcome(key);
+                    }}
+                  />
+                  <span>
+                    <strong>{VISIT_OUTCOME_LABELS[key]}</strong>
+                    <small>{VISIT_OUTCOME_HINTS[key]}</small>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            <label>
+              Work completed / summary
+              <textarea
+                name="completion_note"
+                maxLength={2000}
+                value={completion}
+                onChange={(e) => {
+                  markReportDirty();
+                  setCompletion(e.target.value);
+                }}
+              />
+            </label>
+            <label>
+              Outstanding work
+              <textarea
+                name="outstanding_work"
+                maxLength={2000}
+                value={outstanding}
+                onChange={(e) => {
+                  markReportDirty();
+                  setOutstanding(e.target.value);
+                }}
+              />
+            </label>
+            <label>
+              Issues encountered
+              <textarea
+                name="issues"
+                maxLength={2000}
+                value={issuesText}
+                onChange={(e) => {
+                  markReportDirty();
+                  setIssuesText(e.target.value);
+                }}
+              />
+            </label>
+            <label className="ee-tech-check">
+              <input
+                type="checkbox"
+                name="follow_up_required"
+                value="yes"
+                checked={followUp}
+                onChange={(e) => {
+                  markReportDirty();
+                  setFollowUp(e.target.checked);
+                }}
+              />
+              Further visit required
+            </label>
+            <button
+              type="submit"
+              className="ee-tech-btn ee-tech-btn-primary"
+              disabled={busy !== null}
+            >
+              {reportPending
+                ? 'Saving…'
+                : reportSavedFlash
+                  ? 'Saved'
+                  : canFinalise
+                    ? 'Save visit report'
+                    : 'Save my visit notes'}
+            </button>
+          </form>
+        </div>
+      </details>
+
       <details className="ee-tech-fold">
         <summary>Time history &amp; manual entry</summary>
         <div className="ee-tech-fold-body">
@@ -781,7 +904,12 @@ export default function VisitFieldOps({
                 <div className="ee-tech-time-row" key={e.id}>
                   <strong>
                     {e.staffName} ·{' '}
-                    {formatDurationMinutes(e.workedMinutes ?? e.liveWorkedMinutes)} worked
+                    {formatDurationMinutes(
+                      e.status === 'active' || e.status === 'on_break'
+                        ? displayLiveWorkedMinutes(e, nowIso)
+                        : (e.workedMinutes ?? e.liveWorkedMinutes),
+                    )}{' '}
+                    worked
                   </strong>
                   <span className={`ee-tech-entry-status ${statusClass(e.status)}`}>
                     {statusLabel(e.status)}
@@ -803,7 +931,7 @@ export default function VisitFieldOps({
                     {' · Break '}
                     {formatDurationMinutes(
                       e.status === 'active' || e.status === 'on_break'
-                        ? e.liveBreakMinutes
+                        ? displayLiveBreakMinutes(e, nowIso)
                         : e.breakMinutes,
                     )}
                     {' · '}

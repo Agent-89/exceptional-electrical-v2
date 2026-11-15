@@ -59,6 +59,27 @@ export function timerPhaseStatusLabel(phase: TimerUiPhase): string {
   }
 }
 
+/** Primary elapsed label under the large timer digits. */
+export function timerWorkCaption(phase: TimerUiPhase): string {
+  switch (phase) {
+    case 'not_started':
+      return 'Work time';
+    case 'working':
+      return 'Work time elapsed';
+    case 'on_break':
+      return 'Work time so far';
+    case 'finished':
+      return 'Work time recorded';
+  }
+}
+
+export function timerBreakCaption(phase: TimerUiPhase): string {
+  if (phase === 'on_break') return 'Break time (running)';
+  if (phase === 'working') return 'Break time';
+  if (phase === 'finished') return 'Break time';
+  return 'Break time';
+}
+
 export function isPrimaryTimerAction(phase: TimerUiPhase, action: TimerPrimaryAction): boolean {
   if (phase === 'working') return action === 'finish';
   if (phase === 'on_break') return action === 'resume';

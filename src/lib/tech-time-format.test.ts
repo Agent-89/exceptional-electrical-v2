@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   computeWorkedMinutes,
+  displayLiveBreakMinutes,
+  displayLiveWorkedMinutes,
   elapsedWholeMinutes,
   formatDurationMinutes,
 } from './tech-time-format.ts';
@@ -37,5 +39,33 @@ describe('formatDurationMinutes', () => {
     assert.equal(formatDurationMinutes(45), '45m');
     assert.equal(formatDurationMinutes(75), '1h 15m');
     assert.equal(formatDurationMinutes(0), '0m');
+  });
+});
+
+describe('displayLiveWorkedMinutes / displayLiveBreakMinutes', () => {
+  it('freezes work time while on break and accumulates break minutes', () => {
+    const entry = {
+      status: 'on_break',
+      startedAt: '2026-11-14T01:00:00.000Z',
+      endedAt: null,
+      breakStartedAt: '2026-11-14T02:00:00.000Z',
+      breakMinutes: 5,
+      workedMinutes: null,
+    };
+    assert.equal(displayLiveWorkedMinutes(entry, '2026-11-14T02:20:00.000Z'), 55);
+    assert.equal(displayLiveBreakMinutes(entry, '2026-11-14T02:20:00.000Z'), 25);
+  });
+
+  it('keeps work time advancing while active', () => {
+    const entry = {
+      status: 'active',
+      startedAt: '2026-11-14T01:00:00.000Z',
+      endedAt: null,
+      breakStartedAt: null,
+      breakMinutes: 10,
+      workedMinutes: null,
+    };
+    assert.equal(displayLiveWorkedMinutes(entry, '2026-11-14T03:00:00.000Z'), 110);
+    assert.equal(displayLiveBreakMinutes(entry, '2026-11-14T03:00:00.000Z'), 10);
   });
 });
