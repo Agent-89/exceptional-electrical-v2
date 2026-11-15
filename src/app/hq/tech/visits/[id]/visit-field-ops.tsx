@@ -28,7 +28,7 @@ import {
   VISIT_OUTCOME_LABELS,
   VISIT_OUTCOME_STATUSES,
   canTechnicianFinaliseSharedVisit,
-  defaultVisitOutcomeForForm,
+  isTerminalVisitOutcome,
   type VisitOutcomeStatus,
 } from '@/lib/tech-visit-report';
 
@@ -81,6 +81,13 @@ type Props = {
   outstandingWork: string | null;
   issues: string | null;
   followUpRequired: boolean;
+  personalProgressStatus: VisitOutcomeStatus;
+  techReportUpdatedAt: string | null;
+  sharedCompletionNote: string | null;
+  sharedOutstandingWork: string | null;
+  sharedIssues: string | null;
+  sharedFollowUpRequired: boolean;
+  hasPersonalReport: boolean;
 };
 
 type BusyKind = 'timer' | 'report' | 'note' | 'manual' | 'photo' | null;
@@ -124,6 +131,13 @@ export default function VisitFieldOps({
   outstandingWork,
   issues,
   followUpRequired,
+  personalProgressStatus,
+  techReportUpdatedAt,
+  sharedCompletionNote,
+  sharedOutstandingWork,
+  sharedIssues,
+  sharedFollowUpRequired,
+  hasPersonalReport,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -136,15 +150,15 @@ export default function VisitFieldOps({
   const reportDirty = useRef(false);
   const noteDirty = useRef(false);
 
+  // Shared appointment snapshot (for solo finalisation concurrency).
   const [expectedStatus, setExpectedStatus] = useState(fieldStatus);
-  const [expectedCompletion, setExpectedCompletion] = useState(completionNote ?? '');
-  const [expectedOutstanding, setExpectedOutstanding] = useState(outstandingWork ?? '');
-  const [expectedIssues, setExpectedIssues] = useState(issues ?? '');
-  const [expectedFollowUp, setExpectedFollowUp] = useState(followUpRequired);
+  const [expectedCompletion, setExpectedCompletion] = useState(sharedCompletionNote ?? '');
+  const [expectedOutstanding, setExpectedOutstanding] = useState(sharedOutstandingWork ?? '');
+  const [expectedIssues, setExpectedIssues] = useState(sharedIssues ?? '');
+  const [expectedFollowUp, setExpectedFollowUp] = useState(sharedFollowUpRequired);
+  const [expectedTechUpdatedAt, setExpectedTechUpdatedAt] = useState(techReportUpdatedAt);
 
-  const [outcome, setOutcome] = useState<VisitOutcomeStatus>(
-    defaultVisitOutcomeForForm(fieldStatus),
-  );
+  const [outcome, setOutcome] = useState<VisitOutcomeStatus>(personalProgressStatus);
   const [completion, setCompletion] = useState(completionNote ?? '');
   const [outstanding, setOutstanding] = useState(outstandingWork ?? '');
   const [issuesText, setIssuesText] = useState(issues ?? '');
@@ -159,17 +173,29 @@ export default function VisitFieldOps({
   useEffect(() => {
     if (reportDirty.current) return;
     setExpectedStatus(fieldStatus);
-    setExpectedCompletion(completionNote ?? '');
-    setExpectedOutstanding(outstandingWork ?? '');
-    setExpectedIssues(issues ?? '');
-    setExpectedFollowUp(followUpRequired);
-    const nextDefault = defaultVisitOutcomeForForm(fieldStatus);
-    setOutcome(nextDefault);
+    setExpectedCompletion(sharedCompletionNote ?? '');
+    setExpectedOutstanding(sharedOutstandingWork ?? '');
+    setExpectedIssues(sharedIssues ?? '');
+    setExpectedFollowUp(sharedFollowUpRequired);
+    setExpectedTechUpdatedAt(techReportUpdatedAt);
+    setOutcome(personalProgressStatus);
     setCompletion(completionNote ?? '');
     setOutstanding(outstandingWork ?? '');
     setIssuesText(issues ?? '');
     setFollowUp(followUpRequired);
-  }, [fieldStatus, completionNote, outstandingWork, issues, followUpRequired]);
+  }, [
+    fieldStatus,
+    completionNote,
+    outstandingWork,
+    issues,
+    followUpRequired,
+    personalProgressStatus,
+    techReportUpdatedAt,
+    sharedCompletionNote,
+    sharedOutstandingWork,
+    sharedIssues,
+    sharedFollowUpRequired,
+  ]);
 
   const refreshSoft = useCallback(() => {
     startTransition(() => {
@@ -242,9 +268,9 @@ export default function VisitFieldOps({
 
   const timerForThisVisit = activeEntry && activeEntry.id ? activeEntry : null;
   const canFinalise = canTechnicianFinaliseSharedVisit(assignedTechnicianCount);
-  const selectableOutcomes: VisitOutcomeStatus[] = canFinalise
-    ? [...VISIT_OUTCOME_STATUSES]
-    : ['in_progress'];
+  const sharedFinalised = isTerminalVisitOutcome(fieldStatus);
+  // Personal work report always allows the full progress set.
+  const selectableOutcomes: VisitOutcomeStatus[] = [...VISIT_OUTCOME_STATUSES];
   const formDefault = selectableOutcomes.includes(outcome) ? outcome : 'in_progress';
   const timerLocked = busy === 'timer';
 
@@ -316,6 +342,7 @@ export default function VisitFieldOps({
     fd.set('expected_outstanding_work', expectedOutstanding);
     fd.set('expected_issues', expectedIssues);
     if (expectedFollowUp) fd.set('expected_follow_up_required', 'yes');
+    if (expectedTechUpdatedAt) fd.set('expected_tech_report_updated_at', expectedTechUpdatedAt);
 
     try {
       const result = await updateVisitProgressAction(fd);
@@ -324,20 +351,25 @@ export default function VisitFieldOps({
         return;
       }
       reportDirty.current = false;
-      setExpectedStatus(formDefault);
-      setExpectedCompletion(completion.trim());
-      setExpectedOutstanding(outstanding.trim());
-      setExpectedIssues(issuesText.trim());
-      setExpectedFollowUp(followUp);
+      if (result.techReportUpdatedAt) {
+        setExpectedTechUpdatedAt(result.techReportUpdatedAt);
+      }
+      if (canFinalise && !sharedFinalised) {
+        setExpectedStatus(formDefault);
+        setExpectedCompletion(completion.trim());
+        setExpectedOutstanding(outstanding.trim());
+        setExpectedIssues(issuesText.trim());
+        setExpectedFollowUp(followUp);
+      }
       setReportSavedFlash(true);
       showToast(
         'success',
-        result.noop ? 'Visit report already up to date' : 'Visit report saved',
+        result.noop ? 'Work report already up to date' : result.message || 'Work report saved',
       );
       refreshSoft();
     } catch (error) {
       if (isNextRedirectError(error)) throw error;
-      showToast('error', 'Unable to save visit report.');
+      showToast('error', 'Unable to save work report.');
     } finally {
       setReportPending(false);
       setBusy(null);
@@ -563,7 +595,7 @@ export default function VisitFieldOps({
       </section>
 
       <section className="ee-tech-panel" id="visit-report">
-        <h2>Visit Report</h2>
+        <h2>My Work Report</h2>
         <dl className="ee-tech-dl" style={{ marginBottom: 12 }}>
           <div>
             <dt>Appointment</dt>
@@ -574,23 +606,29 @@ export default function VisitFieldOps({
             </dd>
           </div>
           <div>
-            <dt>Current visit outcome</dt>
+            <dt>Shared visit outcome</dt>
             <dd>{FIELD_STATUS_LABELS[fieldStatus]}</dd>
           </div>
         </dl>
         <p className="ee-tech-muted" style={{ marginTop: 0 }}>
-          Completing a visit does not close the overall job. Save anytime — fields are optional while the visit is
-          in progress.
+          This is your personal work report. Completing it does not close the overall job.
+          {!hasPersonalReport
+            ? ' Fields may be pre-filled from an earlier shared summary — editing saves as your report only.'
+            : null}
         </p>
         {!canFinalise ? (
-          <p className="ee-tech-alert" role="status" style={{ marginTop: 0 }}>
-            {assignedTechnicianCount} technicians are assigned to this visit. Save your own work notes here as
-            in progress. The office sets the shared visit outcome when the team is done.
+          <p className="ee-tech-muted" role="status" style={{ marginTop: 0 }}>
+            Shared visit · office sets the final outcome. Record your own work here.
+          </p>
+        ) : null}
+        {sharedFinalised ? (
+          <p className="ee-tech-muted" role="status" style={{ marginTop: 0 }}>
+            Shared visit outcome is finalised. You can still update your personal work report.
           </p>
         ) : null}
         <form onSubmit={onSaveReport} className="ee-tech-form">
           <fieldset className="ee-tech-outcome">
-            <legend>Visit outcome</legend>
+            <legend>{canFinalise && !sharedFinalised ? 'Visit outcome' : 'My progress'}</legend>
             {selectableOutcomes.map((key) => (
               <label key={key} className="ee-tech-outcome-option">
                 <input
@@ -606,7 +644,13 @@ export default function VisitFieldOps({
                 />
                 <span>
                   <strong>{VISIT_OUTCOME_LABELS[key]}</strong>
-                  <small>{VISIT_OUTCOME_HINTS[key]}</small>
+                  <small>
+                    {canFinalise && !sharedFinalised
+                      ? VISIT_OUTCOME_HINTS[key]
+                      : key === 'work_completed'
+                        ? 'Marks your own work as finished (does not close a shared visit).'
+                        : VISIT_OUTCOME_HINTS[key]}
+                  </small>
                 </span>
               </label>
             ))}
@@ -665,13 +709,7 @@ export default function VisitFieldOps({
             className="ee-tech-btn ee-tech-btn-primary"
             disabled={busy !== null}
           >
-            {reportPending
-              ? 'Saving…'
-              : reportSavedFlash
-                ? 'Saved'
-                : canFinalise
-                  ? 'Save visit report'
-                  : 'Save my visit notes'}
+            {reportPending ? 'Saving…' : reportSavedFlash ? 'Saved' : 'Save my work report'}
           </button>
         </form>
       </section>

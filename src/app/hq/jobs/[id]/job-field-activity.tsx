@@ -2,9 +2,25 @@ import Link from 'next/link';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import { aggregateLabourByJob } from '@/lib/tech-time-multi';
 import { FIELD_STATUS_LABELS, type FieldStatus } from '@/lib/tech-field-constants';
-import { isTerminalVisitOutcome } from '@/lib/tech-visit-report';
+import {
+  VISIT_OUTCOME_LABELS,
+  isTerminalVisitOutcome,
+  type VisitOutcomeStatus,
+} from '@/lib/tech-visit-report';
 import { addOfficeNoteAction, reviewTimeEntryAction } from '@/app/hq/tech/actions';
 import OfficeVisitOutcomeForm from './office-visit-outcome-form';
+
+type TechReportView = {
+  id: string;
+  appointmentId: string;
+  technicianName: string | null;
+  workSummary: string | null;
+  outstandingWork: string | null;
+  issues: string | null;
+  followUpRequired: boolean;
+  progressStatus: VisitOutcomeStatus;
+  updatedAt: string;
+};
 
 type AppointmentView = {
   id: string;
@@ -44,17 +60,20 @@ type PhotoView = {
   id: string;
   signedUrl: string | null;
   caption: string | null;
+  uploadedByName: string | null;
 };
 
 export default function JobFieldActivity({
   jobId,
   appointments,
+  techReports,
   timeEntries,
   notes,
   photos,
 }: {
   jobId: string;
   appointments: AppointmentView[];
+  techReports: TechReportView[];
   timeEntries: TimeView[];
   notes: NoteView[];
   photos: PhotoView[];
@@ -77,12 +96,13 @@ export default function JobFieldActivity({
         <div className="ee-section-title">
           <div>
             <span className="ee-eyebrow">FIELD</span>
-            <h2>Visit reports</h2>
+            <h2>Visit outcomes & work reports</h2>
           </div>
         </div>
         {appointments.length ? (
           appointments.map((a) => {
             const entriesForVisit = timeEntries.filter((e) => e.appointmentId === a.id);
+            const reportsForVisit = techReports.filter((r) => r.appointmentId === a.id);
             const techCount = new Set(entriesForVisit.map((e) => e.technicianUserId)).size;
             return (
               <div className="ee-visit" key={a.id}>
@@ -107,17 +127,67 @@ export default function JobFieldActivity({
                   })}
                 </strong>
                 <span>
-                  Schedule {a.status} · Visit outcome{' '}
+                  Schedule {a.status} · Shared visit outcome{' '}
                   {FIELD_STATUS_LABELS[a.fieldStatus as FieldStatus] ?? a.fieldStatus}
                   {a.followUp ? ' · Further visit required' : ''}
                   {techCount > 1 ? ` · ${techCount} technicians timed` : ''}
+                  {reportsForVisit.length
+                    ? ` · ${reportsForVisit.length} work report${reportsForVisit.length === 1 ? '' : 's'}`
+                    : ''}
                 </span>
-                {a.completionNote ? <p>Work completed: {a.completionNote}</p> : null}
-                {a.outstanding ? <p>Outstanding work: {a.outstanding}</p> : null}
-                {a.issues ? <p>Issues encountered: {a.issues}</p> : null}
-                <p className="ee-muted" style={{ marginBottom: 0 }}>
-                  Further visit required: {a.followUp ? 'Yes' : 'No'}
-                </p>
+
+                <div style={{ marginTop: 8 }}>
+                  <strong style={{ fontSize: 13 }}>Office summary (shared)</strong>
+                  {a.completionNote ? <p>Work completed: {a.completionNote}</p> : null}
+                  {a.outstanding ? <p>Outstanding work: {a.outstanding}</p> : null}
+                  {a.issues ? <p>Issues encountered: {a.issues}</p> : null}
+                  {!a.completionNote && !a.outstanding && !a.issues ? (
+                    <p className="ee-muted">No shared summary yet.</p>
+                  ) : null}
+                  <p className="ee-muted" style={{ marginBottom: 0 }}>
+                    Further visit required: {a.followUp ? 'Yes' : 'No'}
+                  </p>
+                </div>
+
+                {reportsForVisit.length ? (
+                  <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+                    <strong style={{ fontSize: 13 }}>Technician work reports</strong>
+                    {reportsForVisit.map((r) => (
+                      <div
+                        key={r.id}
+                        style={{
+                          padding: '10px 12px',
+                          border: '1px solid #e1e8f0',
+                          borderRadius: 10,
+                          background: '#f8fbfe',
+                        }}
+                      >
+                        <strong>
+                          {r.technicianName ?? 'Technician'} ·{' '}
+                          {VISIT_OUTCOME_LABELS[r.progressStatus] ?? r.progressStatus}
+                        </strong>
+                        {r.workSummary ? <p style={{ margin: '6px 0 0' }}>{r.workSummary}</p> : null}
+                        {r.outstandingWork ? (
+                          <p style={{ margin: '4px 0 0' }}>Outstanding: {r.outstandingWork}</p>
+                        ) : null}
+                        {r.issues ? <p style={{ margin: '4px 0 0' }}>Issues: {r.issues}</p> : null}
+                        <small className="ee-muted">
+                          Further visit: {r.followUpRequired ? 'Yes' : 'No'} · Updated{' '}
+                          {new Date(r.updatedAt).toLocaleString('en-AU', {
+                            timeZone: 'Australia/Perth',
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="ee-muted" style={{ marginTop: 8 }}>
+                    No individual technician work reports yet.
+                  </p>
+                )}
+
                 {!isTerminalVisitOutcome(a.fieldStatus) ? (
                   <OfficeVisitOutcomeForm
                     appointmentId={a.id}
@@ -228,7 +298,8 @@ export default function JobFieldActivity({
               <span className="ee-event-dot" />
               <div>
                 <strong>
-                  {n.authorName ?? 'Staff'} · {n.visibility === 'office_only' ? 'Office only' : 'Shared'}
+                  {n.authorName ?? 'Staff'} ·{' '}
+                  {n.visibility === 'office_only' ? 'Office only' : 'Shared'}
                 </strong>
                 <p>{n.body}</p>
                 <small>
@@ -254,25 +325,48 @@ export default function JobFieldActivity({
           </div>
         </div>
         {photos.length ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: 8 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))',
+              gap: 8,
+            }}
+          >
             {photos.map((p) =>
               p.signedUrl ? (
-                <a
-                  key={p.id}
-                  href={p.signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    aspectRatio: '1',
-                    borderRadius: 10,
-                    overflow: 'hidden',
-                    border: '1px solid #e1eaf1',
-                  }}
-                  title={p.caption ?? 'Job photo'}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.signedUrl} alt={p.caption || 'Job photo'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </a>
+                <figure key={p.id} style={{ margin: 0 }}>
+                  <a
+                    href={p.signedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'block',
+                      aspectRatio: '1',
+                      borderRadius: 10,
+                      overflow: 'hidden',
+                      border: '1px solid #e1eaf1',
+                    }}
+                    title={
+                      [p.caption, p.uploadedByName ? `Uploaded by ${p.uploadedByName}` : null]
+                        .filter(Boolean)
+                        .join(' · ') || 'Job photo'
+                    }
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.signedUrl}
+                      alt={p.caption || 'Job photo'}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </a>
+                  <figcaption
+                    className="ee-muted"
+                    style={{ fontSize: 11, marginTop: 4, lineHeight: 1.3 }}
+                  >
+                    {p.uploadedByName ?? 'Unknown uploader'}
+                    {p.caption ? ` · ${p.caption}` : ''}
+                  </figcaption>
+                </figure>
               ) : null,
             )}
           </div>

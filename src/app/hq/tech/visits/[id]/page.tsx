@@ -19,6 +19,11 @@ import {
   schedulingStaffNamesByIds,
 } from '@/lib/tech-time';
 import { elapsedWholeMinutes } from '@/lib/tech-time-format';
+import {
+  fieldsFromTechWorkReportRow,
+  getTechWorkReportForTechnician,
+} from '@/lib/tech-work-reports';
+import { seedTechWorkReportFromShared } from '@/lib/tech-visit-report';
 import TechStyles from '../../tech-styles';
 import VisitFieldOps from './visit-field-ops';
 import '../../../hq.css';
@@ -42,7 +47,7 @@ export default async function TechVisitPage({
     notFound();
   }
 
-  const [entries, active, notes, attachments] = await Promise.all([
+  const [entries, active, notes, attachments, ownReport] = await Promise.all([
     listTimeEntriesForAppointment(visit.appointmentId),
     getActiveTimeEntryForTechnician(crew.id),
     listJobNotes({
@@ -51,11 +56,25 @@ export default async function TechVisitPage({
       includeOfficeOnly: false,
     }),
     listJobAttachments({ jobId: visit.jobId, appointmentId: visit.appointmentId }),
+    getTechWorkReportForTechnician({
+      appointmentId: visit.appointmentId,
+      technicianUserId: crew.id,
+    }),
   ]);
   const [staffNames, photos] = await Promise.all([
     schedulingStaffNamesByIds(entries.map((e) => e.staffId)),
     signAttachmentUrls(attachments, 600),
   ]);
+
+  const personalFields = ownReport
+    ? fieldsFromTechWorkReportRow(ownReport)
+    : seedTechWorkReportFromShared({
+        completionNote: visit.fieldCompletionNote,
+        outstandingWork: visit.fieldOutstandingWork,
+        issues: visit.fieldIssues,
+        followUpRequired: visit.fieldFollowUpRequired,
+        fieldStatus: visit.fieldStatus,
+      });
 
   const activeOnThisVisit =
     active && active.appointmentId === visit.appointmentId
@@ -201,10 +220,17 @@ export default async function TechVisitPage({
           caption: p.caption,
           createdAt: p.createdAt,
         }))}
-        completionNote={visit.fieldCompletionNote}
-        outstandingWork={visit.fieldOutstandingWork}
-        issues={visit.fieldIssues}
-        followUpRequired={visit.fieldFollowUpRequired}
+        completionNote={personalFields.workSummary}
+        outstandingWork={personalFields.outstandingWork}
+        issues={personalFields.issues}
+        followUpRequired={personalFields.followUpRequired}
+        personalProgressStatus={personalFields.progressStatus}
+        techReportUpdatedAt={ownReport?.updatedAt ?? null}
+        sharedCompletionNote={visit.fieldCompletionNote}
+        sharedOutstandingWork={visit.fieldOutstandingWork}
+        sharedIssues={visit.fieldIssues}
+        sharedFollowUpRequired={visit.fieldFollowUpRequired}
+        hasPersonalReport={Boolean(ownReport)}
       />
 
       <div className="ee-tech-actions">
