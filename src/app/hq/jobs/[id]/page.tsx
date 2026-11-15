@@ -166,6 +166,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </span>
         </header>
 
+        <nav className="ee-job-jump" aria-label="Job sections">
+          <a href="#job-summary">Summary</a>
+          <a href="#requires-attention">Attention</a>
+          <a href="#visits-reports">Visits</a>
+          <a href="#time-labour">Time</a>
+          <a href="#materials-costing">Costing</a>
+          <a href="#notes-photos">Notes</a>
+          <a href="#appointments">Schedule</a>
+          <a href="#activity-history">Activity</a>
+        </nav>
+
         <section className="hq-panel ee-summary">
           <div className="ee-summary-top">
             <div>
@@ -247,7 +258,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               {canEdit ? (
                 <details className="ee-expand">
                   <summary>
-                    Change status <span aria-hidden="true">＋</span>
+                    Change status <span className="ee-expand-mark" aria-hidden="true">＋</span>
                   </summary>
                   <form action={updateJob} className="ee-edit-form">
                     <input type="hidden" name="id" value={id} />
@@ -444,7 +455,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           <section id="edit-job" className="hq-panel ee-compact-panel">
             <details className="ee-expand ee-edit-details">
               <summary>
-                Edit job information <span aria-hidden="true">＋</span>
+                Edit job information <span className="ee-expand-mark" aria-hidden="true">＋</span>
               </summary>
               <form action={updateJobDetails} className="ee-edit-form">
                 <input type="hidden" name="id" value={id} />
@@ -512,7 +523,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   {activity?.length ?? 0} events
                 </span>
               </span>
-              <span aria-hidden="true">＋</span>
+              <span className="ee-expand-mark" aria-hidden="true">＋</span>
             </summary>
             <div style={{ paddingTop: 8 }}>
               {activity?.length ? (
@@ -547,9 +558,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 .ee-workspace-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:20px 0}
 .ee-workspace-head h1{margin:8px 0;font-size:clamp(28px,5vw,40px);line-height:1.15}
 .ee-workspace-head p,.ee-muted{color:var(--hq-muted,#738396)}
-.ee-workspace-status{display:inline-flex;align-items:center;background:#eaf2fa;color:#18577d;border-radius:30px;padding:7px 12px;font-size:13px;font-weight:700;white-space:nowrap}
+.ee-workspace-status{display:inline-flex;align-items:center;background:#eaf2fa;color:#18577d;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:700;white-space:nowrap}
 .ee-status-inline{font-size:12px;padding:5px 10px}
-.ee-summary,.ee-compact-panel{padding:22px;margin-bottom:12px}
+.ee-summary,.ee-compact-panel{padding:22px;margin-bottom:12px;overflow:hidden}
 .ee-summary-top,.ee-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ee-summary h2,.ee-section-title h2{margin:5px 0 10px;font-size:22px}
 .ee-summary-top{margin-bottom:12px}
@@ -559,20 +570,26 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 .ee-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;border-top:1px solid #e1e8f0;padding-top:20px}
 .ee-summary-grid>div{display:grid;align-content:start;gap:6px;min-width:0}
 .ee-summary-grid strong{overflow-wrap:anywhere;font-size:15px}
+.ee-job-jump{display:none;gap:8px;overflow-x:auto;padding:0 0 10px;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.ee-job-jump a{flex:0 0 auto;border:1px solid #d5e2ef;background:#fff;color:#18577d;text-decoration:none;border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap}
 .ee-job-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.ee-job-stat-grid>div{display:grid;gap:4px;min-width:0}
-.ee-job-stat-grid strong{font-size:16px}
-.ee-attention{border-color:#f0d9a8;background:#fffaf0}
+.ee-job-stat-grid>div{display:grid;gap:4px;min-width:0;padding:12px 14px;border:1px solid #e1e8f0;border-radius:12px;background:#f8fbfe}
+.ee-job-stat-grid strong{font-size:16px;color:#10233a}
+.ee-attention{border:1px solid #f0d9a8;background:#fffaf0}
 .ee-attention-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .ee-attention-list li{display:grid;gap:2px}
 .ee-job-row{border-top:1px solid #e1e8f0;margin-top:10px;padding-top:10px}
-.ee-job-row>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:4px 0;min-height:36px}
+.ee-job-row>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:4px 0;min-height:36px;color:inherit}
 .ee-job-row>summary::-webkit-details-marker{display:none}
-.ee-job-row-main{display:grid;gap:2px;min-width:0}
-.ee-job-row-body{padding:10px 0 4px;display:grid;gap:10px}
-.ee-job-subblock{display:grid;gap:6px}
+.ee-job-row-main{display:grid;gap:2px;min-width:0;text-align:left}
+.ee-job-row-main strong{color:#10233a;font-size:15px;font-weight:700;overflow-wrap:anywhere}
+.ee-job-row-body{padding:10px 0 4px;display:grid;gap:10px;min-width:0}
+.ee-job-subblock{display:grid;gap:6px;min-width:0}
+.ee-job-subblock p{margin:0;overflow-wrap:anywhere}
 .ee-report-summaries{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .ee-nested-expand{border-top:1px solid #eef3f8;margin-top:0;padding-top:6px}
+.ee-nested-expand>summary{color:inherit}
+.ee-nested-expand>summary strong{color:#10233a}
 .ee-pending-block{background:#fff7eb;border:1px solid #f0d9a8;border-radius:12px;padding:12px 14px;margin-bottom:8px}
 .ee-pending-row{border-bottom-color:#f0d9a8}
 .ee-time-groups{margin-top:8px}
@@ -582,8 +599,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 .ee-photo-grid img{width:100%;height:100%;object-fit:cover}
 .ee-photo-grid figcaption{font-size:11px;margin-top:4px;line-height:1.3}
 .ee-expand{border-top:1px solid #e1e8f0;margin-top:14px;padding-top:13px}
-.ee-expand summary{cursor:pointer;color:#0875c9;font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center;padding:5px 0}
+.ee-expand summary{cursor:pointer;color:#0875c9;font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0}
 .ee-expand summary::-webkit-details-marker{display:none}
+.ee-expand.ee-job-row>summary,
+.ee-expand.ee-nested-expand>summary{color:inherit;font-weight:600;align-items:flex-start}
+.ee-expand-mark{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:1.25rem;height:1.25rem;font-size:20px;line-height:1;color:#0875c9;transform:none;transform-origin:center;transition:transform .15s ease}
+.ee-expand[open]>summary>.ee-expand-mark{transform:rotate(45deg)}
 .ee-edit-form{display:grid;gap:14px;padding-top:16px;max-width:650px}
 .ee-edit-form label{display:grid;gap:7px;font-weight:600}
 .ee-edit-form input,.ee-edit-form select,.ee-edit-form textarea,.ee-job-inline select{box-sizing:border-box;width:100%;min-width:0;padding:12px;border:1px solid #cbd8e6;border-radius:10px;background:var(--hq-card,#fff);color:inherit;font:inherit;font-size:16px}
@@ -600,7 +621,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 .ee-edit-details{border:0;margin:0;padding:0}
 .ee-event{display:flex;gap:13px;padding:13px 0;border-bottom:1px solid #e1e8f0}
 .ee-event-dot{width:10px;height:10px;background:#1688e9;border-radius:50%;margin-top:5px;flex-shrink:0}
-.ee-event p{margin:5px 0}
+.ee-event p{margin:5px 0;overflow-wrap:anywhere}
 .ee-event small{display:block;color:var(--hq-muted,#738396);margin-top:5px}
 @media(max-width:600px){
   .ee-workspace-head{align-items:flex-start}
@@ -620,8 +641,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 .ee-workspace .ee-edit-form{gap:10px}
 .ee-workspace .ee-edit-form label{gap:5px}
 .ee-workspace .ee-edit-form input[type="datetime-local"]{min-height:48px;color-scheme:light}
-.ee-workspace .ee-expand summary span{font-size:20px;line-height:1}
-.ee-workspace .ee-expand[open] summary span{transform:rotate(45deg)}
 .ee-workspace .ee-edit-form textarea{resize:vertical}
 .ee-workspace .ee-job-inline{flex-wrap:wrap}
 .ee-workspace .ee-job-inline select{flex:1 1 170px}
@@ -630,10 +649,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 .ee-workspace .ee-visit{line-height:1.4}
 @media(min-width:1100px){
   .ee-workspace{max-width:1180px}
-  .ee-workspace-columns{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}
+  .ee-workspace-columns{grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr)}
   .ee-workspace .ee-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
 @media(max-width:760px){
+  .ee-job-jump{display:flex}
   .ee-workspace-columns{grid-template-columns:minmax(0,1fr);gap:0}
   .ee-workspace .ee-summary,.ee-workspace .ee-compact-panel{padding:17px}
   .ee-workspace .ee-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:15px 10px}

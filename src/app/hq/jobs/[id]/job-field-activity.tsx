@@ -200,7 +200,7 @@ export default function JobFieldActivity({
                         : ' · No reports'}
                     </span>
                   </span>
-                  <span aria-hidden="true">＋</span>
+                  <span className="ee-expand-mark" aria-hidden="true">＋</span>
                 </summary>
                 <div className="ee-job-row-body">
                   <p className="ee-muted" style={{ marginTop: 0 }}>
@@ -236,7 +236,7 @@ export default function JobFieldActivity({
                                     · {summarizeTechReport(r)}
                                   </span>
                                 </span>
-                                <span aria-hidden="true">＋</span>
+                                <span className="ee-expand-mark" aria-hidden="true">＋</span>
                               </summary>
                               <div className="ee-job-row-body">
                                 <p className="ee-muted" style={{ marginTop: 0 }}>
@@ -350,7 +350,7 @@ export default function JobFieldActivity({
                       {group.pendingCount ? ` · ${group.pendingCount} pending` : ''}
                     </span>
                   </span>
-                  <span aria-hidden="true">＋</span>
+                  <span className="ee-expand-mark" aria-hidden="true">＋</span>
                 </summary>
                 <div className="ee-job-row-body">
                   {group.entries.map((e) => (
@@ -435,7 +435,7 @@ export default function JobFieldActivity({
               <strong>Add office note</strong>
               <span className="ee-muted">Office only or shared with technicians</span>
             </span>
-            <span aria-hidden="true">＋</span>
+            <span className="ee-expand-mark" aria-hidden="true">＋</span>
           </summary>
           <div className="ee-job-row-body">
             <form action={addOfficeNoteAction} className="ee-edit-form">
@@ -465,7 +465,7 @@ export default function JobFieldActivity({
                 <strong>Notes</strong>
                 <span className="ee-muted">{notes.length} on file</span>
               </span>
-              <span aria-hidden="true">＋</span>
+              <span className="ee-expand-mark" aria-hidden="true">＋</span>
             </summary>
             <div className="ee-job-row-body">
               {notes.map((n) => (
@@ -495,7 +495,7 @@ export default function JobFieldActivity({
                 {photos.length ? `${photos.length} uploaded` : 'None yet'}
               </span>
             </span>
-            <span aria-hidden="true">＋</span>
+            <span className="ee-expand-mark" aria-hidden="true">＋</span>
           </summary>
           <div className="ee-job-row-body">
             {photos.length ? (
