@@ -406,12 +406,12 @@ export default function VisitFieldOps({
       setReportSavedFlash(true);
       showToast(
         'success',
-        result.noop ? 'Visit report already up to date' : 'Visit report saved',
+        result.noop ? 'Work report already up to date' : 'Work report saved',
       );
       refreshSoft();
     } catch (error) {
       if (isNextRedirectError(error)) throw error;
-      showToast('error', 'Unable to save visit report.');
+      showToast('error', 'Unable to save work report.');
     } finally {
       setReportPending(false);
       setBusy(null);
@@ -524,7 +524,7 @@ export default function VisitFieldOps({
         {timerPhase === 'finished' ? (
           <div className="ee-tech-alert ee-tech-alert-success" role="status">
             <p style={{ margin: 0 }}>
-              Time recorded. Complete your visit report when you&apos;re ready.
+              Time recorded. Complete your work report when you&apos;re ready.
             </p>
             <button
               type="button"
@@ -532,7 +532,7 @@ export default function VisitFieldOps({
               style={{ marginTop: 8 }}
               onClick={() => openSection('report')}
             >
-              Go to Visit Report
+              Go to My Work Report
             </button>
           </div>
         ) : (
@@ -568,7 +568,7 @@ export default function VisitFieldOps({
           {notes.length ? <span className="ee-tech-quick-count">{notes.length}</span> : null}
         </button>
         <button type="button" className="ee-tech-quick-btn" onClick={() => openSection('report')}>
-          Visit Report
+          My Work Report
         </button>
       </nav>
 
@@ -761,22 +761,20 @@ export default function VisitFieldOps({
         open={reportOpen}
         onToggle={(e) => setReportOpen(e.currentTarget.open)}
       >
-        <summary>Visit report</summary>
+        <summary>My Work Report</summary>
         <div className="ee-tech-fold-body">
           <p className="ee-tech-muted" style={{ marginTop: 0 }}>
-            {appointmentDateLabel} · {scheduledLabel}. Completing a visit does not close the overall
-            job.
+            {appointmentDateLabel} · {scheduledLabel}. Completing this report does not close the
+            overall job.
           </p>
           {!canFinalise ? (
-            <p className="ee-tech-alert" role="status" style={{ marginTop: 0 }}>
-              {assignedTechnicianCount} technicians are assigned to this visit. Save your own work
-              notes here as in progress. The office sets the shared visit outcome when the team is
-              done.
+            <p className="ee-tech-hint" role="status">
+              Shared visit · office sets the final outcome. Record your own work here.
             </p>
           ) : null}
           <form onSubmit={onSaveReport} className="ee-tech-form">
             <fieldset className="ee-tech-outcome">
-              <legend>Visit outcome</legend>
+              <legend>{canFinalise ? 'Visit outcome' : 'Your progress'}</legend>
               {selectableOutcomes.map((key) => (
                 <label key={key} className="ee-tech-outcome-option">
                   <input
@@ -855,9 +853,7 @@ export default function VisitFieldOps({
                 ? 'Saving…'
                 : reportSavedFlash
                   ? 'Saved'
-                  : canFinalise
-                    ? 'Save visit report'
-                    : 'Save my visit notes'}
+                  : 'Save my work report'}
             </button>
           </form>
         </div>
