@@ -124,44 +124,44 @@ export default function TechDayCalendar({
         )}
       </div>
 
-      <div className="ee-tech-cal-scroll" ref={scrollRef}>
-        <div className="ee-tech-cal-grid" style={{ height: laneHeight + 28 }}>
-          <div className="ee-tech-cal-hours" aria-hidden="true">
-            {hours.map((h) => (
-              <span
-                key={h}
-                style={{ top: ((h * 60 - window.startMinutes) / 60) * HOUR_HEIGHT }}
-              >
-                {hourLabel(h)}
-              </span>
-            ))}
-          </div>
-          <div
-            className="ee-tech-cal-lane"
-            style={{
-              height: laneHeight,
-              backgroundSize: `100% ${HOUR_HEIGHT}px`,
-            }}
-          >
-            {isToday &&
-            nowMinutes != null &&
-            nowMinutes >= window.startMinutes &&
-            nowMinutes <= window.endMinutes ? (
-              <div
-                className="ee-tech-cal-now"
-                style={{ top: ((nowMinutes - window.startMinutes) / 60) * HOUR_HEIGHT }}
-              >
-                <span>Now</span>
-              </div>
-            ) : null}
+      {positioned.length === 0 ? (
+        <div className="ee-tech-empty ee-tech-empty-compact" role="status">
+          <strong>No visits {isToday ? 'today' : 'this day'}</strong>
+          <p>Check nearby days with the arrows, or see Upcoming below.</p>
+        </div>
+      ) : (
+        <div className="ee-tech-cal-scroll" ref={scrollRef}>
+          <div className="ee-tech-cal-grid" style={{ height: laneHeight + 28 }}>
+            <div className="ee-tech-cal-hours" aria-hidden="true">
+              {hours.map((h) => (
+                <span
+                  key={h}
+                  style={{ top: ((h * 60 - window.startMinutes) / 60) * HOUR_HEIGHT }}
+                >
+                  {hourLabel(h)}
+                </span>
+              ))}
+            </div>
+            <div
+              className="ee-tech-cal-lane"
+              style={{
+                height: laneHeight,
+                backgroundSize: `100% ${HOUR_HEIGHT}px`,
+              }}
+            >
+              {isToday &&
+              nowMinutes != null &&
+              nowMinutes >= window.startMinutes &&
+              nowMinutes <= window.endMinutes ? (
+                <div
+                  className="ee-tech-cal-now"
+                  style={{ top: ((nowMinutes - window.startMinutes) / 60) * HOUR_HEIGHT }}
+                >
+                  <span>Now</span>
+                </div>
+              ) : null}
 
-            {positioned.length === 0 ? (
-              <div className="ee-tech-cal-empty">
-                <strong>No visits this day</strong>
-                <p>Use the arrows to check nearby days, or open Upcoming below.</p>
-              </div>
-            ) : (
-              positioned.map((v) => {
+              {positioned.map((v) => {
                 const start = Math.max(window.startMinutes, v.startMinutes);
                 const end = Math.min(window.endMinutes, v.endMinutes);
                 if (end <= start) return null;
@@ -194,15 +194,17 @@ export default function TechDayCalendar({
                       {v.jobNumber} · {v.title}
                     </strong>
                     <span className="ee-tech-cal-meta">{timeLabel}</span>
-                    <span className="ee-tech-cal-meta">{v.customerName ?? 'Customer not assigned'}</span>
+                    <span className="ee-tech-cal-meta">
+                      {v.customerName ?? 'Customer not assigned'}
+                    </span>
                     <span className="ee-tech-cal-status">{statusLabel(v)}</span>
                   </Link>
                 );
-              })
-            )}
+              })}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
