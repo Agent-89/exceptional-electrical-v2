@@ -46,6 +46,10 @@ import {
   timerWorkCaption,
   type TimerPrimaryAction,
 } from '@/lib/tech-visit-ui';
+import {
+  buildVisitReportFormStateForAppointment,
+  shouldResetVisitReportForm,
+} from '@/lib/tech-visit-form-state';
 
 /** Soft poll while live timers exist — keeps multi-tech status fresh without Realtime. */
 const LIVE_TIMER_POLL_MS = 20_000;
@@ -182,6 +186,7 @@ export default function VisitFieldOps({
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const reportDirty = useRef(false);
   const noteDirty = useRef(false);
+  const formAppointmentIdRef = useRef(appointmentId);
 
   // Shared appointment snapshot (for solo finalisation concurrency).
   const [expectedStatus, setExpectedStatus] = useState(fieldStatus);
@@ -202,8 +207,63 @@ export default function VisitFieldOps({
     setToast({ id: Date.now(), tone, text });
   }, []);
 
+  // Soft-nav between visits can reuse this client instance; never leak Saved/busy/tokens.
+  useEffect(() => {
+    if (!shouldResetVisitReportForm(formAppointmentIdRef.current, appointmentId)) {
+      formAppointmentIdRef.current = appointmentId;
+      return;
+    }
+    const next = buildVisitReportFormStateForAppointment({
+      appointmentId,
+      fieldStatus,
+      completionNote,
+      outstandingWork,
+      issues,
+      followUpRequired,
+      personalProgressStatus,
+      techReportUpdatedAt,
+      sharedCompletionNote,
+      sharedOutstandingWork,
+      sharedIssues,
+      sharedFollowUpRequired,
+    });
+    formAppointmentIdRef.current = appointmentId;
+    reportDirty.current = next.reportDirty;
+    noteDirty.current = false;
+    setBusy(next.busy);
+    setReportPending(next.reportPending);
+    setReportSavedFlash(next.reportSavedFlash);
+    setExpectedStatus(next.expectedStatus);
+    setExpectedCompletion(next.expectedCompletion);
+    setExpectedOutstanding(next.expectedOutstanding);
+    setExpectedIssues(next.expectedIssues);
+    setExpectedFollowUp(next.expectedFollowUp);
+    setExpectedTechUpdatedAt(next.expectedTechUpdatedAt);
+    setOutcome(next.outcome);
+    setCompletion(next.completion);
+    setOutstanding(next.outstanding);
+    setIssuesText(next.issuesText);
+    setFollowUp(next.followUp);
+    setNoteBody('');
+    setToast(null);
+  }, [
+    appointmentId,
+    fieldStatus,
+    completionNote,
+    outstandingWork,
+    issues,
+    followUpRequired,
+    personalProgressStatus,
+    techReportUpdatedAt,
+    sharedCompletionNote,
+    sharedOutstandingWork,
+    sharedIssues,
+    sharedFollowUpRequired,
+  ]);
+
   // Sync server props into the form only when the user is not mid-edit.
   useEffect(() => {
+    if (formAppointmentIdRef.current !== appointmentId) return;
     if (reportDirty.current) return;
     setExpectedStatus(fieldStatus);
     setExpectedCompletion(sharedCompletionNote ?? '');
@@ -217,6 +277,7 @@ export default function VisitFieldOps({
     setIssuesText(issues ?? '');
     setFollowUp(followUpRequired);
   }, [
+    appointmentId,
     fieldStatus,
     completionNote,
     outstandingWork,

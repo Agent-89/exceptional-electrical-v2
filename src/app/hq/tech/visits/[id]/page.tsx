@@ -172,6 +172,7 @@ export default async function TechVisitPage({
       ) : null}
 
       <VisitFieldOps
+        key={visit.appointmentId}
         appointmentId={visit.appointmentId}
         appointmentDateLabel={formatPerthDateLong(visit.startsAt)}
         scheduledLabel={appointmentTime}
