@@ -363,6 +363,7 @@ const ACTIVITY_TITLE: Record<string, string> = {
   time_submitted: 'Time submitted',
   time_manual_added: 'Manual time added',
   visit_progress_updated: 'Visit progress updated',
+  visit_outcome_office_updated: 'Visit outcome updated',
   technician_work_report_saved: 'Technician work report saved',
   technician_note_added: 'Technician note',
   technician_note_edited: 'Technician note edited',
@@ -380,34 +381,140 @@ export function jobActivityActionTitle(action: string): string {
   return ACTIVITY_TITLE[action] ?? action.replaceAll('_', ' ');
 }
 
-const LONG_NOTE = 140;
+/** Close the inline editor only after confirmed correct/reject (not optimistic). */
+export function shouldCloseInlineTimeEditor(decision: ReviewTimeDecision): boolean {
+  return decision === 'correct' || decision === 'reject';
+}
+
+const LONG_NOTE = 110;
+
+function withTechnicianTitle(base: string, technician: string | null): string {
+  const name = (technician ?? '').trim();
+  return name ? `${base} · ${name}` : base;
+}
+
+function extractWorkedChange(note: string): string | null {
+  const match = note.match(/worked\s+(\d+h(?:\s+\d{1,2}m)?|\d+m)\s*→\s*(\d+h(?:\s+\d{1,2}m)?|\d+m)/i);
+  if (!match) return null;
+  return `Worked: ${match[1]} → ${match[2]}`;
+}
 
 /**
- * Split long activity notes into a concise summary plus expandable detail.
- * Does not rewrite stored history — presentation only.
+ * Presentation-only activity view: concise title/summary with expandable full note.
+ * Does not rewrite stored history.
  */
-export function presentJobActivityNote(note: string | null | undefined): {
+export function presentJobActivityEvent(
+  action: string,
+  note: string | null | undefined,
+): {
+  title: string;
   summary: string | null;
   detail: string | null;
   expandable: boolean;
 } {
   const trimmed = (note ?? '').trim();
-  if (!trimmed) return { summary: null, detail: null, expandable: false };
+  const baseTitle = jobActivityActionTitle(action);
+
+  if (action === 'time_corrected') {
+    const techMatch = trimmed.match(/^Corrected time for ([^:]+):/i);
+    const tech = techMatch?.[1]?.trim() ?? null;
+    const worked = extractWorkedChange(trimmed);
+    return {
+      title: withTechnicianTitle(baseTitle, tech),
+      summary: worked ?? (trimmed ? 'Time values updated' : null),
+      detail: trimmed || null,
+      expandable: Boolean(trimmed),
+    };
+  }
+
+  if (action === 'time_approved') {
+    const techMatch = trimmed.match(/billable for (.+)$/i);
+    const amountMatch = trimmed.match(/^Approved\s+(.+?)\s+billable/i);
+    const tech = techMatch?.[1]?.trim() ?? null;
+    const amount = amountMatch?.[1]?.trim();
+    return {
+      title: withTechnicianTitle(baseTitle, tech),
+      summary: amount ? `${amount} billable approved` : trimmed || null,
+      detail: trimmed && amount ? trimmed : null,
+      expandable: Boolean(trimmed && amount && trimmed.length > 60),
+    };
+  }
+
+  if (action === 'time_rejected' || action === 'time_rejectd') {
+    const techMatch = trimmed.match(/^Rejected time for ([^·]+?)(?:\s*·\s*|$)/i);
+    const tech = techMatch?.[1]?.trim() ?? null;
+    const reason = trimmed.includes('·')
+      ? trimmed.slice(trimmed.indexOf('·') + 1).trim()
+      : '';
+    const shortReason =
+      reason.length > 80 ? `${reason.slice(0, 77).trim()}…` : reason || 'Rejected';
+    return {
+      title: withTechnicianTitle(baseTitle, tech),
+      summary: shortReason,
+      detail: reason || trimmed || null,
+      expandable: Boolean(reason),
+    };
+  }
+
+  if (action === 'appointment_added') {
+    return {
+      title: baseTitle,
+      summary: trimmed ? (trimmed.length > LONG_NOTE ? `${trimmed.slice(0, LONG_NOTE).trim()}…` : trimmed) : null,
+      detail: trimmed && trimmed.length > LONG_NOTE ? trimmed : null,
+      expandable: Boolean(trimmed && trimmed.length > LONG_NOTE),
+    };
+  }
+
+  if (action === 'visit_progress_updated' || action === 'visit_outcome_office_updated') {
+    return {
+      title: action === 'visit_outcome_office_updated' ? 'Visit outcome updated' : baseTitle,
+      summary: trimmed
+        ? trimmed.length > LONG_NOTE
+          ? `${trimmed.slice(0, LONG_NOTE).trim()}…`
+          : trimmed
+        : null,
+      detail: trimmed && trimmed.length > LONG_NOTE ? trimmed : null,
+      expandable: Boolean(trimmed && trimmed.length > LONG_NOTE),
+    };
+  }
+
+  if (action === 'follow_up_resolved') {
+    const summary = trimmed.includes('.')
+      ? trimmed.slice(0, trimmed.indexOf('.') + 1).trim()
+      : trimmed || null;
+    return {
+      title: baseTitle,
+      summary,
+      detail: trimmed && summary && trimmed !== summary ? trimmed : null,
+      expandable: Boolean(trimmed && summary && trimmed !== summary),
+    };
+  }
+
+  if (!trimmed) {
+    return { title: baseTitle, summary: null, detail: null, expandable: false };
+  }
   if (trimmed.length <= LONG_NOTE) {
-    return { summary: trimmed, detail: null, expandable: false };
+    return { title: baseTitle, summary: trimmed, detail: null, expandable: false };
   }
-  const reasonIdx = trimmed.search(/\.\s*Reason:/i);
-  if (reasonIdx > 0) {
-    const head = trimmed.slice(0, reasonIdx + 1).trim();
-    const tail = trimmed.slice(reasonIdx + 1).trim();
-    return { summary: head, detail: tail, expandable: true };
-  }
-  const cut = trimmed.lastIndexOf(' · ', LONG_NOTE);
-  const at = cut > 40 ? cut : LONG_NOTE;
   return {
-    summary: `${trimmed.slice(0, at).trim()}…`,
+    title: baseTitle,
+    summary: `${trimmed.slice(0, LONG_NOTE).trim()}…`,
     detail: trimmed,
     expandable: true,
+  };
+}
+
+/** @deprecated Prefer presentJobActivityEvent(action, note). */
+export function presentJobActivityNote(note: string | null | undefined): {
+  summary: string | null;
+  detail: string | null;
+  expandable: boolean;
+} {
+  const presented = presentJobActivityEvent('note_added', note);
+  return {
+    summary: presented.summary,
+    detail: presented.detail,
+    expandable: presented.expandable,
   };
 }
 

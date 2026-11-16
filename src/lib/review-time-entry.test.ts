@@ -11,9 +11,10 @@ import {
   isReviewDecisionResult,
   jobActivityActionTitle,
   parseReviewTimeDecision,
-  presentJobActivityNote,
+  presentJobActivityEvent,
   readReviewTimeEntryFields,
   resolveCorrectionBillableMinutes,
+  shouldCloseInlineTimeEditor,
   statusesForReviewDecision,
   timeReviewActivityAction,
   validateReviewTimeEntryRequest,
@@ -291,21 +292,47 @@ describe('allowedReviewDecisions and activity action names', () => {
 });
 
 describe('activity presentation polish', () => {
-  it('titles legacy reject spelling and expands long correction notes', () => {
+  it('condenses time events while keeping full details expandable', () => {
     assert.equal(jobActivityActionTitle('time_rejected'), 'Time rejected');
     assert.equal(jobActivityActionTitle('time_rejectd'), 'Time rejected');
-    const short = presentJobActivityNote('Approved 2h 00m billable for Sam');
-    assert.equal(short.expandable, false);
-    assert.equal(short.summary, 'Approved 2h 00m billable for Sam');
-    const long = presentJobActivityNote(
-      'Corrected time for Sam Rivera: 16 Nov, 9:00 am → 11:00 am → 16 Nov, 9:00 am → 11:30 am · worked 1h 45m → 2h 15m · break 15m → 15m · billable 1h 45m → 2h 00m (manual). Reason: Customer asked for extra tidy-up after the crew left site',
+
+    const corrected = presentJobActivityEvent(
+      'time_corrected',
+      'Corrected time for Sam Rivera: 16 Nov, 9:00 am → 11:00 am → 16 Nov, 9:00 am → 11:30 am · worked 8h 18m → 7h 51m · break 15m → 15m · billable 8h 18m → 7h 51m (auto). Reason: Lunch was longer',
     );
-    assert.equal(long.expandable, true);
-    assert.match(long.summary || '', /Corrected time for Sam Rivera/);
-    assert.match(long.detail || '', /Reason:/);
+    assert.equal(corrected.title, 'Time corrected · Sam Rivera');
+    assert.equal(corrected.summary, 'Worked: 8h 18m → 7h 51m');
+    assert.equal(corrected.expandable, true);
+    assert.match(corrected.detail || '', /Reason: Lunch was longer/);
+    assert.match(corrected.detail || '', /9:00 am/);
+
+    const approved = presentJobActivityEvent(
+      'time_approved',
+      'Approved 46m billable for Sam Rivera',
+    );
+    assert.equal(approved.title, 'Time approved · Sam Rivera');
+    assert.equal(approved.summary, '46m billable approved');
+
+    const rejected = presentJobActivityEvent(
+      'time_rejectd',
+      'Rejected time for Sam Rivera · Wrong job selected by technician',
+    );
+    assert.equal(rejected.title, 'Time rejected · Sam Rivera');
+    assert.match(rejected.summary || '', /Wrong job selected/);
+    assert.equal(rejected.expandable, true);
+    assert.match(rejected.detail || '', /Wrong job selected by technician/);
+
     const when = formatJobActivityWhen('2026-11-16T01:00:00.000Z');
     assert.match(when, /2026/);
     assert.match(when, /:/);
+  });
+
+  it('closes the inline editor only after confirmed correct/reject', () => {
+    assert.equal(shouldCloseInlineTimeEditor('correct'), true);
+    assert.equal(shouldCloseInlineTimeEditor('reject'), true);
+    assert.equal(shouldCloseInlineTimeEditor('approve'), false);
+    assert.match(formSource, /onSaved\?\.\(\{ decision, message, noop: result\.noop \}\)/);
+    assert.match(formSource, /if \(!result\.ok\)/);
   });
 
   it('keeps inline form dirty and cancel hooks for the unified editor', () => {

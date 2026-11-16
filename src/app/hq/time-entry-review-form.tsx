@@ -79,7 +79,11 @@ export default function TimeEntryReviewForm({
   actionsClassName?: string;
   onDirtyChange?: (dirty: boolean) => void;
   onCancel?: () => void;
-  onSaved?: () => void;
+  onSaved?: (result: {
+    decision: ReviewTimeDecision;
+    message: string;
+    noop?: boolean;
+  }) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -186,13 +190,15 @@ export default function TimeEntryReviewForm({
           setError(result.error || 'Unable to save time review.');
           return;
         }
+        const message = result.message || 'Saved.';
         setError(null);
-        setSuccess(result.message || 'Saved.');
+        setSuccess(message);
         setDirty(false);
         if (!result.noop) {
           setDraft((prev) => ({ ...prev, correctionNote: '', rejectionReason: '' }));
         }
-        onSaved?.();
+        // Collapse only after the server confirms success — parent decides by decision.
+        onSaved?.({ decision, message, noop: result.noop });
         router.refresh();
       });
     },

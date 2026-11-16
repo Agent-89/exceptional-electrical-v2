@@ -95,4 +95,26 @@ describe('unified Time tab regression', () => {
     assert.match(panelSource, /requestFilter\('pending'\)/);
     assert.match(panelSource, /requestFilter\('approved'\)/);
   });
+
+  it('auto-collapses after successful correct/reject and keeps failures open', () => {
+    assert.match(panelSource, /shouldCloseInlineTimeEditor\(result\.decision\)/);
+    assert.match(panelSource, /setExpandedId\(null\)/);
+    assert.match(panelSource, /setFlash\(result\.message\)/);
+    assert.match(panelSource, /ee-time-flash/);
+    // Failures stay in the form — panel only collapses from onSaved after ok.
+    assert.doesNotMatch(panelSource, /setExpandedId\(null\).*before.*reviewTimeEntryAction/);
+  });
+
+  it('offers quick Approve for pending statuses without a second approval path', () => {
+    assert.match(panelSource, /canQuickApproveEntry/);
+    assert.match(panelSource, /ee-time-approve-btn/);
+    assert.match(panelSource, /decision', 'approve'/);
+    assert.match(panelSource, /reviewTimeEntryAction\(data\)/);
+    assert.match(panelSource, /Approving…/);
+    assert.match(panelSource, /approvePending && approvingId/);
+    assert.match(pageSource, /\.ee-time-approve-btn/);
+    assert.match(pageSource, /\.ee-time-row-actions/);
+    // Approved rows cannot quick-approve.
+    assert.match(panelSource, /allowedReviewDecisions\(status\)\.includes\('approve'\)/);
+  });
 });

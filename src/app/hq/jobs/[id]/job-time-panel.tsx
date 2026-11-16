@@ -1,7 +1,17 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import { jobLabourTotals, type JobDetailTimeEntry } from '@/lib/job-detail-summary';
 import {
@@ -13,6 +23,12 @@ import {
   jobTimeStatusLabel,
   type JobTimeListFilter,
 } from '@/lib/job-time-list';
+import {
+  allowedReviewDecisions,
+  inferBillableMode,
+  shouldCloseInlineTimeEditor,
+  type ReviewTimeDecision,
+} from '@/lib/review-time-entry';
 import TimeEntryReviewForm from '@/app/hq/time-entry-review-form';
 
 const DESKTOP_MQ = '(min-width: 900px)';
@@ -52,6 +68,18 @@ function confirmDiscardUnsaved(): boolean {
   return window.confirm('You have unsaved time changes. Discard them and continue?');
 }
 
+function preserveScroll(run: () => void) {
+  if (typeof window === 'undefined') {
+    run();
+    return;
+  }
+  const y = window.scrollY;
+  run();
+  requestAnimationFrame(() => {
+    window.scrollTo(0, y);
+  });
+}
+
 function WorkedCell({ entry }: { entry: JobDetailTimeEntry }) {
   if (isLiveJobTimeStatus(entry.status)) return <>Live</>;
   return <>{formatDurationMinutes(entry.workedMinutes ?? 0)}</>;
@@ -63,6 +91,10 @@ function BillableCell({ entry }: { entry: JobDetailTimeEntry }) {
   return <>Not set</>;
 }
 
+function canQuickApproveEntry(status: string): boolean {
+  return allowedReviewDecisions(status).includes('approve');
+}
+
 export default function JobTimePanel({
   jobId,
   timeEntries,
@@ -70,10 +102,15 @@ export default function JobTimePanel({
   jobId: string;
   timeEntries: JobDetailTimeEntry[];
 }) {
+  const router = useRouter();
   const desktop = useDesktopTimeLayout();
   const [filter, setFilter] = useState<JobTimeListFilter>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editorDirty, setEditorDirty] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approvePending, startApproveTransition] = useTransition();
 
   const labour = jobLabourTotals(jobId, timeEntries);
   const summary = jobTimeListSummary(timeEntries);
@@ -88,6 +125,12 @@ export default function JobTimePanel({
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [editorDirty]);
+
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
 
   const requestCloseEditor = useCallback(() => {
     if (editorDirty && !confirmDiscardUnsaved()) return false;
@@ -105,6 +148,7 @@ export default function JobTimePanel({
       if (expandedId && editorDirty && !confirmDiscardUnsaved()) return;
       setExpandedId(entryId);
       setEditorDirty(false);
+      setRowError(null);
     },
     [expandedId, editorDirty, requestCloseEditor],
   );
@@ -116,13 +160,21 @@ export default function JobTimePanel({
       setFilter(next);
       setExpandedId(null);
       setEditorDirty(false);
+      setRowError(null);
     },
     [filter, expandedId, editorDirty],
   );
 
-  const onSaved = useCallback(() => {
-    setEditorDirty(false);
-  }, []);
+  const onSaved = useCallback(
+    (result: { decision: ReviewTimeDecision; message: string; noop?: boolean }) => {
+      setEditorDirty(false);
+      setFlash(result.message);
+      if (shouldCloseInlineTimeEditor(result.decision)) {
+        setExpandedId(null);
+      }
+    },
+    [],
+  );
 
   const onCancel = useCallback(() => {
     setExpandedId(null);
@@ -132,6 +184,51 @@ export default function JobTimePanel({
   const onDirtyChange = useCallback((dirty: boolean) => {
     setEditorDirty(dirty);
   }, []);
+
+  const quickApprove = useCallback(
+    (entry: JobDetailTimeEntry) => {
+      if (!canQuickApproveEntry(entry.status)) return;
+      if (approvePending && approvingId) return;
+      if (expandedId === entry.id && editorDirty && !confirmDiscardUnsaved()) return;
+
+      setApprovingId(entry.id);
+      setRowError(null);
+      setFlash(null);
+
+      const worked = entry.workedMinutes ?? 0;
+      const billable = entry.billableMinutes ?? worked;
+      const data = new FormData();
+      data.set('entry_id', entry.id);
+      data.set('decision', 'approve');
+      data.set('billable_minutes', String(billable));
+      data.set('billable_mode', inferBillableMode(entry.billableMinutes, entry.workedMinutes));
+      data.set('rejection_reason', '');
+      data.set('started_at', '');
+      data.set('ended_at', '');
+      data.set('break_minutes', String(entry.breakMinutes));
+      data.set('correction_note', '');
+
+      startApproveTransition(async () => {
+        const result = await reviewTimeEntryAction(data);
+        if (!result.ok) {
+          setRowError({
+            id: entry.id,
+            message: result.error || 'Unable to approve time entry.',
+          });
+          setApprovingId(null);
+          return;
+        }
+        if (expandedId === entry.id) {
+          setExpandedId(null);
+          setEditorDirty(false);
+        }
+        setFlash(result.message || 'Time entry approved.');
+        setApprovingId(null);
+        preserveScroll(() => router.refresh());
+      });
+    },
+    [approvePending, approvingId, expandedId, editorDirty, router],
+  );
 
   const emptyMessage =
     filter === 'pending'
@@ -161,20 +258,47 @@ export default function JobTimePanel({
   );
 
   const renderActions = (entry: JobDetailTimeEntry) => {
-    if (!canReviewJobTimeEntry(entry.status)) {
+    const canEdit = canReviewJobTimeEntry(entry.status);
+    const showApprove = canQuickApproveEntry(entry.status);
+    if (!canEdit && !showApprove) {
       return <span className="ee-muted">—</span>;
     }
     const open = expandedId === entry.id;
+    const approving = approvePending && approvingId === entry.id;
     return (
-      <button
-        type="button"
-        className="ee-text-action"
-        aria-expanded={open}
-        aria-controls={`time-editor-${entry.id}`}
-        onClick={() => requestExpand(entry.id)}
-      >
-        {open ? 'Close' : 'Edit'}
-      </button>
+      <div className="ee-time-row-actions">
+        {showApprove ? (
+          <button
+            type="button"
+            className="ee-time-approve-btn"
+            disabled={approving || (approvePending && approvingId !== null)}
+            aria-busy={approving}
+            onClick={() => quickApprove(entry)}
+          >
+            {approving ? 'Approving…' : 'Approve'}
+          </button>
+        ) : null}
+        {canEdit ? (
+          <button
+            type="button"
+            className="ee-text-action"
+            aria-expanded={open}
+            aria-controls={`time-editor-${entry.id}`}
+            onClick={() => requestExpand(entry.id)}
+          >
+            {open ? 'Close' : 'Edit'}
+          </button>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderRowFeedback = (entryId: string) => {
+    if (rowError?.id !== entryId) return null;
+    return (
+      <p className="ee-form-error ee-time-row-feedback" role="alert">
+        {rowError.message}
+      </p>
     );
   };
 
@@ -189,6 +313,12 @@ export default function JobTimePanel({
           Timesheets →
         </Link>
       </div>
+
+      {flash ? (
+        <p className="ee-form-success ee-time-flash" role="status">
+          {flash}
+        </p>
+      ) : null}
 
       <div className="ee-job-stat-grid">
         <div>
@@ -303,7 +433,10 @@ export default function JobTimePanel({
                             {jobTimeStatusLabel(entry.status)}
                           </span>
                         </td>
-                        <td>{renderActions(entry)}</td>
+                        <td>
+                          {renderActions(entry)}
+                          {renderRowFeedback(entry.id)}
+                        </td>
                       </tr>
                       {open ? (
                         <tr className="ee-time-editor-row">
@@ -357,6 +490,7 @@ export default function JobTimePanel({
                           : ' · Billable not set'}
                     </span>
                     {entry.note ? <p>{entry.note}</p> : null}
+                    {renderRowFeedback(entry.id)}
                   </div>
                   <div className="ee-time-entry-actions">{renderActions(entry)}</div>
                   {open ? renderEditor(entry) : null}

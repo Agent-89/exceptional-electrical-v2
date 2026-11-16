@@ -14,8 +14,7 @@ import {
 } from '../actions';
 import {
   formatJobActivityWhen,
-  jobActivityActionTitle,
-  presentJobActivityNote,
+  presentJobActivityEvent,
 } from '@/lib/review-time-entry';
 import ScheduleAppointmentForm from './schedule-appointment-form';
 import JobFieldActivity from './job-field-activity';
@@ -580,12 +579,12 @@ export default async function JobPage({
                     <div style={{ paddingTop: 8 }}>
                       {activity?.length ? (
                         activity.map((item) => {
-                          const presented = presentJobActivityNote(item.note);
+                          const presented = presentJobActivityEvent(item.action, item.note);
                           return (
                             <div className="ee-event" key={item.id}>
                               <span className="ee-event-dot" />
                               <div>
-                                <strong>{jobActivityActionTitle(item.action)}</strong>
+                                <strong>{presented.title}</strong>
                                 {presented.summary ? <p>{presented.summary}</p> : null}
                                 {presented.expandable && presented.detail ? (
                                   <details className="ee-activity-detail">
@@ -676,7 +675,11 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-time-entry-main p{margin:0;overflow-wrap:anywhere}
 .ee-time-entry-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .ee-time-entry-head strong{min-width:0;overflow-wrap:anywhere}
-.ee-time-entry-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.ee-time-entry-actions,.ee-time-row-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ee-time-approve-btn{border:1px solid #1688e9;border-radius:10px;background:#1688e9;color:#fff;padding:8px 12px;min-height:40px;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+.ee-time-approve-btn:disabled{opacity:.65;cursor:wait}
+.ee-time-flash{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#e7f3ff}
+.ee-time-row-feedback{margin:6px 0 0;max-width:14rem}
 .ee-time-status{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.02em;text-transform:capitalize}
 .ee-time-status-submitted,.ee-time-status-corrected{color:#9a3412}
 .ee-time-status-rejected{color:#b42318}
@@ -700,7 +703,7 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
   .ee-time-entry-list{display:none}
   .ee-time-table tbody tr.ee-time-pending-row{background:#fff7eb}
   .ee-time-table tbody tr.ee-time-row-open{background:#eef6fc}
-  .ee-time-table th:last-child,.ee-time-table td:last-child{white-space:nowrap}
+  .ee-time-table th:last-child,.ee-time-table td:last-child{white-space:normal;min-width:9.5rem}
   .ee-time-table tbody th{max-width:14rem;overflow-wrap:anywhere}
 }
 .ee-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
