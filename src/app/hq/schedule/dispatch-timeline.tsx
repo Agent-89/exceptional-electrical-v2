@@ -3,16 +3,22 @@ import {useGoogleCalendar} from './google-calendar-context';
 import {useEffect,useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {createPortal} from 'react-dom';
+import {
+ initialGestureArmed,
+ pointerDistance,
+ shouldActivateDrag,
+ shouldArmMouseDrag,
+ shouldCancelGestureWithoutButtons,
+ shouldSuppressClickAfterDrag,
+} from '@/lib/timeline-gesture';
 import {setScheduledVisitTimes} from './actions';
 import VisitPreview from './visit-preview';
 
 export type TimelineVisit={startIso:string;endIso:string;id:string;day:string;startMinutes:number;endMinutes:number;title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds:string[];address?:string|null;notes?:string|null;status?:string|null;conflict?:string|null};
 type Props={toolbarExtras?:React.ReactNode;googleSettings?:{connected:boolean;email:string|null;error:boolean;canManage:boolean};canEdit:boolean;canOverrideNeil:boolean;visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;nowMinutes:number};
 const START=0,END=24*60,COMFORTABLE_HOUR_HEIGHT=48;
-const palette=['#1676c4','#a34ecb','#0e9875','#d16a21','#d34876','#6b65c8','#138d9b','#7a8533'];
-const staffColor=(id:string)=>{let h=0;for(const ch of id)h=(h*31+ch.charCodeAt(0))|0;return palette[Math.abs(h)%palette.length]};
 const hourLabel=(h:number)=>`${h%12||12} ${h<12?'am':'pm'}`;
-export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,canOverrideNeil,visits,days,staff,today,nowMinutes}:Props){
+export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,staff,today,nowMinutes}:Props){
  const router=useRouter();
  const [density,setDensity]=useState<'fit'|'comfortable'>('fit');
  const [hourHeight,setHourHeight]=useState(40);
@@ -30,7 +36,7 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
  const [overrides,setOverrides]=useState<Record<string,{day:string;start:number;end:number;startIso:string;endIso:string}>>({});
  const previewRef=useRef<{id:string;day:string;start:number;end:number}|null>(null);
  const suppressClick=useRef(false);
- const gesture=useRef<{id:string;kind:'move'|'start'|'end';day:string;start:number;end:number;anchorY:number;anchorX:number;anchorMinute:number;originStart:number;originEnd:number;originDay:string;pointerId:number;active:boolean;armed:boolean;touch:boolean}|null>(null);
+ const gesture=useRef<{id:string;kind:'move'|'start'|'end';day:string;start:number;end:number;anchorY:number;anchorX:number;anchorMinute:number;originStart:number;originEnd:number;originDay:string;pointerId:number;active:boolean;armed:boolean;touch:boolean;pointerType:string}|null>(null);
  const {show:showGoogle,events:googleEvents}=useGoogleCalendar();
  const lanes=useRef<Record<string,HTMLDivElement|null>>({});
  const holdTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -38,8 +44,29 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
  const cancelGesture=()=>{clearHold();gesture.current=null;previewRef.current=null;setPreview(null);};
  useEffect(()=>{
   const stopScroll=(e:TouchEvent)=>{if(gesture.current?.touch&&gesture.current.armed)e.preventDefault();};
+  const onGlobalPointerUp=(e:PointerEvent)=>{
+   const g=gesture.current;
+   if(!g||g.pointerId!==e.pointerId)return;
+   // Lost pointerup on the appointment (common after opening/closing the details modal).
+   if(!g.active){cancelGesture();return;}
+  };
+  const onGlobalPointerCancel=()=>cancelGesture();
+  const onBlur=()=>cancelGesture();
+  const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'){cancelGesture();setProposed(null);setMoving(null);}};
   document.addEventListener('touchmove',stopScroll,{passive:false});
-  return ()=>{document.removeEventListener('touchmove',stopScroll);if(holdTimer.current!==null)clearTimeout(holdTimer.current);};
+  window.addEventListener('pointerup',onGlobalPointerUp,true);
+  window.addEventListener('pointercancel',onGlobalPointerCancel,true);
+  window.addEventListener('blur',onBlur);
+  window.addEventListener('keydown',onKey);
+  return ()=>{
+   document.removeEventListener('touchmove',stopScroll);
+   window.removeEventListener('pointerup',onGlobalPointerUp,true);
+   window.removeEventListener('pointercancel',onGlobalPointerCancel,true);
+   window.removeEventListener('blur',onBlur);
+   window.removeEventListener('keydown',onKey);
+   if(holdTimer.current!==null)clearTimeout(holdTimer.current);
+   cancelGesture();
+  };
  },[]);
  const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
  const snap=(v:number)=>Math.round(v/15)*15;
@@ -58,8 +85,12 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
   }
   const lane=lanes.current[v.day];if(!lane)return;
   const rect=lane.getBoundingClientRect();
-  gesture.current={id:v.id,kind,day:v.day,start:v.startMinutes,end:v.endMinutes,anchorY:e.clientY,anchorX:e.clientX,anchorMinute:snap(START+(e.clientY-rect.top)/HOUR_HEIGHT*60),originStart:v.startMinutes,originEnd:v.endMinutes,originDay:v.day,pointerId:e.pointerId,active:false,armed:e.pointerType!=='touch',touch:e.pointerType==='touch'};
-  if(e.pointerType==='touch'){
+  const touch=e.pointerType==='touch';
+  // Mouse/pen start unarmed so a plain click opens details without dragging.
+  // Resize handles arm immediately because they are explicit drag affordances.
+  const armed=kind==='move'?initialGestureArmed(e.pointerType):true;
+  gesture.current={id:v.id,kind,day:v.day,start:v.startMinutes,end:v.endMinutes,anchorY:e.clientY,anchorX:e.clientX,anchorMinute:snap(START+(e.clientY-rect.top)/HOUR_HEIGHT*60),originStart:v.startMinutes,originEnd:v.endMinutes,originDay:v.day,pointerId:e.pointerId,active:false,armed,touch,pointerType:e.pointerType};
+  if(touch&&kind==='move'){
    clearHold();
    holdTimer.current=setTimeout(()=>{
     const g=gesture.current;
@@ -74,11 +105,20 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
  };
  const moveGesture=(e:React.PointerEvent)=>{
   const g=gesture.current;if(!g||g.pointerId!==e.pointerId)return;
-  if(!g.armed){
-   if(Math.hypot(e.clientX-g.anchorX,e.clientY-g.anchorY)>9)cancelGesture();
+  const distance=pointerDistance(g.anchorX,g.anchorY,e.clientX,e.clientY);
+  if(shouldCancelGestureWithoutButtons(g.pointerType,e.buttons,g.armed||g.active)){
+   cancelGesture();
    return;
   }
-  if(Math.hypot(e.clientX-g.anchorX,e.clientY-g.anchorY)<6&&!g.active)return;
+  if(!g.armed){
+   if(shouldArmMouseDrag(distance,g.armed,g.touch)){
+    g.armed=true;
+   }else if(distance>9){
+    cancelGesture();
+   }
+   if(!g.armed)return;
+  }
+  if(!shouldActivateDrag(distance,g.armed,g.active)&&!g.active)return;
   if(!g.active){
    g.active=true;
    suppressClick.current=true;
@@ -101,7 +141,7 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
   const g=gesture.current;if(!g||g.pointerId!==e.pointerId)return;
   clearHold();gesture.current=null;
   const p=previewRef.current;previewRef.current=null;setPreview(null);
-  if(!g.active||!p)return;
+  if(!shouldSuppressClickAfterDrag(g.active)||!p)return;
   suppressClick.current=true;
   window.setTimeout(()=>{suppressClick.current=false},450);
   const v=effective.find(x=>x.id===g.id);if(v)confirmTimes(v,p.day,p.start,p.end);
@@ -119,8 +159,25 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
  const applyTimes=(v:TimelineVisit,day:string,start:number,end:number,override=false)=>{
   const nextStart=toIso(day,start),nextEnd=toIso(day,end);
   const previous=overrides[v.id];
+  const clientWarning=proposed&&proposed.visit.id===v.id?proposed.warning:'';
   setOverrides(old=>({...old,[v.id]:{day,start,end,startIso:nextStart,endIso:nextEnd}}));
-  startTransition(async()=>{try{await setScheduledVisitTimes(v.id,nextStart,nextEnd,v.startIso,override);setMoving(null);router.refresh();}catch(e){setOverrides(old=>{const copy={...old};if(previous)copy[v.id]=previous;else delete copy[v.id];return copy;});setServerWarning(e instanceof Error?e.message:'Unable to reschedule visit.');setOverrideNeil(false);setProposed({visit:v,day,start,end,warning:''})}})
+  setServerWarning('');
+  startTransition(async()=>{
+   const result=await setScheduledVisitTimes(v.id,nextStart,nextEnd,v.startIso,override);
+   if(result.ok){
+    setMoving(null);
+    setProposed(null);
+    setOverrideNeil(false);
+    router.refresh();
+    return;
+   }
+   // Restore original times and keep the confirmation dialog usable.
+   setOverrides(old=>{const copy={...old};if(previous)copy[v.id]=previous;else delete copy[v.id];return copy;});
+   setServerWarning(result.message||'Unable to reschedule visit.');
+   // Neil override never bypasses HQ electrician conflicts.
+   if(result.code==='hq_overlap')setOverrideNeil(false);
+   setProposed({visit:v,day,start,end,warning:clientWarning});
+  });
  };
  const [mode,setMode]=useState<'week'|'day'>('week');
  useEffect(()=>{if(window.matchMedia('(max-width: 760px)').matches)setMode('day');},[]);
@@ -165,12 +222,12 @@ export default function DispatchTimeline({toolbarExtras,googleSettings,canEdit,c
      const start=Math.max(START,v.startMinutes),end=Math.min(END,v.endMinutes);
      if(end<=start)return null;
      const {index,count}=dayLayouts.get(d.key)?.get('visit-'+v.id)??{index:0,count:1};
-     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')+(preview?.id===v.id?' is-dragging':'')} key={v.id} onPointerDown={e=>beginGesture(e,v,'move')} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={cancelGesture} onClickCapture={e=>{if(suppressClick.current){e.preventDefault();e.stopPropagation();suppressClick.current=false;}}} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}>{canEdit&&<div className="ee-timeline-resize top" onPointerDown={e=>beginGesture(e,v,'start')} title="Drag to adjust start time"/>}<VisitPreview appointmentId={v.id} startIso={v.startIso} endIso={v.endIso} canEdit={canEdit} staff={staff} title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} status={v.status} conflict={v.conflict} compact/>{canEdit&&<div className="ee-timeline-resize bottom" onPointerDown={e=>beginGesture(e,v,'end')} title="Drag to adjust end time"/>}</div>;
+     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')+(preview?.id===v.id?' is-dragging':'')} key={v.id} onPointerDown={e=>beginGesture(e,v,'move')} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={cancelGesture} onClickCapture={e=>{if(suppressClick.current){e.preventDefault();e.stopPropagation();suppressClick.current=false;}}} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}>{canEdit&&<div className="ee-timeline-resize top" onPointerDown={e=>beginGesture(e,v,'start')} title="Drag to adjust start time"/>}<VisitPreview appointmentId={v.id} startIso={v.startIso} endIso={v.endIso} canEdit={canEdit} staff={staff} title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} status={v.status} conflict={v.conflict} compact onOpenChange={open=>{cancelGesture();if(open){setProposed(null);setMoving(null);}}}/>{canEdit&&<div className="ee-timeline-resize bottom" onPointerDown={e=>beginGesture(e,v,'end')} title="Drag to adjust end time"/>}</div>;
     })}
    </div>)}
   </div></div>
 
-  {proposed&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setProposed(null)}}><div className="ee-timeline-move-dialog" role="dialog" aria-modal="true" aria-label="Confirm appointment change"><h2>Confirm appointment change</h2><p><strong>{proposed.visit.customer} — {proposed.visit.title}</strong></p><p>Current: {proposed.visit.day} · {format(proposed.visit.startMinutes)}–{format(proposed.visit.endMinutes)}</p><p>New: <strong>{proposed.day} · {format(proposed.start)}–{format(proposed.end)}</strong></p>{proposed.warning&&<p className="ee-timeline-conflict-warning">{proposed.warning.trim()}</p>}{serverWarning&&<p role="alert" className="ee-timeline-conflict-warning">{serverWarning}</p>}{canOverrideNeil&&<label className="ee-neil-override"><input type="checkbox" checked={overrideNeil} onChange={e=>setOverrideNeil(e.target.checked)}/> Override Neil’s Google Calendar conflict (if applicable)</label>}<div><button type="button" onClick={()=>setProposed(null)}>Keep original</button><button type="button" disabled={pending} onClick={()=>{const p=proposed;setProposed(null);applyTimes(p.visit,p.day,p.start,p.end,overrideNeil)}}>Confirm change</button></div></div></div>}
+  {proposed&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!pending){setProposed(null);setServerWarning('');setOverrideNeil(false);cancelGesture();}}}><div className="ee-timeline-move-dialog" role="dialog" aria-modal="true" aria-label="Confirm appointment change"><h2>Confirm appointment change</h2><p><strong>{proposed.visit.customer} — {proposed.visit.title}</strong></p><p>Current: {proposed.visit.day} · {format(proposed.visit.startMinutes)}–{format(proposed.visit.endMinutes)}</p><p>New: <strong>{proposed.day} · {format(proposed.start)}–{format(proposed.end)}</strong></p>{proposed.warning&&<p className="ee-timeline-conflict-warning" style={{whiteSpace:'pre-wrap'}}>{proposed.warning.trim()}</p>}{serverWarning&&<p role="alert" className="ee-timeline-conflict-warning" style={{whiteSpace:'pre-wrap'}}>{serverWarning}</p>}{canOverrideNeil&&<label className="ee-neil-override"><input type="checkbox" checked={overrideNeil} onChange={e=>setOverrideNeil(e.target.checked)} disabled={pending}/> Override Neil’s Google Calendar conflict only (does not bypass HQ electrician conflicts)</label>}<div><button type="button" disabled={pending} onClick={()=>{setProposed(null);setServerWarning('');setOverrideNeil(false);cancelGesture();}}>Keep original</button><button type="button" disabled={pending} onClick={()=>applyTimes(proposed.visit,proposed.day,proposed.start,proposed.end,overrideNeil)}>{pending?'Saving…':'Confirm change'}</button></div></div></div>}
   {moving&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setMoving(null)}}><form className="ee-timeline-move-dialog" onSubmit={e=>{e.preventDefault();const [sh,sm]=moveTime.split(':').map(Number),[eh,em]=moveEnd.split(':').map(Number);const start=snap(sh*60+sm),end=snap(eh*60+em);if(end<=start){setMoveError('End time must be after start time.');return;}setMoveError('');confirmTimes(moving,moveDay,start,end)}}><h2>Change appointment</h2><p>{moving.customer} — {moving.title}</p><label>Date<input type="date" required value={moveDay} onChange={e=>setMoveDay(e.target.value)}/></label><label>Start time<input type="time" required step={900} value={moveTime} onChange={e=>{setMoveTime(e.target.value);setMoveError('')}}/></label><label>End time<input type="time" required step={900} value={moveEnd} onChange={e=>{setMoveEnd(e.target.value);setMoveError('')}}/></label>{moveError&&<p role="alert" className="ee-timeline-conflict-warning">{moveError}</p>}<div><button type="button" onClick={()=>setMoving(null)}>Cancel</button><button type="submit" disabled={pending}>Review change</button></div></form></div>}
   <style jsx global>{`
   @media(max-width:760px){.ee-timeline-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:7px!important;padding:8px!important}.ee-timeline-toolbar .ee-timeline-tabs{width:100%;grid-column:1;grid-row:1}.ee-timeline-toolbar .ee-timeline-tabs button{flex:1}.ee-timeline-toolbar .ee-timeline-staff-filter{grid-column:1/-1;grid-row:2;flex:none!important}.ee-timeline-toolbar .ee-timeline-staff-filter select{width:100%;max-width:none!important}.ee-timeline-toolbar .ee-timeline-check{grid-column:2;grid-row:1;align-self:center;white-space:nowrap}.ee-timeline-toolbar .ee-timeline-extra-controls{grid-column:1/-1;grid-row:3;order:initial!important;display:flex;justify-content:space-between;width:100%;flex:none!important}.ee-timeline-toolbar .ee-timeline-density{grid-column:1/-1;grid-row:4;width:100%;margin:0}.ee-timeline-day-picker{justify-content:space-between;gap:6px}.ee-timeline-day-picker select{flex:1;min-width:0}.ee-timeline-scroll{overflow-x:hidden!important}.ee-timeline-grid{grid-template-columns:52px minmax(0,1fr)!important}.ee-timeline-corner{padding:8px 4px}.ee-timeline-day-header{font-size:12px;padding:8px}.ee-timeline-hours span{right:4px}.ee-timeline-event .ee-visit-preview-trigger{gap:4px}.ee-timeline-event .ee-visit-preview-number{white-space:normal;overflow-wrap:anywhere}.ee-timeline-event .ee-visit-preview-avatars{display:flex;flex-wrap:wrap}.ee-timeline-google-event strong{overflow-wrap:anywhere}.ee-timeline-event{padding:5px}}

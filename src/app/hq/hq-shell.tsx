@@ -36,7 +36,7 @@ export default function HqShell({children,role}:{children:React.ReactNode;role:H
   if(href==='/hq/tech')return pathname==='/hq/tech';
   return pathname===href||pathname.startsWith(href+'/');
  };
- return <div className={'hq-shell'+(compactSidebar?' hq-sidebar-compact':'')}>
+ return <div className={'hq-shell'+(compactSidebar?' hq-sidebar-compact':'')+(technician?' hq-shell-tech':' hq-shell-office')}>
   {navigating&&<div className="hq-navigation-progress" role="progressbar" aria-label="Opening page"/>}
   {showStartup&&<div className="hq-startup" role="status" aria-label="Opening Exceptional Electrical HQ" onClick={()=>setShowStartup(false)}><div className="hq-startup-brand"><div className="hq-startup-mark"><Image className="hq-startup-outline" src="/exceptional-electrical-logo.png" alt="" width={240} height={88} unoptimized priority/><div className="hq-startup-fill" aria-hidden="true"><Image src="/exceptional-electrical-logo.png" alt="" width={240} height={88} unoptimized priority/></div></div><strong>EXCEPTIONAL ELECTRICAL</strong><span>HQ</span></div></div>}
   <header className="hq-shell-header">

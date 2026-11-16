@@ -1,5 +1,9 @@
 'use server';
-import {HQ_ELECTRICIAN_OVERLAP_MESSAGE,hasElectricianOverlap} from '@/lib/hq-electrician-overlaps';
+import {
+ buildOverlapConflictLines,
+ formatHqElectricianOverlapMessage,
+ hasElectricianOverlap,
+} from '@/lib/hq-electrician-overlaps';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
 import {revalidatePath} from 'next/cache';
@@ -137,15 +141,50 @@ export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;m
   }
   const {data:overlapping,error:overlapError}=await db.from('job_appointments').select('id,job_id,starts_at,ends_at').eq('status','scheduled').lt('starts_at',ends.toISOString()).gt('ends_at',begins.toISOString()).limit(200);
   if(overlapError)throw new Error('Unable to check existing bookings. Please retry.');
-  if((overlapping??[]).some(v=>v.job_id===jobId&&v.starts_at===begins.toISOString()&&v.ends_at===ends.toISOString()))
+  const overlapRows=overlapping??[];
+  if(overlapRows.some(v=>v.job_id===jobId&&v.starts_at===begins.toISOString()&&v.ends_at===ends.toISOString()))
    throw new Error('This job already has a visit booked for exactly these times. No duplicate was created.');
-  const overlapIds=(overlapping??[]).map(v=>v.id);
+  const overlapIds=overlapRows.map(v=>v.id);
   if(staffIds.length&&overlapIds.length){
    const {data:booked,error:bookedError}=await db.from('job_appointment_staff').select('appointment_id,staff_id').in('appointment_id',overlapIds);
    if(bookedError)throw new Error('Unable to check electrician availability.');
-   if(hasElectricianOverlap(staffIds,booked??[]))throw new Error(HQ_ELECTRICIAN_OVERLAP_MESSAGE);
+   const bookedRows=booked??[];
+   if(hasElectricianOverlap(staffIds,bookedRows)){
+    const jobIds=[...new Set(overlapRows.map(v=>v.job_id))];
+    const [{data:profiles},{data:jobs}]=await Promise.all([
+     db.from('scheduling_staff').select('id,full_name').in('id',staffIds),
+     db.from('jobs').select('id,job_number,title,customer_id').in('id',jobIds),
+    ]);
+    const jobRows=jobs??[];
+    const customerIds=[...new Set(jobRows.map(j=>j.customer_id).filter((id):id is string=>Boolean(id)))];
+    const {data:customerRows}=customerIds.length?await db.from('customers').select('id,name').in('id',customerIds):{data:[] as {id:string;name:string|null}[]};
+    const customerMap=new Map((customerRows??[]).map(c=>[c.id,c.name||'Customer']));
+    const jobMap=new Map(jobRows.map(j=>[j.id,j]));
+    const staffNames=new Map((profiles??[]).map(p=>[p.id,p.full_name||'Electrician']));
+    throw new Error(formatHqElectricianOverlapMessage(buildOverlapConflictLines({
+     staffIds,
+     staffNames,
+     bookedOnOverlaps:bookedRows,
+     visits:overlapRows.map(v=>{
+      const job=jobMap.get(v.job_id);
+      return {
+       id:v.id,
+       starts_at:v.starts_at,
+       ends_at:v.ends_at,
+       job_number:job?.job_number??null,
+       job_title:job?.title??null,
+       customer_name:job?.customer_id?customerMap.get(job.customer_id)??null:null,
+      };
+     }),
+    })));
+   }
   }
-  const conflicts=await requireNeilAvailability(staffIds,begins,ends,formData.get('override_neil_calendar')==='yes',user.role);
+  let conflicts:Awaited<ReturnType<typeof requireNeilAvailability>>=[];
+  try{
+   conflicts=await requireNeilAvailability(staffIds,begins,ends,formData.get('override_neil_calendar')==='yes',user.role);
+  }catch(error){
+   return {ok:false,message:error instanceof Error?error.message:'Unable to verify Google Calendar availability.'};
+  }
   const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();
   if(error||!visit)throw new Error('Could not schedule appointment.');
   if(staffIds.length){
