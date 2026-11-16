@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import {
+  allowedReviewDecisions,
   buildCorrectionTiming,
   inferBillableMode,
   type BillableMode,
+  type ReviewTimeDecision,
 } from '@/lib/review-time-entry';
 
 export type TimeEntryReviewDefaults = {
@@ -17,6 +19,7 @@ export type TimeEntryReviewDefaults = {
   breakMinutes: number;
   workedMinutes: number | null;
   billableMinutes: number | null;
+  status?: string;
 };
 
 function perthInputValue(iso: string | null): string {
@@ -36,8 +39,6 @@ type Draft = {
   breakMinutes: string;
   correctionNote: string;
 };
-
-type ReviewDecision = 'approve' | 'reject' | 'correct';
 
 function draftFromEntry(entry: TimeEntryReviewDefaults): Draft {
   const worked = entry.workedMinutes ?? 0;
@@ -61,6 +62,7 @@ function entrySignature(entry: TimeEntryReviewDefaults): string {
     entry.breakMinutes,
     entry.workedMinutes ?? '',
     entry.billableMinutes ?? '',
+    entry.status ?? '',
   ].join('|');
 }
 
@@ -68,10 +70,20 @@ export default function TimeEntryReviewForm({
   entry,
   className,
   actionsClassName = 'ee-review-actions',
+  onDirtyChange,
+  onCancel,
+  onSaved,
 }: {
   entry: TimeEntryReviewDefaults;
   className?: string;
   actionsClassName?: string;
+  onDirtyChange?: (dirty: boolean) => void;
+  onCancel?: () => void;
+  onSaved?: (result: {
+    decision: ReviewTimeDecision;
+    message: string;
+    noop?: boolean;
+  }) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -79,13 +91,28 @@ export default function TimeEntryReviewForm({
   const [success, setSuccess] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftFromEntry(entry));
-  const [chosenDecision, setChosenDecision] = useState<ReviewDecision | null>(null);
+  const [chosenDecision, setChosenDecision] = useState<ReviewTimeDecision | null>(null);
+
+  const decisions = useMemo(
+    () => allowedReviewDecisions(entry.status ?? 'submitted'),
+    [entry.status],
+  );
 
   const signature = entrySignature(entry);
   useEffect(() => {
     if (dirty) return;
     setDraft(draftFromEntry(entry));
   }, [signature, dirty, entry]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  const markDirty = useCallback(() => {
+    setDirty(true);
+    setError(null);
+    setSuccess(null);
+  }, []);
 
   const timingPreview = useMemo(
     () => buildCorrectionTiming(draft.startedAt, draft.endedAt, draft.breakMinutes),
@@ -96,9 +123,7 @@ export default function TimeEntryReviewForm({
 
   const syncTimingFields = useCallback(
     (patch: Partial<Pick<Draft, 'startedAt' | 'endedAt' | 'breakMinutes'>>) => {
-      setDirty(true);
-      setError(null);
-      setSuccess(null);
+      markDirty();
       setDraft((prev) => {
         const next = { ...prev, ...patch };
         const timing = buildCorrectionTiming(next.startedAt, next.endedAt, next.breakMinutes);
@@ -108,36 +133,35 @@ export default function TimeEntryReviewForm({
         return next;
       });
     },
-    [],
+    [markDirty],
   );
 
-  const onBillableChange = useCallback((value: string) => {
-    setDirty(true);
-    setError(null);
-    setSuccess(null);
-    setDraft((prev) => {
-      const timing = buildCorrectionTiming(prev.startedAt, prev.endedAt, prev.breakMinutes);
-      const worked = timing.ok ? timing.timing.workedMinutes : null;
-      const numeric = Math.max(0, Number(value) || 0);
-      const mode: BillableMode =
-        worked != null && numeric === worked ? 'auto' : 'manual';
-      return { ...prev, billableMinutes: value, billableMode: mode };
-    });
-  }, []);
+  const onBillableChange = useCallback(
+    (value: string) => {
+      markDirty();
+      setDraft((prev) => {
+        const timing = buildCorrectionTiming(prev.startedAt, prev.endedAt, prev.breakMinutes);
+        const worked = timing.ok ? timing.timing.workedMinutes : null;
+        const numeric = Math.max(0, Number(value) || 0);
+        const mode: BillableMode =
+          worked != null && numeric === worked ? 'auto' : 'manual';
+        return { ...prev, billableMinutes: value, billableMode: mode };
+      });
+    },
+    [markDirty],
+  );
 
   const resetBillableToWorked = useCallback(() => {
-    setDirty(true);
-    setError(null);
-    setSuccess(null);
+    markDirty();
     setDraft((prev) => {
       const timing = buildCorrectionTiming(prev.startedAt, prev.endedAt, prev.breakMinutes);
       const worked = timing.ok ? timing.timing.workedMinutes : 0;
       return { ...prev, billableMode: 'auto', billableMinutes: String(worked) };
     });
-  }, []);
+  }, [markDirty]);
 
   const submitDecision = useCallback(
-    (decision: ReviewDecision) => {
+    (decision: ReviewTimeDecision) => {
       if (pending) return;
       setChosenDecision(decision);
       setError(null);
@@ -166,21 +190,38 @@ export default function TimeEntryReviewForm({
           setError(result.error || 'Unable to save time review.');
           return;
         }
+        const message = result.message || 'Saved.';
         setError(null);
-        setSuccess(result.message || 'Saved.');
+        setSuccess(message);
         setDirty(false);
         if (!result.noop) {
           setDraft((prev) => ({ ...prev, correctionNote: '', rejectionReason: '' }));
         }
+        // Collapse only after the server confirms success — parent decides by decision.
+        onSaved?.({ decision, message, noop: result.noop });
         router.refresh();
       });
     },
-    [pending, entry.id, draft, router, timingPreview],
+    [pending, entry.id, draft, router, timingPreview, onSaved],
   );
+
+  const handleCancel = useCallback(() => {
+    if (dirty) {
+      const ok =
+        typeof window === 'undefined' ||
+        window.confirm('Discard unsaved time changes for this entry?');
+      if (!ok) return;
+    }
+    setDraft(draftFromEntry(entry));
+    setDirty(false);
+    setError(null);
+    setSuccess(null);
+    onCancel?.();
+  }, [dirty, entry, onCancel]);
 
   return (
     <form
-      className={className ?? 'ee-edit-form'}
+      className={className ?? 'ee-edit-form ee-time-inline-form'}
       onSubmit={(event) => {
         event.preventDefault();
         const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
@@ -232,9 +273,7 @@ export default function TimeEntryReviewForm({
       <div className="ee-time-calc" aria-live="polite">
         <p>
           <strong>Worked</strong>{' '}
-          {previewWorked == null
-            ? '—'
-            : formatDurationMinutes(previewWorked)}
+          {previewWorked == null ? '—' : formatDurationMinutes(previewWorked)}
           {previewElapsed != null ? (
             <span className="ee-muted"> · Elapsed {formatDurationMinutes(previewElapsed)}</span>
           ) : null}
@@ -269,37 +308,37 @@ export default function TimeEntryReviewForm({
         ) : null}
       </div>
 
-      <label>
-        Rejection reason
-        <textarea
-          name="rejection_reason"
-          rows={2}
-          maxLength={2000}
-          value={draft.rejectionReason}
-          onChange={(event) => {
-            setDirty(true);
-            setDraft((prev) => ({ ...prev, rejectionReason: event.target.value }));
-            setError(null);
-            setSuccess(null);
-          }}
-        />
-      </label>
-      <label>
-        Correction note
-        <textarea
-          name="correction_note"
-          rows={2}
-          maxLength={2000}
-          placeholder="Required when saving a correction"
-          value={draft.correctionNote}
-          onChange={(event) => {
-            setDirty(true);
-            setDraft((prev) => ({ ...prev, correctionNote: event.target.value }));
-            setError(null);
-            setSuccess(null);
-          }}
-        />
-      </label>
+      {decisions.includes('reject') ? (
+        <label>
+          Rejection reason
+          <textarea
+            name="rejection_reason"
+            rows={2}
+            maxLength={2000}
+            value={draft.rejectionReason}
+            onChange={(event) => {
+              markDirty();
+              setDraft((prev) => ({ ...prev, rejectionReason: event.target.value }));
+            }}
+          />
+        </label>
+      ) : null}
+      {decisions.includes('correct') ? (
+        <label>
+          Correction note
+          <textarea
+            name="correction_note"
+            rows={2}
+            maxLength={2000}
+            placeholder="Required when saving a correction"
+            value={draft.correctionNote}
+            onChange={(event) => {
+              markDirty();
+              setDraft((prev) => ({ ...prev, correctionNote: event.target.value }));
+            }}
+          />
+        </label>
+      ) : null}
       {error ? (
         <p className="ee-form-error" role="alert">
           {error}
@@ -311,36 +350,47 @@ export default function TimeEntryReviewForm({
         </p>
       ) : null}
       <div className={actionsClassName}>
-        <button
-          name="decision"
-          value="approve"
-          type="submit"
-          disabled={pending}
-          aria-busy={pending}
-          onClick={() => setChosenDecision('approve')}
-        >
-          {pending && chosenDecision === 'approve' ? 'Saving…' : 'Approve'}
-        </button>
-        <button
-          name="decision"
-          value="reject"
-          type="submit"
-          disabled={pending}
-          aria-busy={pending}
-          onClick={() => setChosenDecision('reject')}
-        >
-          {pending && chosenDecision === 'reject' ? 'Saving…' : 'Reject'}
-        </button>
-        <button
-          name="decision"
-          value="correct"
-          type="submit"
-          disabled={pending || !timingPreview.ok}
-          aria-busy={pending}
-          onClick={() => setChosenDecision('correct')}
-        >
-          {pending && chosenDecision === 'correct' ? 'Saving…' : 'Save correction'}
-        </button>
+        {decisions.includes('approve') ? (
+          <button
+            name="decision"
+            value="approve"
+            type="submit"
+            disabled={pending}
+            aria-busy={pending}
+            onClick={() => setChosenDecision('approve')}
+          >
+            {pending && chosenDecision === 'approve' ? 'Saving…' : 'Approve'}
+          </button>
+        ) : null}
+        {decisions.includes('reject') ? (
+          <button
+            name="decision"
+            value="reject"
+            type="submit"
+            disabled={pending}
+            aria-busy={pending}
+            onClick={() => setChosenDecision('reject')}
+          >
+            {pending && chosenDecision === 'reject' ? 'Saving…' : 'Reject'}
+          </button>
+        ) : null}
+        {decisions.includes('correct') ? (
+          <button
+            name="decision"
+            value="correct"
+            type="submit"
+            disabled={pending || !timingPreview.ok}
+            aria-busy={pending}
+            onClick={() => setChosenDecision('correct')}
+          >
+            {pending && chosenDecision === 'correct' ? 'Saving…' : 'Save correction'}
+          </button>
+        ) : null}
+        {onCancel ? (
+          <button type="button" className="ee-review-cancel" onClick={handleCancel} disabled={pending}>
+            Cancel
+          </button>
+        ) : null}
       </div>
     </form>
   );
