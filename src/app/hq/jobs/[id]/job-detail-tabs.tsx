@@ -101,14 +101,16 @@ export default function JobDetailTabs({
   }, []);
 
   useEffect(() => {
-    if (!skipPanelScroll.current) {
-      document.querySelector('.ee-workspace-head')?.scrollIntoView({ block: 'start' });
-    } else {
+    const tabButton = document.getElementById(tabDomId(baseId, tab));
+    tabButton?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    if (skipPanelScroll.current) {
       skipPanelScroll.current = false;
+      return;
     }
-    document.getElementById(tabDomId(baseId, tab))?.scrollIntoView({
-      inline: 'nearest',
-      block: 'nearest',
+    // Keep the job header visible and the sticky tab bar aligned after ?tab= changes.
+    requestAnimationFrame(() => {
+      document.querySelector('.ee-workspace-head')?.scrollIntoView({ block: 'start' });
+      tabButton?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
     });
   }, [baseId, tab]);
 

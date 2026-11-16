@@ -105,7 +105,15 @@ describe('job detail tab shell regression', () => {
     assert.match(activitySource, /section === 'time'/);
     assert.match(activitySource, /section === 'costs'/);
     assert.match(activitySource, /section === 'files'/);
+    assert.match(activitySource, /JobTimePanel/);
+    assert.match(activitySource, /JobUpdatesPanel/);
     assert.doesNotMatch(activitySource, /showSummary/);
+  });
+
+  it('keeps desktop sticky tabs at the content top without the mobile header offset', () => {
+    assert.match(pageSource, /--ee-job-sticky-offset/);
+    assert.match(pageSource, /@media\(min-width:1000px\)\{[\s\S]*--ee-job-sticky-offset:0px/);
+    assert.match(pageSource, /\.ee-job-tabs\{[\s\S]*position:sticky/);
   });
 
   it('rotates only the accordion mark and never the summary text', () => {
