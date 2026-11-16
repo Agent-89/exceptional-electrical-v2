@@ -2,16 +2,10 @@
 -- Additive only. Does not rewrite quote_number values.
 -- Local / approved apply only — do not apply to hosted Production without explicit approval.
 --
--- Schema inspection conclusion: status + parent_quote_id alone cannot uniquely identify the
--- commercial current version when an approved parent and an approved/sent variation coexist.
--- Smallest additive change: commercial_family_id + is_commercial_current (partial unique).
--- jobs.quote_id / job_quotes.is_primary remain the job "primary" pointer and may be a draft.
---
--- Commercial current semantics: is_commercial_current represents the accepted commercial
--- version only. Draft / approved / sent never become current automatically. A family may
--- have no current accepted quote. Billing reconciliation is deferred to C2 — HQ does not
--- know whether historical invoices/payments exist outside HQ, so is_commercial_current
--- alone must not drive invoicing decisions.
+-- Commercial current = accepted commercial version only (not draft/approved/sent).
+-- A family may have no current. Automatic supersession targets only the previous accepted
+-- commercial current — pending approved/sent revisions remain available.
+-- Billing reconciliation is deferred to C2.
 
 alter table public.quotes
   add column if not exists commercial_family_id uuid;
@@ -20,9 +14,9 @@ alter table public.quotes
   add column if not exists is_commercial_current boolean not null default false;
 
 comment on column public.quotes.commercial_family_id is
-  'Root quote id for a revision family. Job primary (jobs.quote_id / job_quotes.is_primary) is a separate concept and may point at a draft.';
+  'Root quote id for a revision family. Immutable after insert. Job primary is a separate concept.';
 comment on column public.quotes.is_commercial_current is
-  'At most one accepted commercial current version per family. Never set for draft/approved/sent. Independent of job primary. Not a substitute for billing reconciliation (C2).';
+  'At most one accepted commercial current version per family. Never set for draft/approved/sent. Not a substitute for billing reconciliation (C2).';
 
 -- Backfill family ids: roots = self; children inherit from parents (depth-limited).
 update public.quotes q
@@ -48,14 +42,14 @@ begin
   end loop;
 end $$;
 
--- Clear any non-accepted currents (idempotent for re-apply / local harden).
+-- Deterministic commercial-current backfill (idempotent / re-apply safe):
+-- 1) Clear ALL currents (including inconsistent historical flags).
+-- 2) Set at most one accepted winner per family (latest accepted_at, then created_at, then id).
+-- Families with no accepted member keep no current.
 update public.quotes
 set is_commercial_current = false
-where is_commercial_current
-  and status is distinct from 'accepted';
+where is_commercial_current;
 
--- Backfill: only accepted quotes may be commercial current (one per family).
--- Families with no accepted member legitimately have no current.
 with ranked as (
   select
     id,
@@ -71,8 +65,7 @@ update public.quotes q
 set is_commercial_current = true
 from ranked r
 where q.id = r.id
-  and r.rn = 1
-  and not q.is_commercial_current;
+  and r.rn = 1;
 
 alter table public.quotes
   alter column commercial_family_id set not null;
@@ -91,8 +84,52 @@ create unique index if not exists quotes_one_commercial_current_per_family
 create index if not exists quotes_commercial_family_idx
   on public.quotes (commercial_family_id, created_at desc);
 
+-- Variation / family integrity at the database layer.
+create or replace function public.quotes_enforce_variation_invariants()
+returns trigger
+language plpgsql
+set search_path to 'public', 'pg_temp'
+as $$
+declare
+  v_parent public.quotes%rowtype;
+begin
+  if tg_op = 'UPDATE' then
+    if new.parent_quote_id is distinct from old.parent_quote_id then
+      raise exception 'Parent quote relationship is immutable';
+    end if;
+    if new.commercial_family_id is distinct from old.commercial_family_id then
+      raise exception 'Commercial family is immutable';
+    end if;
+    if new.revision_number is distinct from old.revision_number then
+      raise exception 'Revision number is immutable';
+    end if;
+  end if;
+
+  if new.parent_quote_id is not null then
+    select * into v_parent from public.quotes where id = new.parent_quote_id;
+    if not found then
+      raise exception 'Parent quote not found';
+    end if;
+    if new.customer_id is null or v_parent.customer_id is distinct from new.customer_id then
+      raise exception 'Variation parent must belong to the same customer';
+    end if;
+    if new.commercial_family_id is distinct from coalesce(v_parent.commercial_family_id, v_parent.id) then
+      raise exception 'Variation commercial family must match parent family';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists quotes_enforce_variation_invariants_trg on public.quotes;
+create trigger quotes_enforce_variation_invariants_trg
+  before insert or update on public.quotes
+  for each row
+  execute function public.quotes_enforce_variation_invariants();
+
 -- Extend draft save to accept parent_quote_id / revision / family (keeps EEQ sequence).
--- New drafts (standard or variation) never start as commercial current.
+-- New drafts never start as commercial current. Parent/family fixed after create.
 create or replace function public.save_quote_draft_atomic(
   p_quote_id uuid,
   p_values jsonb,
@@ -107,6 +144,7 @@ declare
   v_id uuid;
   v_status text;
   v_parent_id uuid;
+  v_existing_parent uuid;
   v_parent public.quotes%rowtype;
   v_revision integer := 0;
   v_family uuid;
@@ -128,7 +166,6 @@ begin
       v_family := coalesce(v_parent.commercial_family_id, v_parent.id);
     end if;
 
-    -- Pre-allocate id so roots can self-reference commercial_family_id under the FK.
     v_id := gen_random_uuid();
 
     insert into public.quotes(
@@ -159,12 +196,24 @@ begin
       false
     );
   else
-    select status into v_status
+    select status, parent_quote_id
+      into v_status, v_existing_parent
       from public.quotes where id = p_quote_id for update;
     if v_status is null or v_status not in ('draft', 'changes_requested') then
       raise exception 'Quote is not editable';
     end if;
-    -- Parent relationship is fixed after create; ignore parent changes on update.
+
+    -- Parent/family immutable; customer must stay compatible with parent when variation.
+    if v_existing_parent is not null then
+      select * into v_parent from public.quotes where id = v_existing_parent for share;
+      if not found then
+        raise exception 'Parent quote not found';
+      end if;
+      if v_customer is null or v_parent.customer_id is distinct from v_customer then
+        raise exception 'Variation parent must belong to the same customer';
+      end if;
+    end if;
+
     update public.quotes set
       customer_id = v_customer,
       enquiry_id = nullif(p_values->>'enquiry_id', '')::uuid,
@@ -215,9 +264,27 @@ $$;
 revoke all on function public.save_quote_draft_atomic(uuid, jsonb, jsonb, uuid) from public, anon, authenticated;
 grant execute on function public.save_quote_draft_atomic(uuid, jsonb, jsonb, uuid) to service_role;
 
--- Internal helper: set accepted quote as commercial current (same transaction as caller).
--- Does NOT change jobs.quote_id / job_quotes.is_primary.
--- Does NOT make invoicing decisions — C2 owns billing reconciliation.
+-- Lock every row in a commercial family in id order (deadlock-safe) for accept/make-current.
+create or replace function public._lock_quote_commercial_family(p_family_id uuid)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  perform 1
+  from public.quotes q
+  where q.commercial_family_id = p_family_id
+  order by q.id
+  for update;
+end;
+$$;
+
+revoke all on function public._lock_quote_commercial_family(uuid) from public, anon, authenticated;
+grant execute on function public._lock_quote_commercial_family(uuid) to service_role;
+
+-- Set accepted quote as commercial current.
+-- Supersedes ONLY the previous accepted commercial current — not pending approved/sent revisions.
 create or replace function public._make_accepted_quote_commercial_current(
   p_quote public.quotes,
   p_actor uuid
@@ -228,18 +295,31 @@ security invoker
 set search_path = ''
 as $$
 declare
-  v_other record;
+  v_quote public.quotes%rowtype;
+  v_prev public.quotes%rowtype;
   v_has_billing boolean := false;
+  v_has_prev boolean := false;
 begin
-  if p_quote.status is distinct from 'accepted' then
+  v_quote := p_quote;
+
+  if v_quote.status is distinct from 'accepted' then
     return pg_catalog.jsonb_build_object(
       'ok', false,
       'message', 'Only accepted quotes can be the current commercial version.'
     );
   end if;
 
-  -- Billing safeguard stub: HQ cannot see invoices/payments outside HQ (C2).
-  -- If local invoice tables appear, block unsafe automatic supersession.
+  perform public._lock_quote_commercial_family(v_quote.commercial_family_id);
+
+  -- Re-read caller row under family lock.
+  select * into v_quote from public.quotes where id = v_quote.id for update;
+  if not found or v_quote.status is distinct from 'accepted' then
+    return pg_catalog.jsonb_build_object(
+      'ok', false,
+      'message', 'Only accepted quotes can be the current commercial version.'
+    );
+  end if;
+
   select to_regclass('public.invoices') is not null
       or to_regclass('public.job_invoices') is not null
       or to_regclass('public.xero_invoices') is not null
@@ -248,8 +328,8 @@ begin
   if v_has_billing then
     if exists (
       select 1 from public.quotes q
-      where q.commercial_family_id = p_quote.commercial_family_id
-        and q.id is distinct from p_quote.id
+      where q.commercial_family_id = v_quote.commercial_family_id
+        and q.id is distinct from v_quote.id
         and q.is_commercial_current
         and q.status = 'accepted'
     ) then
@@ -261,47 +341,58 @@ begin
     end if;
   end if;
 
+  -- Capture the previous commercial current before clearing flags.
+  select * into v_prev
+  from public.quotes
+  where commercial_family_id = v_quote.commercial_family_id
+    and id is distinct from v_quote.id
+    and is_commercial_current
+  for update;
+  v_has_prev := found;
+
+  if v_has_prev then
+    if v_prev.status = 'accepted' then
+      update public.quotes
+         set status = 'superseded',
+             is_commercial_current = false,
+             updated_at = now()
+       where id = v_prev.id;
+
+      insert into public.quote_activity(quote_id, actor_id, action, note)
+      values (
+        v_prev.id,
+        p_actor,
+        'superseded',
+        'Superseded by ' || v_quote.quote_number
+      );
+    else
+      -- Inconsistent flag on a non-accepted row: clear only; do not invent supersession.
+      update public.quotes
+         set is_commercial_current = false,
+             updated_at = now()
+       where id = v_prev.id;
+    end if;
+  end if;
+
+  -- Clear any remaining current flags in the family (historical inconsistency).
   update public.quotes
      set is_commercial_current = false,
          updated_at = now()
-   where commercial_family_id = p_quote.commercial_family_id
+   where commercial_family_id = v_quote.commercial_family_id
      and is_commercial_current
-     and id is distinct from p_quote.id;
-
-  for v_other in
-    select id, status, quote_number
-    from public.quotes
-    where commercial_family_id = p_quote.commercial_family_id
-      and id is distinct from p_quote.id
-      and status in ('approved', 'sent', 'accepted')
-    for update
-  loop
-    update public.quotes
-       set status = 'superseded',
-           is_commercial_current = false,
-           updated_at = now()
-     where id = v_other.id;
-
-    insert into public.quote_activity(quote_id, actor_id, action, note)
-    values (
-      v_other.id,
-      p_actor,
-      'superseded',
-      'Superseded by ' || p_quote.quote_number
-    );
-  end loop;
+     and id is distinct from v_quote.id;
 
   update public.quotes
      set is_commercial_current = true,
          updated_at = now()
-   where id = p_quote.id;
+   where id = v_quote.id;
 
   insert into public.quote_activity(quote_id, actor_id, action, note)
-  values (p_quote.id, p_actor, 'made_commercial_current', 'Current commercial version for family');
+  values (v_quote.id, p_actor, 'made_commercial_current', 'Current commercial version for family');
 
   return pg_catalog.jsonb_build_object(
     'ok', true,
-    'quoteId', p_quote.id,
+    'quoteId', v_quote.id,
     'message', 'Quote is now the current commercial version. Job primary was not changed.'
   );
 exception
@@ -318,7 +409,6 @@ revoke all on function public._make_accepted_quote_commercial_current(public.quo
 grant execute on function public._make_accepted_quote_commercial_current(public.quotes, uuid)
   to service_role;
 
--- Manual office designation: accepted quotes only.
 create or replace function public.make_quote_commercial_current_atomic(
   p_quote_id uuid,
   p_actor uuid,
@@ -341,7 +431,6 @@ begin
     return pg_catalog.jsonb_build_object('ok', false, 'message', 'This quote cannot become the current commercial version.');
   end if;
 
-  -- Commercial current = accepted commercial version only.
   if v_quote.status is distinct from 'accepted' then
     return pg_catalog.jsonb_build_object(
       'ok', false,
@@ -358,7 +447,6 @@ revoke all on function public.make_quote_commercial_current_atomic(uuid, uuid, b
 grant execute on function public.make_quote_commercial_current_atomic(uuid, uuid, boolean)
   to service_role;
 
--- Atomic acceptance: status + evidence + (for revisions) commercial current in one transaction.
 create or replace function public.accept_quote_atomic(
   p_quote_id uuid,
   p_actor uuid
@@ -372,13 +460,25 @@ declare
   v_quote public.quotes%rowtype;
   v_prior text;
   v_current jsonb;
-  v_made_current boolean := false;
+  v_family uuid;
 begin
   select * into v_quote from public.quotes where id = p_quote_id for update;
   if not found then
     return pg_catalog.jsonb_build_object('ok', false, 'message', 'Quote not found.');
   end if;
 
+  if v_quote.status not in ('approved', 'sent') then
+    return pg_catalog.jsonb_build_object(
+      'ok', false,
+      'message', 'Cannot mark as accepted from status "' || v_quote.status || '".'
+    );
+  end if;
+
+  v_family := v_quote.commercial_family_id;
+  perform public._lock_quote_commercial_family(v_family);
+
+  -- Re-read under family lock.
+  select * into v_quote from public.quotes where id = p_quote_id for update;
   if v_quote.status not in ('approved', 'sent') then
     return pg_catalog.jsonb_build_object(
       'ok', false,
@@ -406,28 +506,18 @@ begin
   insert into public.quote_activity(quote_id, actor_id, action, note)
   values (p_quote_id, p_actor, 'accepted', 'Accepted from ' || v_prior);
 
-  -- Revised quotations: accept + make current atomically.
-  -- Standard quotes: become current on accept (accepted commercial version) in the same txn.
   v_current := public._make_accepted_quote_commercial_current(v_quote, p_actor);
 
   if coalesce((v_current->>'ok')::boolean, false) is not true then
-    -- Roll back acceptance if commercial transition cannot complete safely.
     raise exception '%', coalesce(v_current->>'message', 'Unable to set commercial current version.');
   end if;
-
-  v_made_current := true;
 
   return pg_catalog.jsonb_build_object(
     'ok', true,
     'quoteId', p_quote_id,
-    'madeCommercialCurrent', v_made_current,
+    'madeCommercialCurrent', true,
     'isRevision', v_quote.parent_quote_id is not null,
-    'message', case
-      when v_quote.parent_quote_id is not null then
-        'Quote marked as accepted and set as the current commercial version. Job primary was not changed.'
-      else
-        'Quote marked as accepted and set as the current commercial version. Job primary was not changed.'
-    end
+    'message', 'Quote marked as accepted and set as the current commercial version. Job primary was not changed.'
   );
 exception
   when unique_violation then
@@ -436,7 +526,6 @@ exception
       'message', 'Another current-version change happened at the same time. Refresh and try again.'
     );
   when others then
-    -- Re-raise after mapping review-style messages to structured failure without partial accept.
     return pg_catalog.jsonb_build_object(
       'ok', false,
       'message', SQLERRM,
@@ -448,8 +537,6 @@ $$;
 revoke all on function public.accept_quote_atomic(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.accept_quote_atomic(uuid, uuid) to service_role;
 
--- Harden create-and-link: association_kind=variation requires a real parent_quote_id.
--- Historical rows with variation labels but no parent are left untouched.
 create or replace function public.job_quote_create_and_link_atomic(
   p_job_id uuid,
   p_actor uuid,

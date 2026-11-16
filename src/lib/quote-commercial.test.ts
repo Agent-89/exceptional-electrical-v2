@@ -43,6 +43,15 @@ describe('quote-commercial helpers', () => {
     ];
     assert.equal(pickCommercialCurrentBackfillId(mixed), 'c2');
 
+    // Older accepted may already be flagged current; winner is still latest accepted.
+    assert.equal(
+      pickCommercialCurrentBackfillId([
+        { id: 'old', status: 'accepted', acceptedAt: '2026-01-01T10:00:00Z', createdAt: '2026-01-01' },
+        { id: 'new', status: 'accepted', acceptedAt: '2026-01-09T10:00:00Z', createdAt: '2026-01-09' },
+      ]),
+      'new',
+    );
+
     const noneAccepted = [
       { id: 'd1', status: 'draft' },
       { id: 'a1', status: 'approved' },
