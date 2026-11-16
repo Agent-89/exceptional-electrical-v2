@@ -34,15 +34,20 @@ import {
   syncAppointmentFieldStatusFromLiveTimers,
 } from '@/lib/tech-time';
 import {
+  formatTimeReviewActivityNote,
   isDuplicateCorrection,
   isReviewDecisionResult,
-  parseBreakMinutes,
   readReviewTimeEntryFields,
   resolveBillableMinutes,
   statusesForReviewDecision,
   validateReviewTimeEntryRequest,
   type ReviewTimeEntryResult,
 } from '@/lib/review-time-entry';
+import {
+  formatFollowUpResolutionActivityNote,
+  isFollowUpOutstanding,
+  validateFollowUpResolution,
+} from '@/lib/job-follow-up';
 import { upsertOwnTechWorkReport } from '@/lib/tech-work-reports';
 
 /** Soft result for tech field actions — avoid throwing expected UX errors (they become 500 digests). */
@@ -840,6 +845,7 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
           breakMinutes: entry.breakMinutes,
           workedMinutes: entry.workedMinutes,
           billableMinutes: entry.billableMinutes,
+          correctionNote: entry.correctionNote,
           originalStartedAt: entry.originalStartedAt,
           originalEndedAt: entry.originalEndedAt,
           originalBreakMinutes: entry.originalBreakMinutes,
@@ -860,8 +866,27 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
   const now = new Date().toISOString();
   const entryId = fields.entryId;
   const statusGate = statusesForReviewDecision(decision);
+  const { data: staffRow } = await db
+    .from('scheduling_staff')
+    .select('full_name')
+    .eq('id', entry.staffId)
+    .maybeSingle();
+  const technicianName = (staffRow?.full_name as string | undefined) || 'Technician';
+
+  let activityNote = '';
+  let nextForActivity:
+    | {
+        startedAt: string;
+        endedAt: string;
+        breakMinutes: number;
+        workedMinutes: number;
+        billableMinutes: number;
+        billableMode: 'auto' | 'manual';
+      }
+    | undefined;
 
   if (decision === 'approve') {
+    // Approve only sets billable/status — never rewrites start/end/worked silently.
     const billable = resolveBillableMinutes(fields.billableRaw, entry.workedMinutes ?? 0);
     const { data, error } = await db
       .from('job_time_entries')
@@ -883,6 +908,14 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
         code: 'conflict',
       };
     }
+    nextForActivity = {
+      startedAt: entry.startedAt,
+      endedAt: entry.endedAt || entry.startedAt,
+      breakMinutes: entry.breakMinutes,
+      workedMinutes: entry.workedMinutes ?? 0,
+      billableMinutes: billable,
+      billableMode: 'manual',
+    };
   } else if (decision === 'reject') {
     const { data, error } = await db
       .from('job_time_entries')
@@ -906,30 +939,37 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
       };
     }
   } else {
-    const breakMinutes = parseBreakMinutes(fields.breakMinutesRaw);
-    const startedAt = new Date(fields.startLocal + '+08:00');
-    const endedAt = new Date(fields.endLocal + '+08:00');
-    const worked = computeWorkedMinutes(startedAt.toISOString(), endedAt.toISOString(), breakMinutes);
-    const billable = resolveBillableMinutes(fields.billableRaw, worked);
+    if (!validated.timing || validated.billableMinutes == null) {
+      return { ok: false, error: 'Enter valid corrected times.', code: 'validation' };
+    }
+    const timing = validated.timing;
+    const billable = validated.billableMinutes;
     const next = {
-      startedAt: startedAt.toISOString(),
-      endedAt: endedAt.toISOString(),
-      breakMinutes,
-      workedMinutes: worked,
+      startedAt: timing.startedAt,
+      endedAt: timing.endedAt,
+      breakMinutes: timing.breakMinutes,
+      workedMinutes: timing.workedMinutes,
       billableMinutes: billable,
+      correctionNote: fields.correctionNote,
     };
-    if (isDuplicateCorrection({
-      status: entry.status,
-      startedAt: entry.startedAt,
-      endedAt: entry.endedAt,
-      breakMinutes: entry.breakMinutes,
-      workedMinutes: entry.workedMinutes,
-      billableMinutes: entry.billableMinutes,
-      originalStartedAt: entry.originalStartedAt,
-      originalEndedAt: entry.originalEndedAt,
-      originalBreakMinutes: entry.originalBreakMinutes,
-      originalWorkedMinutes: entry.originalWorkedMinutes,
-    }, next)) {
+    if (
+      isDuplicateCorrection(
+        {
+          status: entry.status,
+          startedAt: entry.startedAt,
+          endedAt: entry.endedAt,
+          breakMinutes: entry.breakMinutes,
+          workedMinutes: entry.workedMinutes,
+          billableMinutes: entry.billableMinutes,
+          correctionNote: entry.correctionNote,
+          originalStartedAt: entry.originalStartedAt,
+          originalEndedAt: entry.originalEndedAt,
+          originalBreakMinutes: entry.originalBreakMinutes,
+          originalWorkedMinutes: entry.originalWorkedMinutes,
+        },
+        next,
+      )
+    ) {
       revalidatePath('/hq/jobs/' + entry.jobId);
       revalidatePath('/hq/timesheets');
       if (entry.appointmentId) revalidateVisit(entry.appointmentId, entry.jobId);
@@ -942,8 +982,8 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
         status: 'corrected',
         started_at: next.startedAt,
         ended_at: next.endedAt,
-        break_minutes: breakMinutes,
-        worked_minutes: worked,
+        break_minutes: timing.breakMinutes,
+        worked_minutes: timing.workedMinutes,
         billable_minutes: billable,
         correction_note: fields.correctionNote,
         corrected_by: user.id,
@@ -965,13 +1005,35 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
         code: 'conflict',
       };
     }
+    nextForActivity = {
+      startedAt: next.startedAt,
+      endedAt: next.endedAt,
+      breakMinutes: timing.breakMinutes,
+      workedMinutes: timing.workedMinutes,
+      billableMinutes: billable,
+      billableMode: fields.billableMode,
+    };
   }
+
+  activityNote = formatTimeReviewActivityNote({
+    decision,
+    technicianName,
+    previous: {
+      startedAt: entry.startedAt,
+      endedAt: entry.endedAt,
+      breakMinutes: entry.breakMinutes,
+      workedMinutes: entry.workedMinutes,
+      billableMinutes: entry.billableMinutes,
+    },
+    next: nextForActivity,
+    reason: decision === 'reject' ? fields.rejectionReason : fields.correctionNote,
+  });
 
   await db.from('job_activity').insert({
     job_id: entry.jobId,
     actor_id: user.id,
     action: 'time_' + decision + 'd',
-    note: `Time entry ${entryId} ${decision}`,
+    note: activityNote.slice(0, 500),
   });
 
   if (entry.appointmentId) revalidateVisit(entry.appointmentId, entry.jobId);
@@ -980,6 +1042,139 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
     revalidatePath('/hq/timesheets');
   }
   return { ok: true, message: decision === 'correct' ? 'Correction saved.' : `Time entry ${decision}d.` };
+}
+
+type FollowUpResolveResult =
+  | { ok: true; noop?: boolean; message?: string }
+  | { ok: false; error: string };
+
+/** Office resolves a further-visit flag without altering technician reports. */
+export async function resolveFollowUpAction(formData: FormData): Promise<FollowUpResolveResult> {
+  const user = await requireOfficeUser();
+  assertOfficeOps(user);
+  const appointmentId = String(formData.get('appointment_id') || '');
+  const jobId = String(formData.get('job_id') || '');
+  const mode = String(formData.get('resolution_mode') || '');
+  const note = textField(formData, 'resolution_note', 2000);
+  const linkedAppointmentId = String(formData.get('linked_appointment_id') || '').trim() || null;
+  if (!/^[0-9a-f-]{36}$/i.test(appointmentId) || !/^[0-9a-f-]{36}$/i.test(jobId)) {
+    return { ok: false, error: 'Invalid visit.' };
+  }
+
+  const db = dbAdmin();
+  let source: Record<string, unknown> | null = null;
+  const richSelect = await db
+    .from('job_appointments')
+    .select(
+      'id,job_id,starts_at,status,field_follow_up_required,field_follow_up_resolved_at,field_outstanding_work',
+    )
+    .eq('id', appointmentId)
+    .eq('job_id', jobId)
+    .maybeSingle();
+  if (richSelect.error) {
+    const basic = await db
+      .from('job_appointments')
+      .select('id,job_id,starts_at,status,field_follow_up_required,field_outstanding_work')
+      .eq('id', appointmentId)
+      .eq('job_id', jobId)
+      .maybeSingle();
+    if (basic.error || !basic.data) return { ok: false, error: 'Visit not found.' };
+    source = basic.data as Record<string, unknown>;
+  } else if (!richSelect.data) {
+    return { ok: false, error: 'Visit not found.' };
+  } else {
+    source = richSelect.data as Record<string, unknown>;
+  }
+
+  const outstanding = isFollowUpOutstanding({
+    id: source.id as string,
+    startsAt: source.starts_at as string,
+    followUp: Boolean(source.field_follow_up_required),
+    followUpResolvedAt: (source.field_follow_up_resolved_at as string | null | undefined) ?? null,
+  });
+  if (!outstanding) {
+    return { ok: true, noop: true, message: 'Further visit already resolved.' };
+  }
+
+  const { data: siblings } = await db
+    .from('job_appointments')
+    .select('id,starts_at,status')
+    .eq('job_id', jobId);
+  const validated = validateFollowUpResolution({
+    mode,
+    note,
+    linkedAppointmentId,
+    sourceAppointmentId: appointmentId,
+    sourceStartsAt: source.starts_at as string,
+    candidateAppointments: (siblings ?? []).map((row) => ({
+      id: row.id as string,
+      startsAt: row.starts_at as string,
+      status: row.status as string,
+    })),
+  });
+  if (!validated.ok) return validated;
+
+  const now = new Date().toISOString();
+  const visitLabel = new Date(source.starts_at as string).toLocaleString('en-AU', {
+    timeZone: 'Australia/Perth',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  let linkedLabel: string | null = null;
+  if (validated.linkedAppointmentId) {
+    const linked = (siblings ?? []).find((row) => row.id === validated.linkedAppointmentId);
+    if (linked) {
+      linkedLabel = new Date(linked.starts_at as string).toLocaleString('en-AU', {
+        timeZone: 'Australia/Perth',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+    }
+  }
+
+  const richPatch = {
+    field_follow_up_resolved_at: now,
+    field_follow_up_resolved_by: user.id,
+    field_follow_up_resolution: validated.mode,
+    field_follow_up_linked_appointment_id: validated.linkedAppointmentId,
+    field_follow_up_resolution_note: note,
+    updated_at: now,
+  };
+  const { error: richError } = await db
+    .from('job_appointments')
+    .update(richPatch)
+    .eq('id', appointmentId)
+    .eq('job_id', jobId)
+    .eq('field_follow_up_required', true);
+
+  if (richError) {
+    // Soft-fallback before migration: clear the flag, preserve tech reports untouched.
+    const { error: fallbackError } = await db
+      .from('job_appointments')
+      .update({
+        field_follow_up_required: false,
+        updated_at: now,
+      })
+      .eq('id', appointmentId)
+      .eq('job_id', jobId)
+      .eq('field_follow_up_required', true);
+    if (fallbackError) return { ok: false, error: 'Unable to resolve further visit.' };
+  }
+
+  await db.from('job_activity').insert({
+    job_id: jobId,
+    actor_id: user.id,
+    action: 'follow_up_resolved',
+    note: formatFollowUpResolutionActivityNote({
+      mode: validated.mode,
+      visitLabel,
+      note: note || '',
+      linkedLabel,
+    }).slice(0, 500),
+  });
+
+  revalidateVisit(appointmentId, jobId);
+  return { ok: true, message: 'Further visit marked resolved.' };
 }
 
 export async function addOfficeNoteAction(formData: FormData) {

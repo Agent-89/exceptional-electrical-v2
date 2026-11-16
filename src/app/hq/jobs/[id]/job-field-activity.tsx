@@ -13,7 +13,9 @@ import {
   type JobDetailTechReport,
   type JobDetailTimeEntry,
 } from '@/lib/job-detail-summary';
+import { isFollowUpOutstanding } from '@/lib/job-follow-up';
 import OfficeVisitOutcomeForm from './office-visit-outcome-form';
+import ResolveFollowUpForm from './resolve-follow-up-form';
 import JobTimePanel from './job-time-panel';
 import JobUpdatesPanel from './job-updates-panel';
 
@@ -150,7 +152,11 @@ export default function JobFieldActivity({
                     <span className="ee-muted">
                       {FIELD_STATUS_LABELS[appointment.fieldStatus as FieldStatus] ??
                         appointment.fieldStatus}
-                      {appointment.followUp ? ' · Further visit' : ''}
+                      {isFollowUpOutstanding(appointment)
+                        ? ' · Further visit outstanding'
+                        : appointment.followUp && appointment.followUpResolvedAt
+                          ? ' · Further visit resolved'
+                          : ''}
                       {reportsForVisit.length
                         ? ` · ${reportsForVisit.length} report${reportsForVisit.length === 1 ? '' : 's'}`
                         : ' · No reports'}
@@ -177,10 +183,42 @@ export default function JobFieldActivity({
                       <p className="ee-muted">No shared summary yet.</p>
                     ) : null}
                     <p className="ee-muted" style={{ marginBottom: 0 }}>
-                      Further visit required: {appointment.followUp ? 'Yes' : 'No'}
+                      Further visit required:{' '}
+                      {isFollowUpOutstanding(appointment)
+                        ? 'Yes · outstanding'
+                        : appointment.followUp
+                          ? 'Yes · resolved by office'
+                          : 'No'}
                       {isTerminalVisitOutcome(appointment.fieldStatus) ? ' · Finalised' : ''}
                     </p>
+                    {appointment.followUpResolvedAt ? (
+                      <p className="ee-muted">
+                        Resolved {perthWhen(appointment.followUpResolvedAt)}
+                        {appointment.followUpResolutionNote
+                          ? ` · ${appointment.followUpResolutionNote}`
+                          : ''}
+                      </p>
+                    ) : null}
                   </div>
+
+                  {isFollowUpOutstanding(appointment) ? (
+                    <ResolveFollowUpForm
+                      jobId={jobId}
+                      appointmentId={appointment.id}
+                      linkOptions={appointments
+                        .filter(
+                          (candidate) =>
+                            candidate.id !== appointment.id &&
+                            candidate.status !== 'cancelled' &&
+                            new Date(candidate.startsAt).getTime() >=
+                              new Date(appointment.startsAt).getTime(),
+                        )
+                        .map((candidate) => ({
+                          id: candidate.id,
+                          label: perthDayTime(candidate.startsAt, candidate.endsAt),
+                        }))}
+                    />
+                  ) : null}
 
                   <div className="ee-job-subblock">
                     <strong>Technician reports</strong>

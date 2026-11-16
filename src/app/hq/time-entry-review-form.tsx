@@ -1,8 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
+import { formatDurationMinutes } from '@/lib/tech-time-format';
+import {
+  buildCorrectionTiming,
+  inferBillableMode,
+  type BillableMode,
+} from '@/lib/review-time-entry';
 
 export type TimeEntryReviewDefaults = {
   id: string;
@@ -23,6 +29,7 @@ function perthInputValue(iso: string | null): string {
 
 type Draft = {
   billableMinutes: string;
+  billableMode: BillableMode;
   rejectionReason: string;
   startedAt: string;
   endedAt: string;
@@ -33,8 +40,11 @@ type Draft = {
 type ReviewDecision = 'approve' | 'reject' | 'correct';
 
 function draftFromEntry(entry: TimeEntryReviewDefaults): Draft {
+  const worked = entry.workedMinutes ?? 0;
+  const mode = inferBillableMode(entry.billableMinutes, entry.workedMinutes);
   return {
-    billableMinutes: String(entry.billableMinutes ?? entry.workedMinutes ?? 0),
+    billableMinutes: String(entry.billableMinutes ?? worked),
+    billableMode: mode,
     rejectionReason: '',
     startedAt: perthInputValue(entry.startedAt),
     endedAt: perthInputValue(entry.endedAt),
@@ -72,17 +82,58 @@ export default function TimeEntryReviewForm({
   const [chosenDecision, setChosenDecision] = useState<ReviewDecision | null>(null);
 
   const signature = entrySignature(entry);
-  // After a successful save, parent refresh updates `entry` — resync draft only when clean.
   useEffect(() => {
     if (dirty) return;
     setDraft(draftFromEntry(entry));
   }, [signature, dirty, entry]);
 
-  const onField = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => {
+  const timingPreview = useMemo(
+    () => buildCorrectionTiming(draft.startedAt, draft.endedAt, draft.breakMinutes),
+    [draft.startedAt, draft.endedAt, draft.breakMinutes],
+  );
+  const previewWorked = timingPreview.ok ? timingPreview.timing.workedMinutes : null;
+  const previewElapsed = timingPreview.ok ? timingPreview.timing.elapsedMinutes : null;
+
+  const syncTimingFields = useCallback(
+    (patch: Partial<Pick<Draft, 'startedAt' | 'endedAt' | 'breakMinutes'>>) => {
+      setDirty(true);
+      setError(null);
+      setSuccess(null);
+      setDraft((prev) => {
+        const next = { ...prev, ...patch };
+        const timing = buildCorrectionTiming(next.startedAt, next.endedAt, next.breakMinutes);
+        if (timing.ok && next.billableMode === 'auto') {
+          next.billableMinutes = String(timing.timing.workedMinutes);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const onBillableChange = useCallback((value: string) => {
     setDirty(true);
-    setDraft((prev) => ({ ...prev, [key]: value }));
     setError(null);
     setSuccess(null);
+    setDraft((prev) => {
+      const timing = buildCorrectionTiming(prev.startedAt, prev.endedAt, prev.breakMinutes);
+      const worked = timing.ok ? timing.timing.workedMinutes : null;
+      const numeric = Math.max(0, Number(value) || 0);
+      const mode: BillableMode =
+        worked != null && numeric === worked ? 'auto' : 'manual';
+      return { ...prev, billableMinutes: value, billableMode: mode };
+    });
+  }, []);
+
+  const resetBillableToWorked = useCallback(() => {
+    setDirty(true);
+    setError(null);
+    setSuccess(null);
+    setDraft((prev) => {
+      const timing = buildCorrectionTiming(prev.startedAt, prev.endedAt, prev.breakMinutes);
+      const worked = timing.ok ? timing.timing.workedMinutes : 0;
+      return { ...prev, billableMode: 'auto', billableMinutes: String(worked) };
+    });
   }, []);
 
   const submitDecision = useCallback(
@@ -92,10 +143,16 @@ export default function TimeEntryReviewForm({
       setError(null);
       setSuccess(null);
 
+      if (decision === 'correct' && !timingPreview.ok) {
+        setError(timingPreview.error);
+        return;
+      }
+
       const data = new FormData();
       data.set('entry_id', entry.id);
       data.set('decision', decision);
       data.set('billable_minutes', draft.billableMinutes);
+      data.set('billable_mode', draft.billableMode);
       data.set('rejection_reason', draft.rejectionReason);
       data.set('started_at', draft.startedAt);
       data.set('ended_at', draft.endedAt);
@@ -107,20 +164,18 @@ export default function TimeEntryReviewForm({
         if (!result.ok) {
           setSuccess(null);
           setError(result.error || 'Unable to save time review.');
-          // Keep draft + dirty so the user does not lose entered values.
           return;
         }
         setError(null);
         setSuccess(result.message || 'Saved.');
         setDirty(false);
         if (!result.noop) {
-          // Clear only the one-shot note; times/billable resync from refreshed entry props.
           setDraft((prev) => ({ ...prev, correctionNote: '', rejectionReason: '' }));
         }
         router.refresh();
       });
     },
-    [pending, entry.id, draft, router],
+    [pending, entry.id, draft, router, timingPreview],
   );
 
   return (
@@ -128,7 +183,6 @@ export default function TimeEntryReviewForm({
       className={className ?? 'ee-edit-form'}
       onSubmit={(event) => {
         event.preventDefault();
-        // Prefer the button that was just armed; fall back to native submitter.
         const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
         const fromSubmitter = submitter?.value;
         const decision =
@@ -144,34 +198,15 @@ export default function TimeEntryReviewForm({
       }}
     >
       <input type="hidden" name="entry_id" value={entry.id} />
-      <input type="hidden" name="entry_signature" value={entrySignature(entry)} readOnly />
-      <label>
-        Billable minutes
-        <input
-          name="billable_minutes"
-          type="number"
-          min={0}
-          value={draft.billableMinutes}
-          onChange={(event) => onField('billableMinutes', event.target.value)}
-        />
-      </label>
-      <label>
-        Rejection reason
-        <textarea
-          name="rejection_reason"
-          rows={2}
-          maxLength={2000}
-          value={draft.rejectionReason}
-          onChange={(event) => onField('rejectionReason', event.target.value)}
-        />
-      </label>
+      <input type="hidden" name="billable_mode" value={draft.billableMode} readOnly />
+
       <label>
         Corrected start (Perth)
         <input
           type="datetime-local"
           name="started_at"
           value={draft.startedAt}
-          onChange={(event) => onField('startedAt', event.target.value)}
+          onChange={(event) => syncTimingFields({ startedAt: event.target.value })}
         />
       </label>
       <label>
@@ -180,7 +215,7 @@ export default function TimeEntryReviewForm({
           type="datetime-local"
           name="ended_at"
           value={draft.endedAt}
-          onChange={(event) => onField('endedAt', event.target.value)}
+          onChange={(event) => syncTimingFields({ endedAt: event.target.value })}
         />
       </label>
       <label>
@@ -190,7 +225,63 @@ export default function TimeEntryReviewForm({
           name="break_minutes"
           min={0}
           value={draft.breakMinutes}
-          onChange={(event) => onField('breakMinutes', event.target.value)}
+          onChange={(event) => syncTimingFields({ breakMinutes: event.target.value })}
+        />
+      </label>
+
+      <div className="ee-time-calc" aria-live="polite">
+        <p>
+          <strong>Worked</strong>{' '}
+          {previewWorked == null
+            ? '—'
+            : formatDurationMinutes(previewWorked)}
+          {previewElapsed != null ? (
+            <span className="ee-muted"> · Elapsed {formatDurationMinutes(previewElapsed)}</span>
+          ) : null}
+        </p>
+        {!timingPreview.ok ? (
+          <p className="ee-form-error" role="alert">
+            {timingPreview.error}
+          </p>
+        ) : null}
+      </div>
+
+      <label>
+        Billable minutes
+        <input
+          name="billable_minutes"
+          type="number"
+          min={0}
+          value={draft.billableMinutes}
+          onChange={(event) => onBillableChange(event.target.value)}
+        />
+      </label>
+      <div className="ee-billable-mode">
+        <span className={draft.billableMode === 'manual' ? 'ee-billable-manual' : 'ee-muted'}>
+          {draft.billableMode === 'manual'
+            ? 'Manual override — will not auto-update when times change'
+            : 'Auto — matches worked time'}
+        </span>
+        {draft.billableMode === 'manual' ? (
+          <button type="button" className="ee-text-action" onClick={resetBillableToWorked}>
+            Reset to worked time
+          </button>
+        ) : null}
+      </div>
+
+      <label>
+        Rejection reason
+        <textarea
+          name="rejection_reason"
+          rows={2}
+          maxLength={2000}
+          value={draft.rejectionReason}
+          onChange={(event) => {
+            setDirty(true);
+            setDraft((prev) => ({ ...prev, rejectionReason: event.target.value }));
+            setError(null);
+            setSuccess(null);
+          }}
         />
       </label>
       <label>
@@ -201,7 +292,12 @@ export default function TimeEntryReviewForm({
           maxLength={2000}
           placeholder="Required when saving a correction"
           value={draft.correctionNote}
-          onChange={(event) => onField('correctionNote', event.target.value)}
+          onChange={(event) => {
+            setDirty(true);
+            setDraft((prev) => ({ ...prev, correctionNote: event.target.value }));
+            setError(null);
+            setSuccess(null);
+          }}
         />
       </label>
       {error ? (
@@ -239,7 +335,7 @@ export default function TimeEntryReviewForm({
           name="decision"
           value="correct"
           type="submit"
-          disabled={pending}
+          disabled={pending || !timingPreview.ok}
           aria-busy={pending}
           onClick={() => setChosenDecision('correct')}
         >

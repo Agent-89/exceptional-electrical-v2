@@ -305,6 +305,10 @@ export default async function TimesheetsPage({
 .ee-timesheet-actions button:disabled{opacity:.6;cursor:wait}
 .ee-form-error{margin:0;color:#b42318;font-size:13px;font-weight:700}
 .ee-form-success{margin:0;color:#0875c9;font-size:13px;font-weight:700}
+.ee-time-calc{display:grid;gap:4px}
+.ee-time-calc p{margin:0}
+.ee-billable-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:-6px}
+.ee-billable-manual{color:#9a3412;font-size:13px;font-weight:700}
 .ee-timesheet-actions button[value=approve]{background:#1688e9;border-color:#1688e9;color:#fff}
 `}</style>
     </main>

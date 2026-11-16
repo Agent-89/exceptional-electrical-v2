@@ -1,6 +1,24 @@
 /** Pure helpers for office time-entry review (approve / reject / correct). */
 
 export type ReviewTimeDecision = 'approve' | 'reject' | 'correct';
+export type BillableMode = 'auto' | 'manual';
+
+function elapsedWholeMinutes(fromIso: string, toIso: string): number {
+  const ms = new Date(toIso).getTime() - new Date(fromIso).getTime();
+  return Math.max(0, Math.floor(ms / 60000));
+}
+
+function computeWorkedMinutes(startedAt: string, endedAt: string, breakMinutes: number): number {
+  return Math.max(0, elapsedWholeMinutes(startedAt, endedAt) - Math.max(0, breakMinutes));
+}
+
+function formatDurationMinutes(total: number): string {
+  const m = Math.max(0, Math.floor(total));
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h <= 0) return `${rem}m`;
+  return `${h}h ${String(rem).padStart(2, '0')}m`;
+}
 
 export type ReviewTimeEntryResult =
   | { ok: true; noop?: boolean; message?: string }
@@ -10,6 +28,7 @@ export type ReviewTimeEntryFields = {
   decision: string;
   entryId: string;
   billableRaw: string;
+  billableMode: BillableMode;
   rejectionReason: string | null;
   correctionNote: string | null;
   startLocal: string;
@@ -24,10 +43,19 @@ export type ReviewTimeEntrySnapshot = {
   breakMinutes: number;
   workedMinutes: number | null;
   billableMinutes: number | null;
+  correctionNote?: string | null;
   originalStartedAt: string | null;
   originalEndedAt: string | null;
   originalBreakMinutes: number | null;
   originalWorkedMinutes: number | null;
+};
+
+export type CorrectionTiming = {
+  startedAt: string;
+  endedAt: string;
+  breakMinutes: number;
+  elapsedMinutes: number;
+  workedMinutes: number;
 };
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
@@ -40,6 +68,10 @@ const CORRECT_FROM = new Set(['submitted', 'approved', 'corrected', 'rejected'])
 export function parseReviewTimeDecision(value: string): ReviewTimeDecision | null {
   if (value === 'approve' || value === 'reject' || value === 'correct') return value;
   return null;
+}
+
+export function parseBillableMode(value: string): BillableMode {
+  return value === 'manual' ? 'manual' : 'auto';
 }
 
 export function canReviewTimeEntryStatus(status: string): boolean {
@@ -62,6 +94,7 @@ export function readReviewTimeEntryFields(formData: FormData): ReviewTimeEntryFi
     decision: String(formData.get('decision') || ''),
     entryId: String(formData.get('entry_id') || ''),
     billableRaw: String(formData.get('billable_minutes') || '').trim(),
+    billableMode: parseBillableMode(String(formData.get('billable_mode') || 'auto')),
     rejectionReason: trim('rejection_reason', 2000),
     correctionNote: trim('correction_note', 2000),
     startLocal: String(formData.get('started_at') || ''),
@@ -72,13 +105,80 @@ export function readReviewTimeEntryFields(formData: FormData): ReviewTimeEntryFi
 
 export type ReviewTimeValidation =
   | { ok: false; error: string; code?: 'validation' | 'conflict' | 'forbidden' | 'unknown' }
-  | { ok: true; decision: ReviewTimeDecision };
+  | { ok: true; decision: ReviewTimeDecision; timing?: CorrectionTiming; billableMinutes?: number };
 
 /** Narrow a validation result to the decision branch (never a noop/success action result). */
 export function isReviewDecisionResult(
   result: ReviewTimeValidation | ReviewTimeEntryResult,
-): result is { ok: true; decision: ReviewTimeDecision } {
+): result is { ok: true; decision: ReviewTimeDecision; timing?: CorrectionTiming; billableMinutes?: number } {
   return result.ok === true && 'decision' in result && result.decision != null;
+}
+
+export function parseBreakMinutes(raw: string): number {
+  return Math.max(0, Math.min(24 * 60, Number(raw) || 0));
+}
+
+/** Perth wall-clock local values → absolute ISO. Overnight is valid when end Instant > start Instant. */
+export function parsePerthLocalDateTime(local: string): Date | null {
+  if (!LOCAL_DT_RE.test(local)) return null;
+  const date = new Date(local + '+08:00');
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Recalculate elapsed/worked for a correction and reject impossible break/range values.
+ * Overnight shifts are allowed when the absolute end is after the absolute start.
+ */
+export function buildCorrectionTiming(
+  startLocal: string,
+  endLocal: string,
+  breakMinutesRaw: string,
+): { ok: true; timing: CorrectionTiming } | { ok: false; error: string } {
+  const started = parsePerthLocalDateTime(startLocal);
+  const ended = parsePerthLocalDateTime(endLocal);
+  if (!started || !ended) {
+    return { ok: false, error: 'Enter valid corrected times.' };
+  }
+  if (ended.getTime() <= started.getTime()) {
+    return { ok: false, error: 'Corrected end must be after start.' };
+  }
+  const breakMinutes = parseBreakMinutes(breakMinutesRaw);
+  const startedAt = started.toISOString();
+  const endedAt = ended.toISOString();
+  const elapsedMinutes = elapsedWholeMinutes(startedAt, endedAt);
+  if (breakMinutes > elapsedMinutes) {
+    return {
+      ok: false,
+      error: `Break (${formatDurationMinutes(breakMinutes)}) cannot exceed elapsed time (${formatDurationMinutes(elapsedMinutes)}).`,
+    };
+  }
+  const workedMinutes = computeWorkedMinutes(startedAt, endedAt, breakMinutes);
+  if (workedMinutes < 0) {
+    return { ok: false, error: 'Worked duration cannot be negative.' };
+  }
+  return {
+    ok: true,
+    timing: { startedAt, endedAt, breakMinutes, elapsedMinutes, workedMinutes },
+  };
+}
+
+/** Auto billable tracks worked; manual preserves an explicit office override. */
+export function resolveCorrectionBillableMinutes(
+  mode: BillableMode,
+  billableRaw: string,
+  workedMinutes: number,
+): number {
+  if (mode === 'auto' || billableRaw === '') return Math.max(0, workedMinutes);
+  return Math.max(0, Number(billableRaw) || 0);
+}
+
+/** @deprecated Prefer resolveCorrectionBillableMinutes with an explicit mode. */
+export function resolveBillableMinutes(billableRaw: string, fallbackWorked: number): number {
+  return resolveCorrectionBillableMinutes(
+    billableRaw === '' ? 'auto' : 'manual',
+    billableRaw,
+    fallbackWorked,
+  );
 }
 
 export function validateReviewTimeEntryRequest(
@@ -103,9 +203,6 @@ export function validateReviewTimeEntryRequest(
     return { ok: false, error: 'Rejection reason is required.', code: 'validation' };
   }
   if (decision === 'correct') {
-    if (!LOCAL_DT_RE.test(fields.startLocal) || !LOCAL_DT_RE.test(fields.endLocal)) {
-      return { ok: false, error: 'Enter valid corrected times.', code: 'validation' };
-    }
     if (!fields.correctionNote) {
       return {
         ok: false,
@@ -113,28 +210,27 @@ export function validateReviewTimeEntryRequest(
         code: 'validation',
       };
     }
-    const startedAt = new Date(fields.startLocal + '+08:00');
-    const endedAt = new Date(fields.endLocal + '+08:00');
-    if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime())) {
-      return { ok: false, error: 'Enter valid corrected times.', code: 'validation' };
+    const timingResult = buildCorrectionTiming(
+      fields.startLocal,
+      fields.endLocal,
+      fields.breakMinutesRaw,
+    );
+    if (!timingResult.ok) {
+      return { ok: false, error: timingResult.error, code: 'validation' };
     }
-    if (endedAt <= startedAt) {
-      return { ok: false, error: 'Corrected end must be after start.', code: 'validation' };
-    }
+    const billableMinutes = resolveCorrectionBillableMinutes(
+      fields.billableMode,
+      fields.billableRaw,
+      timingResult.timing.workedMinutes,
+    );
+    return {
+      ok: true,
+      decision,
+      timing: timingResult.timing,
+      billableMinutes,
+    };
   }
   return { ok: true, decision };
-}
-
-export function resolveBillableMinutes(
-  billableRaw: string,
-  fallbackWorked: number,
-): number {
-  if (billableRaw === '') return Math.max(0, fallbackWorked);
-  return Math.max(0, Number(billableRaw) || 0);
-}
-
-export function parseBreakMinutes(raw: string): number {
-  return Math.max(0, Math.min(24 * 60, Number(raw) || 0));
 }
 
 /** Detect an identical correction already persisted (repeat submit). */
@@ -146,6 +242,7 @@ export function isDuplicateCorrection(
     breakMinutes: number;
     workedMinutes: number;
     billableMinutes: number;
+    correctionNote?: string | null;
   },
 ): boolean {
   if (entry.status !== 'corrected') return false;
@@ -154,5 +251,84 @@ export function isDuplicateCorrection(
   if (entry.breakMinutes !== next.breakMinutes) return false;
   if ((entry.workedMinutes ?? null) !== next.workedMinutes) return false;
   if ((entry.billableMinutes ?? null) !== next.billableMinutes) return false;
+  if (next.correctionNote != null) {
+    if ((entry.correctionNote ?? '').trim() !== next.correctionNote.trim()) return false;
+  }
   return true;
+}
+
+function clockRange(startIso: string, endIso: string | null): string {
+  const start = new Date(startIso).toLocaleString('en-AU', {
+    timeZone: 'Australia/Perth',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  if (!endIso) return `${start} → open`;
+  const end = new Date(endIso).toLocaleTimeString('en-AU', {
+    timeZone: 'Australia/Perth',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${start} → ${end}`;
+}
+
+export function formatTimeReviewActivityNote(input: {
+  decision: ReviewTimeDecision;
+  technicianName: string;
+  previous: {
+    startedAt: string;
+    endedAt: string | null;
+    breakMinutes: number;
+    workedMinutes: number | null;
+    billableMinutes: number | null;
+  };
+  next?: {
+    startedAt: string;
+    endedAt: string;
+    breakMinutes: number;
+    workedMinutes: number;
+    billableMinutes: number;
+    billableMode: BillableMode;
+  };
+  reason?: string | null;
+}): string {
+  const tech = input.technicianName || 'Technician';
+  if (input.decision === 'approve') {
+    const billable = input.next?.billableMinutes ?? input.previous.billableMinutes ?? input.previous.workedMinutes ?? 0;
+    return `Approved ${formatDurationMinutes(billable)} billable for ${tech}`;
+  }
+  if (input.decision === 'reject') {
+    const reason = input.reason?.trim();
+    return reason ? `Rejected time for ${tech} · ${reason}` : `Rejected time for ${tech}`;
+  }
+  if (!input.next) return `Corrected time for ${tech}`;
+  const prevWorked = input.previous.workedMinutes ?? 0;
+  const prevBillable = input.previous.billableMinutes;
+  const billableLabel =
+    input.next.billableMode === 'manual'
+      ? `billable ${formatDurationMinutes(input.next.billableMinutes)} (manual)`
+      : `billable ${formatDurationMinutes(input.next.billableMinutes)} (auto)`;
+  const change = [
+    `${clockRange(input.previous.startedAt, input.previous.endedAt)} → ${clockRange(input.next.startedAt, input.next.endedAt)}`,
+    `worked ${formatDurationMinutes(prevWorked)} → ${formatDurationMinutes(input.next.workedMinutes)}`,
+    `break ${formatDurationMinutes(input.previous.breakMinutes)} → ${formatDurationMinutes(input.next.breakMinutes)}`,
+    prevBillable == null
+      ? billableLabel
+      : `billable ${formatDurationMinutes(prevBillable)} → ${formatDurationMinutes(input.next.billableMinutes)}${input.next.billableMode === 'manual' ? ' (manual)' : ' (auto)'}`,
+  ].join(' · ');
+  const reason = input.reason?.trim();
+  return reason
+    ? `Corrected time for ${tech}: ${change}. Reason: ${reason}`
+    : `Corrected time for ${tech}: ${change}`;
+}
+
+/** UI helper: treat billable as overridden when it differs from worked. */
+export function inferBillableMode(
+  billableMinutes: number | null | undefined,
+  workedMinutes: number | null | undefined,
+): BillableMode {
+  if (billableMinutes == null || workedMinutes == null) return 'auto';
+  return billableMinutes === workedMinutes ? 'auto' : 'manual';
 }
