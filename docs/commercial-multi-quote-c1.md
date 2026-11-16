@@ -87,10 +87,12 @@ Columns (minimal):
 
 ### Atomic RPC privileges
 
-- `job_quote_link_atomic`, `job_quote_unlink_atomic`, `job_quote_set_primary_atomic`, `job_quote_sync_primary_after_create_atomic`
+- `job_quote_link_atomic`, `job_quote_unlink_atomic`, `job_quote_set_primary_atomic`, `job_quote_sync_primary_after_create_atomic`, `job_quote_create_and_link_atomic`
 - `security invoker`, `search_path = ''`
 - `REVOKE` from `public` / `anon` / `authenticated`; `GRANT EXECUTE` to `service_role` only
 - Concurrent primary races return a clear refresh/retry message (unique_violation handler)
+- Create-from-job uses `job_quote_create_and_link_atomic`: draft + link share one transaction; link failure `RAISE`s so the draft rolls back (no silent orphan)
+- Create-job-from-quote: if C1 RPCs exist and sync fails, clear `jobs.quote_id` and fail loudly with the quote id for recovery; if RPCs are absent, keep legacy `jobs.quote_id` only
 
 ### Release safety
 
@@ -105,7 +107,9 @@ Stop here until an owner explicitly approves each step:
 2. **Read-only hosted check** on project `udwdurnknweavmksotii`: confirm `public.quotes` / `public.jobs.quote_id` exist and `public.job_quotes` does not.
 3. **Approve migration apply** to hosted Supabase (staging first if available; otherwise Production with a maintenance window).
 4. Apply **in order** (forward-only):  
-   `20261116120000_job_quotes_associations.sql` then `20261116130000_job_quotes_atomic_ops.sql`.  
+   `20261116120000_job_quotes_associations.sql` →  
+   `20261116130000_job_quotes_atomic_ops.sql` →  
+   `20261116140000_job_quotes_create_link_and_sync_hardening.sql`.  
    Do not rewrite historical migrations.
 5. Smoke-test Quotes tab on a **fictional** job: legacy primary display, link/unlink, create variation, create-job-from-quote.
 6. Approve **Production app deploy** (Vercel) after migration is confirmed.

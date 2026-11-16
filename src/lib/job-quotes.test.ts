@@ -7,11 +7,13 @@ import {
   crossCustomerErrorMessage,
   duplicateAssociationErrorMessage,
   formatAudFromCents,
+  classifyPrimarySyncOutcome,
   interpretJobQuoteAtomicResult,
   isJobQuoteKind,
   jobCustomerRequiredErrorMessage,
   mergeJobQuoteAssociations,
   nextPrimaryQuoteId,
+  orphanDraftRecoveryMessage,
   quoteCustomerRequiredErrorMessage,
   quoteCustomersCompatible,
   quoteTotalIncGstCents,
@@ -68,6 +70,7 @@ describe('unlink confirmation and atomic result interpretation', () => {
       message: 'Quote linked.',
       isPrimary: true,
       clearedPrimary: false,
+      quoteId: undefined,
     });
     assert.equal(
       interpretJobQuoteAtomicResult(null, 'Unable to link quote.').message,
@@ -296,6 +299,46 @@ describe('concurrent association changes', () => {
     assert.equal(failed.isPrimary, false);
     assert.equal(failed.clearedPrimary, false);
     assert.match(failed.message || '', /same time/i);
+  });
+});
+
+describe('create-and-link and sync outcomes', () => {
+  it('skips sync when C1 migrations are absent and fails loudly when present', () => {
+    assert.deepEqual(
+      classifyPrimarySyncOutcome({
+        missingMigration: true,
+        result: { ok: false, message: 'missing' },
+      }),
+      { status: 'skipped_missing_migration' },
+    );
+    assert.deepEqual(
+      classifyPrimarySyncOutcome({
+        missingMigration: false,
+        result: { ok: true },
+      }),
+      { status: 'synced' },
+    );
+    const failed = classifyPrimarySyncOutcome({
+      missingMigration: false,
+      result: { ok: false, message: 'lock timeout' },
+    });
+    assert.equal(failed.status, 'failed');
+    if (failed.status === 'failed') assert.match(failed.message, /lock timeout/);
+  });
+
+  it('documents recoverable orphan-draft messaging when a quote id is known', () => {
+    assert.match(orphanDraftRecoveryMessage('q-123'), /Draft quote q-123/);
+    assert.match(orphanDraftRecoveryMessage('q-123'), /Link existing quote/i);
+  });
+
+  it('reads quoteId from successful create-and-link payloads', () => {
+    const result = interpretJobQuoteAtomicResult(
+      { ok: true, quoteId: 'q-new', isPrimary: true, message: 'Draft quote created and linked.' },
+      'fail',
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.quoteId, 'q-new');
+    assert.equal(result.isPrimary, true);
   });
 });
 

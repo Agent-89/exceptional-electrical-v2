@@ -180,7 +180,13 @@ export type JobQuoteAtomicResult = {
   message?: string;
   isPrimary?: boolean;
   clearedPrimary?: boolean;
+  quoteId?: string;
 };
+
+export type PrimarySyncOutcome =
+  | { status: 'synced' }
+  | { status: 'skipped_missing_migration' }
+  | { status: 'failed'; message: string };
 
 export function interpretJobQuoteAtomicResult(
   data: unknown,
@@ -197,12 +203,38 @@ export function interpretJobQuoteAtomicResult(
       : ok
         ? undefined
         : fallbackError;
+  const quoteId = typeof row.quoteId === 'string' && row.quoteId.trim() ? row.quoteId : undefined;
   return {
     ok,
     message,
     isPrimary: row.isPrimary === true,
     clearedPrimary: row.clearedPrimary === true,
+    quoteId,
   };
+}
+
+/** Classify create-job primary sync so missing migrations stay compatible. */
+export function classifyPrimarySyncOutcome(args: {
+  missingMigration: boolean;
+  result: JobQuoteAtomicResult;
+  transportErrorMessage?: string | null;
+}): PrimarySyncOutcome {
+  if (args.missingMigration) return { status: 'skipped_missing_migration' };
+  if (args.result.ok) return { status: 'synced' };
+  return {
+    status: 'failed',
+    message:
+      args.result.message ||
+      args.transportErrorMessage ||
+      'Unable to sync the primary quote association.',
+  };
+}
+
+export function orphanDraftRecoveryMessage(quoteId: string): string {
+  return (
+    `Draft quote ${quoteId} was saved but could not be linked. ` +
+    'Open that quote from Quotes and use Link existing quote on this job.'
+  );
 }
 
 /**

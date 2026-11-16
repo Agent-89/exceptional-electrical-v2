@@ -5,9 +5,12 @@ import { redirect } from 'next/navigation';
 import { assertOfficeOps, dbAdmin, requireHqUser } from '@/lib/hq-auth';
 import {
   canLinkQuoteToJob,
+  classifyPrimarySyncOutcome,
   interpretJobQuoteAtomicResult,
   isJobQuoteKind,
+  orphanDraftRecoveryMessage,
   type JobQuoteKind,
+  type PrimarySyncOutcome,
 } from '@/lib/job-quotes';
 import { isMissingJobQuotesRelation } from '@/lib/job-quotes-store';
 import { jobDetailTabHref } from '@/lib/job-detail-tabs';
@@ -50,7 +53,7 @@ function missingAtomicRpc(error: { message?: string; code?: string } | null): bo
   const message = error.message || '';
   return (
     error.code === 'PGRST202' ||
-    /job_quote_link_atomic|job_quote_unlink_atomic|job_quote_set_primary_atomic|job_quote_sync_primary_after_create_atomic/i.test(
+    /job_quote_link_atomic|job_quote_unlink_atomic|job_quote_set_primary_atomic|job_quote_sync_primary_after_create_atomic|job_quote_create_and_link_atomic/i.test(
       message,
     ) ||
     /could not find the function/i.test(message)
@@ -190,7 +193,7 @@ export async function setPrimaryJobQuote(formData: FormData): Promise<void> {
   }
 }
 
-/** Create a draft quote (or variation) for this job's customer and link it immediately. */
+/** Create a draft quote (or variation) and link it in one DB transaction. */
 export async function createLinkedQuoteFromJob(formData: FormData): Promise<void> {
   const user = await requireHqUser();
   assertOfficeOps(user);
@@ -247,48 +250,36 @@ export async function createLinkedQuoteFromJob(formData: FormData): Promise<void
       updated_at: new Date().toISOString(),
     };
 
-    const { data: quoteId, error: createError } = await db.rpc('save_quote_draft_atomic', {
-      p_quote_id: null,
-      p_values: values,
-      p_lines: [],
-      p_actor: user.id,
-    });
-    if (createError || !quoteId) throw new Error('Unable to create draft quote.');
-
-    const { data, error } = await db.rpc('job_quote_link_atomic', {
+    const { data, error } = await db.rpc('job_quote_create_and_link_atomic', {
       p_job_id: jobId,
-      p_quote_id: quoteId,
       p_actor: user.id,
+      p_values: values,
       p_association_kind: kind,
       p_label: labelRaw || (kind === 'quote' ? null : associationDefaultLabel(kind)),
       p_make_primary: false,
     });
+
     if (missingAtomicRpc(error)) {
       throw new Error(
-        'Draft created, but linking needs the job_quotes atomic migration. Open Quotes to link it after apply.',
-      );
-    }
-    const result = interpretJobQuoteAtomicResult(
-      data,
-      'Draft created, but linking to the job failed. Open Quotes to link it.',
-    );
-    if (error || !result.ok) {
-      throw new Error(
-        result.message ||
-          'Draft created, but linking to the job failed. Open Quotes to link it.',
+        'Creating a linked quote needs the job_quotes create-and-link migration. Refresh after it is applied.',
       );
     }
 
-    await db.from('job_activity').insert({
-      job_id: jobId,
-      actor_id: user.id,
-      action: 'quote_created_and_linked',
-      note: title,
-    });
+    // RAISE from the RPC surfaces as a transport error; no orphan draft remains.
+    if (error) {
+      throw new Error(error.message || 'Unable to create and link quote.');
+    }
+
+    const result = interpretJobQuoteAtomicResult(data, 'Unable to create and link quote.');
+    if (!result.ok || !result.quoteId) {
+      // Defensive only: create_and_link raises instead of returning ok:false after a draft exists.
+      if (result.quoteId) throw new Error(orphanDraftRecoveryMessage(result.quoteId));
+      throw new Error(result.message || 'Unable to create and link quote.');
+    }
 
     revalidateJobQuotes(jobId);
-    revalidatePath(`/hq/quotes/${quoteId}`);
-    redirect(`/hq/quotes/${quoteId}`);
+    revalidatePath(`/hq/quotes/${result.quoteId}`);
+    redirect(`/hq/quotes/${result.quoteId}`);
   } catch (error) {
     if (isRedirectError(error)) throw error;
     const message = error instanceof Error ? error.message : 'Unable to create quote.';
@@ -303,24 +294,31 @@ function associationDefaultLabel(kind: JobQuoteKind): string {
   return 'Quote';
 }
 
-/** Best-effort primary association sync used by createJob. Never throws away the job. */
+/**
+ * Sync jobs.quote_id into job_quotes after create-job-from-quote.
+ * - Missing C1 migrations: skip (legacy jobs.quote_id only).
+ * - Migrations present: must succeed or return failed for the caller to handle.
+ */
 export async function syncPrimaryJobQuoteAfterCreate(args: {
   jobId: string;
   quoteId: string;
   actorId: string;
-}): Promise<void> {
+}): Promise<PrimarySyncOutcome> {
   const db = dbAdmin();
   const { data, error } = await db.rpc('job_quote_sync_primary_after_create_atomic', {
     p_job_id: args.jobId,
     p_quote_id: args.quoteId,
     p_actor: args.actorId,
   });
-  if (error && (isMissingJobQuotesRelation(error) || missingAtomicRpc(error))) {
-    // Soft-fail: jobs.quote_id already stores the legacy link.
-    return;
-  }
-  const result = interpretJobQuoteAtomicResult(data, 'Unable to sync primary quote association.');
-  if (error || !result.ok) {
-    console.error('job_quotes sync after create failed', result.message || error?.message);
-  }
+
+  const missingMigration = Boolean(error && (isMissingJobQuotesRelation(error) || missingAtomicRpc(error)));
+  const result = interpretJobQuoteAtomicResult(
+    data,
+    error?.message || 'Unable to sync primary quote association.',
+  );
+  return classifyPrimarySyncOutcome({
+    missingMigration,
+    result,
+    transportErrorMessage: error?.message,
+  });
 }

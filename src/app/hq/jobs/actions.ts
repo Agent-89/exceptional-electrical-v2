@@ -39,7 +39,27 @@ export async function createJob(formData:FormData){
  }
  if(!data)throw new Error('Unable to create job.');
  await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'created'});
- if(quoteId)await syncPrimaryJobQuoteAfterCreate({jobId:data.id,quoteId,actorId:user.id});
+ if(quoteId){
+  const sync=await syncPrimaryJobQuoteAfterCreate({jobId:data.id,quoteId,actorId:user.id});
+  if(sync.status==='failed'){
+   // Migrations are present but sync failed. Clear the legacy pointer so the two
+   // representations stay consistent (neither claims a primary), then fail loudly
+   // with a recoverable path that identifies the quote.
+   await db.from('jobs').update({quote_id:null,updated_at:new Date().toISOString()}).eq('id',data.id);
+   await db.from('job_activity').insert({
+    job_id:data.id,
+    actor_id:user.id,
+    action:'quote_primary_sync_failed',
+    note:`Cleared jobs.quote_id after sync failure for ${quoteId}. ${sync.message}`,
+   });
+   revalidatePath('/hq/jobs');
+   revalidatePath('/hq/jobs/'+data.id);
+   throw new Error(
+    `Job was created, but the primary quote could not be associated (${sync.message}). `+
+    `Open the job Quotes tab and link quote ${quoteId}.`,
+   );
+  }
+ }
  revalidatePath('/hq/jobs');
  redirect('/hq/jobs/'+data.id);
 }
