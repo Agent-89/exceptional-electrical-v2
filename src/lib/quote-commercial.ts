@@ -94,19 +94,37 @@ export function shouldAutoMakeCurrentOnAccept(args: {
   return args.statusBeforeAccept === 'approved' || args.statusBeforeAccept === 'sent';
 }
 
-export type QuoteSaveIntent = 'continue' | 'return_to_job' | 'return_to_quotes';
+export type QuoteSaveIntent = 'continue' | 'return_to_job' | 'return_to_quotes' | 'exit';
 
 export function quoteEditorReturnHref(args: {
   jobId: string | null | undefined;
   intent: QuoteSaveIntent;
   quoteId?: string | null;
 }): string | null {
+  if (args.intent === 'exit') {
+    if (args.jobId) {
+      const base = `/hq/jobs/${args.jobId}?tab=quotes`;
+      return args.quoteId ? `${base}&notice=${encodeURIComponent('Quote saved and linked.')}` : base;
+    }
+    return '/hq/quotes';
+  }
   if (args.intent === 'return_to_quotes') {
     return args.quoteId ? `/hq/quotes/${args.quoteId}` : '/hq/quotes';
   }
   if (args.intent !== 'return_to_job' || !args.jobId) return null;
   const base = `/hq/jobs/${args.jobId}?tab=quotes`;
   return args.quoteId ? `${base}&notice=${encodeURIComponent('Quote saved and linked.')}` : base;
+}
+
+/** Line ex-GST amount in cents (matches quote editor / PDF rounding). */
+export function quoteLineExGstCents(quantity: number, unitPriceCents: number): number {
+  return Math.round(Number(quantity) * Number(unitPriceCents));
+}
+
+/** Line GST in cents when applicable (10%, matches quote editor / PDF rounding). */
+export function quoteLineGstCents(quantity: number, unitPriceCents: number, gstApplicable: boolean): number {
+  if (!gstApplicable) return 0;
+  return Math.round(Number(quantity) * Number(unitPriceCents) * 0.1);
 }
 
 export function quoteBuilderNewHref(args: {

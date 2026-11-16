@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
   billingBlocksSupersessionMessage,
@@ -25,6 +26,8 @@ import {
   quoteBuilderNewHref,
   quoteCustomerChangeBlockedMessage,
   quoteEditorReturnHref,
+  quoteLineExGstCents,
+  quoteLineGstCents,
   quoteTypeFromParent,
   reconcileLinkedJobsForCustomerChange,
   resolveCommercialCurrentQuoteId,
@@ -159,6 +162,14 @@ describe('quote-commercial helpers', () => {
     });
     assert.match(ret || '', /\/hq\/jobs\/job-1\?tab=quotes/);
     assert.match(ret || '', /notice=/);
+
+    assert.equal(quoteEditorReturnHref({ jobId: null, intent: 'exit' }), '/hq/quotes');
+    const exitJob = quoteEditorReturnHref({
+      jobId: 'job-9',
+      intent: 'exit',
+      quoteId: 'q-9',
+    });
+    assert.match(exitJob || '', /\/hq\/jobs\/job-9\?tab=quotes/);
 
     const href = quoteBuilderNewHref({
       jobId: 'job-1',
@@ -420,6 +431,14 @@ describe('quote-commercial helpers', () => {
     assert.equal(quoteBuilderHeading({ savedNumber: 'EEQ-000042', quoteType: 'variation' }), 'EEQ-000042');
   });
 
+  it('rounds line ex-GST and GST the same way as the quote workspace', () => {
+    assert.equal(quoteLineExGstCents(2, 1050), 2100);
+    assert.equal(quoteLineGstCents(2, 1050, true), 210);
+    assert.equal(quoteLineGstCents(2, 1050, false), 0);
+    assert.equal(quoteLineExGstCents(1.5, 333), 500);
+    assert.equal(quoteLineGstCents(1.5, 333, true), 50);
+  });
+
   it('keeps commercial-current families independent and primary separate conceptually', () => {
     const familyA = [
       { id: 'a1', isCommercialCurrent: true, status: 'accepted', totalCents: 1000 },
@@ -591,5 +610,25 @@ describe('quote-commercial helpers', () => {
       }).ok,
       true,
     );
+  });
+});
+
+const quoteEditorSource = readFileSync(
+  new URL('../app/hq/quotes/quote-editor.tsx', import.meta.url),
+  'utf8',
+);
+
+describe('quote workspace UX invariants', () => {
+  it('keeps continuous save actions, PDF nav and commercial guards', () => {
+    assert.match(quoteEditorSource, /Save & Continue/);
+    assert.match(quoteEditorSource, /Save & Exit/);
+    assert.match(quoteEditorSource, /intent:resolvedIntent/);
+    assert.match(quoteEditorSource, /PDF preview/);
+    assert.match(quoteEditorSource, /hq-qw-line-row/);
+    assert.match(quoteEditorSource, /quoteCustomerChangeBlockedMessage/);
+    assert.match(quoteEditorSource, /saveAndApproveQuote/);
+    assert.match(quoteEditorSource, /getParentQuotePrefill/);
+    assert.match(quoteEditorSource, /canProceedToApproveAfterSave|saveLock\.current/);
+    assert.doesNotMatch(quoteEditorSource, /wizard|step\s*[123]/i);
   });
 });
