@@ -1,0 +1,20 @@
+---
+description: Exceptional Electrical HQ release, safety, and workflow standards for Cursor agents
+alwaysApply: true
+---
+
+# HQ development standards
+
+- Repository of record: `Agent-89/exceptional-electrical-v2`. After release, treat `main` as the single source of truth.
+- Never merge PRs, delete branches, deploy to Vercel, apply hosted Supabase migrations, or mutate hosted data without explicit owner approval.
+- Preview and Production share hosted Supabase project `udwdurnknweavmksotii`. Use fictional records only on Preview. Do not trigger Xero, Tradify, Vapi, or real customer communications.
+- Do not reapply migrations already present under different hosted timestamps (especially commercial `job_quotes_*` / quote variation migrations). Verify with `supabase migration list --linked` and read-only SQL before proposing anything.
+- Prefer additive, forward-only migrations created via `supabase migration new`. Never rewrite applied migration files.
+- Keep secrets out of Git. Document env **names** only (see `.env.example`, `docs/CURSOR_HANDOVER.md`).
+- Authorization belongs in server actions/route handlers via `hq-auth` / `hq-roles`. Do not conflate `staff_profiles.user_id` with `scheduling_staff.id`.
+- Scheduling: preserve conflict detection. Appointment create and schedule edit paths hard-block HQ electrician overlaps; Neil Google Calendar remains a separate override path for owner/admin.
+- Do not merge obsolete Draft PR #4 wholesale; reimplement any missing behaviour on the current baseline.
+- Before claiming ready: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
+- Follow stacked PR order for dependent commercial work. Avoid squash/cherry-pick that drops required behaviour.
+- Prefer focused diffs; no unrelated UI redesigns during release fixes.
+- Read `docs/CURSOR_HANDOVER.md` and `docs/RELEASE_CANDIDATE.md` for architecture, rollback, and release procedure.

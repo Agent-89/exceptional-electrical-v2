@@ -1,4 +1,5 @@
 'use server';
+import {HQ_ELECTRICIAN_OVERLAP_MESSAGE,hasElectricianOverlap} from '@/lib/hq-electrician-overlaps';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
 import {revalidatePath} from 'next/cache';
@@ -142,8 +143,7 @@ export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;m
   if(staffIds.length&&overlapIds.length){
    const {data:booked,error:bookedError}=await db.from('job_appointment_staff').select('appointment_id,staff_id').in('appointment_id',overlapIds);
    if(bookedError)throw new Error('Unable to check electrician availability.');
-   if((booked??[]).some(a=>staffIds.includes(a.staff_id)))
-    throw new Error('One of the selected electricians already has an overlapping HQ visit. Choose another time or electrician.');
+   if(hasElectricianOverlap(staffIds,booked??[]))throw new Error(HQ_ELECTRICIAN_OVERLAP_MESSAGE);
   }
   const conflicts=await requireNeilAvailability(staffIds,begins,ends,formData.get('override_neil_calendar')==='yes',user.role);
   const {data:visit,error}=await db.from('job_appointments').insert({job_id:jobId,starts_at:begins.toISOString(),ends_at:ends.toISOString(),notes:notes||null}).select('id').single();

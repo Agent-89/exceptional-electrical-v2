@@ -1,8 +1,36 @@
 'use server';
+import {HQ_ELECTRICIAN_OVERLAP_MESSAGE,hasElectricianOverlap} from '@/lib/hq-electrician-overlaps';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 import {revalidatePath} from 'next/cache';
 import {assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
 const parsePerth=(s:string)=>/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)?new Date(s+':00+08:00'):new Date(NaN);
+
+/** Hard-block HQ crew double-booking (same rule as appointment creation). Excludes the visit being edited. */
+async function assertNoHqElectricianOverlap(
+ db:ReturnType<typeof dbAdmin>,
+ visitId:string,
+ startIso:string,
+ endIso:string,
+ staffIds:string[],
+){
+ if(!staffIds.length)return;
+ const {data:overlapping,error}=await db.from('job_appointments')
+  .select('id')
+  .eq('status','scheduled')
+  .neq('id',visitId)
+  .lt('starts_at',endIso)
+  .gt('ends_at',startIso)
+  .limit(200);
+ if(error)throw new Error('Unable to check existing bookings. Please retry.');
+ const overlapIds=(overlapping??[]).map(v=>v.id);
+ if(!overlapIds.length)return;
+ const {data:booked,error:bookedError}=await db.from('job_appointment_staff')
+  .select('appointment_id,staff_id')
+  .in('appointment_id',overlapIds);
+ if(bookedError)throw new Error('Unable to check electrician availability.');
+ if(hasElectricianOverlap(staffIds,booked??[]))throw new Error(HQ_ELECTRICIAN_OVERLAP_MESSAGE);
+}
+
 export async function updateScheduledVisit(formData:FormData){
  const user=await requireHqUser();
  assertOfficeOps(user);
@@ -24,7 +52,11 @@ export async function updateScheduledVisit(formData:FormData){
   update={starts_at:start.toISOString(),ends_at:end.toISOString(),notes:notes||null};
  }
  const {data:crew}=await db.from('job_appointment_staff').select('staff_id').eq('appointment_id',id);
- const conflicts=action==='reschedule'?await requireNeilAvailability((crew??[]).map(c=>c.staff_id),new Date(update.starts_at!),new Date(update.ends_at!),formData.get('override_neil_calendar')==='yes',user.role):[];
+ const crewIds=(crew??[]).map(c=>c.staff_id);
+ if(action==='reschedule'){
+  await assertNoHqElectricianOverlap(db,id,update.starts_at!,update.ends_at!,crewIds);
+ }
+ const conflicts=action==='reschedule'?await requireNeilAvailability(crewIds,new Date(update.starts_at!),new Date(update.ends_at!),formData.get('override_neil_calendar')==='yes',user.role):[];
  const {data:changed,error}=await db.from('job_appointments').update(update).eq('id',id).eq('status','scheduled').select('id').maybeSingle();
  if(error||!changed)throw new Error('Could not update appointment; it may have changed since opening.');
  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:action==='cancel'?'appointment_cancelled':'appointment_rescheduled',note:action==='cancel'?'Visit cancelled':update.starts_at+' – '+update.ends_at+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
@@ -49,6 +81,7 @@ export async function updateVisitStaff(formData:FormData){
  const oldIds=new Set((existing??[]).map(row=>row.staff_id));
  const {data:appointmentTimes}=await db.from('job_appointments').select('starts_at,ends_at').eq('id',id).single();
  if(!appointmentTimes)throw new Error('Unable to verify appointment time.');
+ await assertNoHqElectricianOverlap(db,id,appointmentTimes.starts_at,appointmentTimes.ends_at,staffIds);
  const conflicts=await requireNeilAvailability(staffIds,new Date(appointmentTimes.starts_at),new Date(appointmentTimes.ends_at),formData.get('override_neil_calendar')==='yes',user.role);
  const toAdd=staffIds.filter(staffId=>!oldIds.has(staffId));
  const toRemove=[...oldIds].filter(staffId=>!staffIds.includes(staffId));
@@ -70,7 +103,9 @@ export async function setScheduledVisitTimes(id:string,startIso:string,endIso:st
  const {data:visit,error:lookupError}=await db.from('job_appointments').select('id,job_id,status,starts_at').eq('id',id).maybeSingle();
  if(lookupError||!visit||visit.status!=='scheduled')throw new Error('Scheduled visit not found.');
  const {data:crew}=await db.from('job_appointment_staff').select('staff_id').eq('appointment_id',id);
- const conflicts=await requireNeilAvailability((crew??[]).map(c=>c.staff_id),start,end,overrideNeil,user.role);
+ const crewIds=(crew??[]).map(c=>c.staff_id);
+ await assertNoHqElectricianOverlap(db,id,start.toISOString(),end.toISOString(),crewIds);
+ const conflicts=await requireNeilAvailability(crewIds,start,end,overrideNeil,user.role);
  const {data:changed,error}=await db.from('job_appointments').update({starts_at:start.toISOString(),ends_at:end.toISOString()}).eq('id',id).eq('status','scheduled').eq('starts_at',expected.toISOString()).select('id').maybeSingle();
  if(error||!changed)throw new Error('Visit changed since loading. Refresh and retry.');
  // Keep the critical update fast; log and cache refresh are best effort.
