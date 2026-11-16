@@ -47,7 +47,7 @@ Treat `main` at the Production merge SHA as the single source of truth. Do not r
 | Schedule | `src/app/hq/schedule` | Live (HQ electrician overlap hard-block) |
 | Technician field | `src/app/hq/tech` | Live |
 | Timesheets / time review | `src/app/hq/timesheets`, job detail time tab | Live |
-| Google Calendar (Neil) | `src/lib/google-calendar.ts`, `src/app/api/integrations/google-calendar` | Partial (read-only; owner/admin override) |
+| Google Calendar (Neil) | `src/lib/google-calendar.ts`, `src/app/api/integrations/google-calendar` | Partial — Neil-only read; see §7 |
 | Auth / session | `src/app/hq/login`, `src/app/hq/session`, `src/lib/hq-auth.ts` | Live |
 
 Related design notes: `docs/commercial-multi-quote-c1.md`, `docs/commercial-quote-variations-c11.md`, `docs/tradify-migration-and-google-calendar.md`, `docs/vapi-receptionist-v1.md`, `docs/DEPLOYMENT.md`, `docs/RELEASE_CANDIDATE.md`.
@@ -111,7 +111,7 @@ Repository: `Agent-89/exceptional-electrical-v2`
 
 | Role | Typical access |
 |------|----------------|
-| owner / admin | Full office ops + admin-only (quote approve, Google Calendar connect) |
+| owner / admin | Full office ops + admin-only actions (e.g. quote approve; Google Calendar OAuth connect/disconnect) |
 | office | Enquiries, customers, quotes (draft), jobs, schedule, time review |
 | technician | `/hq/tech` Today / jobs / visits / account; no office schedule mutations |
 
@@ -122,10 +122,18 @@ Helpers: `src/lib/hq-roles.ts`. Prefer server-side gates; do not trust client-on
 | Integration | Status | Notes |
 |-------------|--------|-------|
 | Supabase Auth + DB | Live | Shared Preview/Production DB |
-| Google Calendar | Neil-only read | Conflict override auditable; no write-back |
+| Google Calendar | Neil-only (see below) | Read-only; no write-back |
 | Xero | Not integrated | Job UI placeholder copy only |
 | Vapi receptionist | Draft / disconnected | `docs/vapi-receptionist-v1.md` |
 | Tradify import | Dry-run / planning | Frozen CSVs may exist locally under `imports/`; no live import without approval |
+
+### Neil Google Calendar rules
+
+- **Scope:** Only Neil’s connected Google Calendar is integrated. Other electricians have no Google Calendar sync in v1.
+- **Read behaviour:** Busy events on Neil’s calendar are considered only when Neil is on the visit crew. Show/hide is presentation-only; availability checks still use active busy events. No write-back to Google.
+- **Conflict override:** An auditable override exists solely for **Neil calendar busy conflicts** when Neil is assigned. Server-side, that override path is role-gated to `owner` / `admin` (`src/lib/neil-calendar-conflicts.ts`). Office and technician roles cannot override.
+- **Not a general override:** Do not treat “owner/admin” as a blanket calendar-override privilege for all staff or all conflict types. The Neil override never bypasses HQ electrician overlap hard-blocks (`hq_overlap`).
+- **Connect/disconnect:** OAuth connect/disconnect is an admin-ops action (owner/admin), separate from the Neil conflict-override checkbox on schedule mutations.
 
 **Never** trigger real customer SMS/email, Xero writes, Tradify writes, or live Vapi cutover during Preview testing. Do not mutate Production data or external integrations without approval.
 

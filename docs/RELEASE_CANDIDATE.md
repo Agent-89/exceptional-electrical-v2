@@ -43,19 +43,24 @@ The following was the pre-merge plan and remains for audit only:
 
 ### Smoke-test checklist (fictional data) — used for release
 
+**Owner-confirmed Production smoke categories (6/6 passed)** — these six categories were the Production release gate and are the only smoke results treated as owner-confirmed:
+
 - [x] Login as owner/admin, office, technician — correct homes and nav
 - [x] Create enquiry → convert to customer
 - [x] Create job; schedule multi-electrician appointment (overlap hard-block verified)
 - [x] Timeline reschedule with/without crew conflict
 - [x] Visit editor reschedule + crew change with/without overlap
 - [x] Technician timer start/break/finish; visit report; timesheet visibility
-- [ ] Office time correction + approve/reject *(covered in prior releases; re-verify on regressions)*
-- [ ] Quote create, variation, multi-job link, unlink, customer-change guard *(exercised in Preview RC; re-verify on commercial regressions)*
+
+**Extended detailed checks (not independently confirmed in the Production smoke gate)** — useful for regression follow-ups; do not treat as part of the confirmed 6/6:
+
+- [ ] Office time correction + approve/reject
+- [ ] Quote create, variation, multi-job link, unlink, customer-change guard
 - [ ] Quote PDF + preview
 - [ ] Notes, photos, attachments on job
 - [ ] Light/dark if supported; desktop + mobile nav
 
-Owner confirmed overall Production smoke **6/6 passed** for the release gate. Expand checklist items above when validating follow-up PRs.
+Some extended items may have been exercised earlier on Preview or prior releases, but they were **not** re-confirmed as independent Production smoke categories for PR #15.
 
 ### Rollback
 
