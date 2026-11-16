@@ -12,37 +12,17 @@ import {
   assignJobStaff,
   removeJobStaff,
 } from '../actions';
+import {
+  formatJobActivityWhen,
+  jobActivityActionTitle,
+  presentJobActivityNote,
+} from '@/lib/review-time-entry';
 import ScheduleAppointmentForm from './schedule-appointment-form';
 import JobFieldActivity from './job-field-activity';
 import JobDetailTabs, { JobTabButton } from './job-detail-tabs';
 import '../../hq.css';
 
 export const dynamic = 'force-dynamic';
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  created: 'Job created',
-  status_changed: 'Status updated',
-  note_added: 'Note added',
-  details_updated: 'Job details updated',
-  staff_assigned: 'Electrician assigned',
-  staff_unassigned: 'Electrician removed',
-  appointment_added: 'Appointment scheduled',
-  time_started: 'Timer started',
-  time_paused: 'Break started',
-  time_resumed: 'Work resumed',
-  time_submitted: 'Time submitted',
-  time_manual_added: 'Manual time added',
-  visit_progress_updated: 'Visit progress updated',
-  technician_work_report_saved: 'Technician work report saved',
-  technician_note_added: 'Technician note',
-  technician_note_edited: 'Technician note edited',
-  photo_uploaded: 'Photo uploaded',
-  office_note_added: 'Office note',
-  time_approved: 'Time approved',
-  time_rejected: 'Time rejected',
-  time_corrected: 'Time corrected',
-  follow_up_resolved: 'Further visit resolved',
-};
 
 type LinkedQuote = {
   id: string;
@@ -599,18 +579,25 @@ export default async function JobPage({
                     </summary>
                     <div style={{ paddingTop: 8 }}>
                       {activity?.length ? (
-                        activity.map((item) => (
-                          <div className="ee-event" key={item.id}>
-                            <span className="ee-event-dot" />
-                            <div>
-                              <strong>
-                                {ACTIVITY_LABELS[item.action] ?? item.action.replaceAll('_', ' ')}
-                              </strong>
-                              {item.note ? <p>{item.note}</p> : null}
-                              <small>{formatPerth(item.created_at)}</small>
+                        activity.map((item) => {
+                          const presented = presentJobActivityNote(item.note);
+                          return (
+                            <div className="ee-event" key={item.id}>
+                              <span className="ee-event-dot" />
+                              <div>
+                                <strong>{jobActivityActionTitle(item.action)}</strong>
+                                {presented.summary ? <p>{presented.summary}</p> : null}
+                                {presented.expandable && presented.detail ? (
+                                  <details className="ee-activity-detail">
+                                    <summary>Full details</summary>
+                                    <p>{presented.detail}</p>
+                                  </details>
+                                ) : null}
+                                <small>{formatJobActivityWhen(item.created_at)}</small>
+                              </div>
                             </div>
-                          </div>
-                        ))
+                          );
+                        })
                       ) : (
                         <p className="ee-muted">No activity yet.</p>
                       )}
@@ -684,10 +671,25 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-time-entry-list{display:grid;gap:10px;margin-top:8px}
 .ee-time-entry-card{border:1px solid #e1e8f0;border-radius:12px;padding:12px 14px;background:#fff;display:grid;gap:8px}
 .ee-time-entry-pending{border-color:#f0d9a8;background:#fffaf0}
+.ee-time-entry-open{border-color:#9bcbf4;box-shadow:inset 0 0 0 1px #cfe6fb}
 .ee-time-entry-main{display:grid;gap:4px;min-width:0}
 .ee-time-entry-main p{margin:0;overflow-wrap:anywhere}
-.ee-time-review{border-top:1px solid #ead9b8;margin-top:2px;padding-top:8px}
-.ee-time-desktop-reviews{display:none}
+.ee-time-entry-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.ee-time-entry-head strong{min-width:0;overflow-wrap:anywhere}
+.ee-time-entry-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.ee-time-status{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.02em;text-transform:capitalize}
+.ee-time-status-submitted,.ee-time-status-corrected{color:#9a3412}
+.ee-time-status-rejected{color:#b42318}
+.ee-time-status-approved{color:#0875c9}
+.ee-time-status-active,.ee-time-status-on-break{color:#17669e}
+.ee-time-inline-editor{border-top:1px solid #ead9b8;margin-top:4px;padding-top:10px}
+.ee-time-inline-form{max-width:720px;padding-top:4px}
+.ee-time-editor-row>td{background:#f8fbfe;padding:4px 10px 14px}
+.ee-review-cancel{border:1px solid #d4e1ed;border-radius:10px;background:#fff;color:#4d677a;padding:10px 12px;min-height:44px;font:inherit;font-weight:700;cursor:pointer}
+.ee-activity-detail{margin:6px 0 0}
+.ee-activity-detail>summary{cursor:pointer;color:#0875c9;font-size:13px;font-weight:700;list-style:none}
+.ee-activity-detail>summary::-webkit-details-marker{display:none}
+.ee-activity-detail p{margin:6px 0 0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
 .ee-update-feed{display:grid;gap:12px;margin-top:12px}
 .ee-update-card{border:1px solid #e1e8f0;border-radius:12px;padding:14px;background:#fff;display:grid;gap:10px}
 .ee-update-card header{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
@@ -696,8 +698,10 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 @media(min-width:900px){
   .ee-time-table-wrap{display:block}
   .ee-time-entry-list{display:none}
-  .ee-time-desktop-reviews{display:grid;gap:8px;margin-top:12px}
   .ee-time-table tbody tr.ee-time-pending-row{background:#fff7eb}
+  .ee-time-table tbody tr.ee-time-row-open{background:#eef6fc}
+  .ee-time-table th:last-child,.ee-time-table td:last-child{white-space:nowrap}
+  .ee-time-table tbody th{max-width:14rem;overflow-wrap:anywhere}
 }
 .ee-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
 .ee-photo-grid figure{margin:0}

@@ -282,6 +282,7 @@ export default async function TimesheetsPage({
                           breakMinutes: entry.break_minutes,
                           workedMinutes: entry.worked_minutes,
                           billableMinutes: entry.billable_minutes,
+                          status: entry.status,
                         }}
                         actionsClassName="ee-timesheet-actions"
                       />

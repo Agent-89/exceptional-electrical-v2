@@ -1,19 +1,34 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
+  allowedReviewDecisions,
   buildCorrectionTiming,
+  formatJobActivityWhen,
   formatTimeReviewActivityNote,
   inferBillableMode,
   isDuplicateCorrection,
   isReviewDecisionResult,
+  jobActivityActionTitle,
   parseReviewTimeDecision,
+  presentJobActivityNote,
   readReviewTimeEntryFields,
   resolveCorrectionBillableMinutes,
   statusesForReviewDecision,
+  timeReviewActivityAction,
   validateReviewTimeEntryRequest,
   type ReviewTimeEntryResult,
   type ReviewTimeEntrySnapshot,
 } from './review-time-entry.ts';
+
+const actionsSource = readFileSync(
+  new URL('../app/hq/tech/actions.ts', import.meta.url),
+  'utf8',
+);
+const formSource = readFileSync(
+  new URL('../app/hq/time-entry-review-form.tsx', import.meta.url),
+  'utf8',
+);
 
 const ENTRY: ReviewTimeEntrySnapshot = {
   status: 'submitted',
@@ -255,5 +270,71 @@ describe('isReviewDecisionResult', () => {
     };
     assert.equal(isReviewDecisionResult(validated), true);
     assert.equal(isReviewDecisionResult(noopSuccess), false);
+  });
+});
+
+describe('allowedReviewDecisions and activity action names', () => {
+  it('exposes approve/reject/correct by status and never writes time_rejectd', () => {
+    assert.deepEqual(allowedReviewDecisions('submitted'), [
+      'approve',
+      'reject',
+      'correct',
+    ]);
+    assert.deepEqual(allowedReviewDecisions('approved'), ['reject', 'correct']);
+    assert.deepEqual(allowedReviewDecisions('active'), []);
+    assert.equal(timeReviewActivityAction('approve'), 'time_approved');
+    assert.equal(timeReviewActivityAction('reject'), 'time_rejected');
+    assert.equal(timeReviewActivityAction('correct'), 'time_corrected');
+    assert.match(actionsSource, /timeReviewActivityAction\(decision\)/);
+    assert.doesNotMatch(actionsSource, /action:\s*'time_' \+ decision \+ 'd'/);
+  });
+});
+
+describe('activity presentation polish', () => {
+  it('titles legacy reject spelling and expands long correction notes', () => {
+    assert.equal(jobActivityActionTitle('time_rejected'), 'Time rejected');
+    assert.equal(jobActivityActionTitle('time_rejectd'), 'Time rejected');
+    const short = presentJobActivityNote('Approved 2h 00m billable for Sam');
+    assert.equal(short.expandable, false);
+    assert.equal(short.summary, 'Approved 2h 00m billable for Sam');
+    const long = presentJobActivityNote(
+      'Corrected time for Sam Rivera: 16 Nov, 9:00 am → 11:00 am → 16 Nov, 9:00 am → 11:30 am · worked 1h 45m → 2h 15m · break 15m → 15m · billable 1h 45m → 2h 00m (manual). Reason: Customer asked for extra tidy-up after the crew left site',
+    );
+    assert.equal(long.expandable, true);
+    assert.match(long.summary || '', /Corrected time for Sam Rivera/);
+    assert.match(long.detail || '', /Reason:/);
+    const when = formatJobActivityWhen('2026-11-16T01:00:00.000Z');
+    assert.match(when, /2026/);
+    assert.match(when, /:/);
+  });
+
+  it('keeps inline form dirty and cancel hooks for the unified editor', () => {
+    assert.match(formSource, /onDirtyChange/);
+    assert.match(formSource, /onCancel/);
+    assert.match(formSource, /Discard unsaved time changes/);
+    assert.match(formSource, /allowedReviewDecisions/);
+    assert.match(formSource, /ee-form-error/);
+    assert.match(formSource, /ee-form-success/);
+  });
+});
+
+describe('corrected worked and billable calculations', () => {
+  it('recalculates worked and auto/manual billable for office corrections', () => {
+    const timing = buildCorrectionTiming('2026-11-16T09:00', '2026-11-16T12:00', '30');
+    assert.equal(timing.ok, true);
+    if (!timing.ok) return;
+    assert.equal(timing.timing.workedMinutes, 150);
+    assert.equal(
+      resolveCorrectionBillableMinutes('auto', '999', timing.timing.workedMinutes),
+      150,
+    );
+    assert.equal(
+      resolveCorrectionBillableMinutes('manual', '120', timing.timing.workedMinutes),
+      120,
+    );
+    const invalid = buildCorrectionTiming('2026-11-16T12:00', '2026-11-16T09:00', '0');
+    assert.equal(invalid.ok, false);
+    const tooMuchBreak = buildCorrectionTiming('2026-11-16T09:00', '2026-11-16T10:00', '90');
+    assert.equal(tooMuchBreak.ok, false);
   });
 });

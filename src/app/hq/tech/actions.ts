@@ -35,6 +35,7 @@ import {
 } from '@/lib/tech-time';
 import {
   formatTimeReviewActivityNote,
+  timeReviewActivityAction,
   isDuplicateCorrection,
   isReviewDecisionResult,
   readReviewTimeEntryFields,
@@ -1032,7 +1033,7 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
   await db.from('job_activity').insert({
     job_id: entry.jobId,
     actor_id: user.id,
-    action: 'time_' + decision + 'd',
+    action: timeReviewActivityAction(decision),
     note: activityNote.slice(0, 500),
   });
 

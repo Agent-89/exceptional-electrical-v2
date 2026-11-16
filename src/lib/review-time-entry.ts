@@ -84,6 +84,22 @@ export function statusesForReviewDecision(decision: ReviewTimeDecision): string[
   return [...CORRECT_FROM];
 }
 
+/** Decisions the UI may offer for a given entry status (server still re-checks). */
+export function allowedReviewDecisions(status: string): ReviewTimeDecision[] {
+  const decisions: ReviewTimeDecision[] = [];
+  if (APPROVE_FROM.has(status)) decisions.push('approve');
+  if (REJECT_FROM.has(status)) decisions.push('reject');
+  if (CORRECT_FROM.has(status)) decisions.push('correct');
+  return decisions;
+}
+
+/** Stable activity action names — never `time_rejectd`. */
+export function timeReviewActivityAction(decision: ReviewTimeDecision): string {
+  if (decision === 'approve') return 'time_approved';
+  if (decision === 'reject') return 'time_rejected';
+  return 'time_corrected';
+}
+
 export function readReviewTimeEntryFields(formData: FormData): ReviewTimeEntryFields {
   const trim = (key: string, max: number): string | null => {
     const raw = String(formData.get(key) ?? '').trim();
@@ -331,4 +347,79 @@ export function inferBillableMode(
 ): BillableMode {
   if (billableMinutes == null || workedMinutes == null) return 'auto';
   return billableMinutes === workedMinutes ? 'auto' : 'manual';
+}
+
+const ACTIVITY_TITLE: Record<string, string> = {
+  created: 'Job created',
+  status_changed: 'Status updated',
+  note_added: 'Note added',
+  details_updated: 'Job details updated',
+  staff_assigned: 'Electrician assigned',
+  staff_unassigned: 'Electrician removed',
+  appointment_added: 'Appointment scheduled',
+  time_started: 'Timer started',
+  time_paused: 'Break started',
+  time_resumed: 'Work resumed',
+  time_submitted: 'Time submitted',
+  time_manual_added: 'Manual time added',
+  visit_progress_updated: 'Visit progress updated',
+  technician_work_report_saved: 'Technician work report saved',
+  technician_note_added: 'Technician note',
+  technician_note_edited: 'Technician note edited',
+  photo_uploaded: 'Photo uploaded',
+  office_note_added: 'Office note',
+  time_approved: 'Time approved',
+  time_rejected: 'Time rejected',
+  /** Legacy misspelling from earlier builds — present without rewriting history. */
+  time_rejectd: 'Time rejected',
+  time_corrected: 'Time corrected',
+  follow_up_resolved: 'Further visit resolved',
+};
+
+export function jobActivityActionTitle(action: string): string {
+  return ACTIVITY_TITLE[action] ?? action.replaceAll('_', ' ');
+}
+
+const LONG_NOTE = 140;
+
+/**
+ * Split long activity notes into a concise summary plus expandable detail.
+ * Does not rewrite stored history — presentation only.
+ */
+export function presentJobActivityNote(note: string | null | undefined): {
+  summary: string | null;
+  detail: string | null;
+  expandable: boolean;
+} {
+  const trimmed = (note ?? '').trim();
+  if (!trimmed) return { summary: null, detail: null, expandable: false };
+  if (trimmed.length <= LONG_NOTE) {
+    return { summary: trimmed, detail: null, expandable: false };
+  }
+  const reasonIdx = trimmed.search(/\.\s*Reason:/i);
+  if (reasonIdx > 0) {
+    const head = trimmed.slice(0, reasonIdx + 1).trim();
+    const tail = trimmed.slice(reasonIdx + 1).trim();
+    return { summary: head, detail: tail, expandable: true };
+  }
+  const cut = trimmed.lastIndexOf(' · ', LONG_NOTE);
+  const at = cut > 40 ? cut : LONG_NOTE;
+  return {
+    summary: `${trimmed.slice(0, at).trim()}…`,
+    detail: trimmed,
+    expandable: true,
+  };
+}
+
+/** Format an activity timestamp in Perth local time (consistent en-AU). */
+export function formatJobActivityWhen(iso: string): string {
+  return new Date(iso).toLocaleString('en-AU', {
+    timeZone: 'Australia/Perth',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
