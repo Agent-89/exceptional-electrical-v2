@@ -35,6 +35,7 @@ import {
 } from '@/lib/tech-time';
 import {
   isDuplicateCorrection,
+  isReviewDecisionResult,
   parseBreakMinutes,
   readReviewTimeEntryFields,
   resolveBillableMinutes,
@@ -848,8 +849,13 @@ export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewT
   );
   if (!validated.ok) return validated;
   if (!entry) return { ok: false, error: 'Only submitted time entries can be reviewed.', code: 'validation' };
-
+  // validated.ok is true here, but ReviewTimeEntryResult's success/noop branch has no `decision`.
+  // Narrow explicitly before reading it so both validation and action result unions stay safe.
+  if (!isReviewDecisionResult(validated)) {
+    return { ok: false, error: 'Invalid decision.', code: 'validation' };
+  }
   const decision = validated.decision;
+
   const db = dbAdmin();
   const now = new Date().toISOString();
   const entryId = fields.entryId;

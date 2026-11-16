@@ -74,6 +74,13 @@ export type ReviewTimeValidation =
   | { ok: false; error: string; code?: 'validation' | 'conflict' | 'forbidden' | 'unknown' }
   | { ok: true; decision: ReviewTimeDecision };
 
+/** Narrow a validation result to the decision branch (never a noop/success action result). */
+export function isReviewDecisionResult(
+  result: ReviewTimeValidation | ReviewTimeEntryResult,
+): result is { ok: true; decision: ReviewTimeDecision } {
+  return result.ok === true && 'decision' in result && result.decision != null;
+}
+
 export function validateReviewTimeEntryRequest(
   fields: ReviewTimeEntryFields,
   entry: ReviewTimeEntrySnapshot | null,

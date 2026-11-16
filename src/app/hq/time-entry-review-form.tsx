@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useTransition } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
 
@@ -30,6 +30,8 @@ type Draft = {
   correctionNote: string;
 };
 
+type ReviewDecision = 'approve' | 'reject' | 'correct';
+
 function draftFromEntry(entry: TimeEntryReviewDefaults): Draft {
   return {
     billableMinutes: String(entry.billableMinutes ?? entry.workedMinutes ?? 0),
@@ -39,6 +41,17 @@ function draftFromEntry(entry: TimeEntryReviewDefaults): Draft {
     breakMinutes: String(entry.breakMinutes),
     correctionNote: '',
   };
+}
+
+function entrySignature(entry: TimeEntryReviewDefaults): string {
+  return [
+    entry.id,
+    entry.startedAt,
+    entry.endedAt ?? '',
+    entry.breakMinutes,
+    entry.workedMinutes ?? '',
+    entry.billableMinutes ?? '',
+  ].join('|');
 }
 
 export default function TimeEntryReviewForm({
@@ -54,50 +67,84 @@ export default function TimeEntryReviewForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftFromEntry(entry));
+  const [chosenDecision, setChosenDecision] = useState<ReviewDecision | null>(null);
+
+  const signature = entrySignature(entry);
+  // After a successful save, parent refresh updates `entry` — resync draft only when clean.
+  useEffect(() => {
+    if (dirty) return;
+    setDraft(draftFromEntry(entry));
+  }, [signature, dirty, entry]);
 
   const onField = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => {
+    setDirty(true);
     setDraft((prev) => ({ ...prev, [key]: value }));
     setError(null);
     setSuccess(null);
   }, []);
+
+  const submitDecision = useCallback(
+    (decision: ReviewDecision) => {
+      if (pending) return;
+      setChosenDecision(decision);
+      setError(null);
+      setSuccess(null);
+
+      const data = new FormData();
+      data.set('entry_id', entry.id);
+      data.set('decision', decision);
+      data.set('billable_minutes', draft.billableMinutes);
+      data.set('rejection_reason', draft.rejectionReason);
+      data.set('started_at', draft.startedAt);
+      data.set('ended_at', draft.endedAt);
+      data.set('break_minutes', draft.breakMinutes);
+      data.set('correction_note', draft.correctionNote);
+
+      startTransition(async () => {
+        const result = await reviewTimeEntryAction(data);
+        if (!result.ok) {
+          setSuccess(null);
+          setError(result.error || 'Unable to save time review.');
+          // Keep draft + dirty so the user does not lose entered values.
+          return;
+        }
+        setError(null);
+        setSuccess(result.message || 'Saved.');
+        setDirty(false);
+        if (!result.noop) {
+          // Clear only the one-shot note; times/billable resync from refreshed entry props.
+          setDraft((prev) => ({ ...prev, correctionNote: '', rejectionReason: '' }));
+        }
+        router.refresh();
+      });
+    },
+    [pending, entry.id, draft, router],
+  );
 
   return (
     <form
       className={className ?? 'ee-edit-form'}
       onSubmit={(event) => {
         event.preventDefault();
-        if (pending) return;
-        const form = event.currentTarget;
+        // Prefer the button that was just armed; fall back to native submitter.
         const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-        const decision = submitter?.value || '';
-        const data = new FormData(form);
-        if (decision) data.set('decision', decision);
-        // Keep controlled values authoritative so a failed submit never loses edits.
-        data.set('billable_minutes', draft.billableMinutes);
-        data.set('rejection_reason', draft.rejectionReason);
-        data.set('started_at', draft.startedAt);
-        data.set('ended_at', draft.endedAt);
-        data.set('break_minutes', draft.breakMinutes);
-        data.set('correction_note', draft.correctionNote);
-
-        startTransition(async () => {
-          const result = await reviewTimeEntryAction(data);
-          if (!result.ok) {
-            setSuccess(null);
-            setError(result.error || 'Unable to save time review.');
-            return;
-          }
-          setError(null);
-          setSuccess(result.message || 'Saved.');
-          if (!result.noop && decision === 'correct') {
-            setDraft((prev) => ({ ...prev, correctionNote: '' }));
-          }
-          router.refresh();
-        });
+        const fromSubmitter = submitter?.value;
+        const decision =
+          chosenDecision ||
+          (fromSubmitter === 'approve' || fromSubmitter === 'reject' || fromSubmitter === 'correct'
+            ? fromSubmitter
+            : null);
+        if (!decision) {
+          setError('Choose Approve, Reject, or Save correction.');
+          return;
+        }
+        submitDecision(decision);
       }}
     >
       <input type="hidden" name="entry_id" value={entry.id} />
+      <input type="hidden" name="entry_signature" value={entrySignature(entry)} readOnly />
       <label>
         Billable minutes
         <input
@@ -168,14 +215,35 @@ export default function TimeEntryReviewForm({
         </p>
       ) : null}
       <div className={actionsClassName}>
-        <button name="decision" value="approve" type="submit" disabled={pending} aria-busy={pending}>
-          {pending ? 'Saving…' : 'Approve'}
+        <button
+          name="decision"
+          value="approve"
+          type="submit"
+          disabled={pending}
+          aria-busy={pending}
+          onClick={() => setChosenDecision('approve')}
+        >
+          {pending && chosenDecision === 'approve' ? 'Saving…' : 'Approve'}
         </button>
-        <button name="decision" value="reject" type="submit" disabled={pending} aria-busy={pending}>
-          Reject
+        <button
+          name="decision"
+          value="reject"
+          type="submit"
+          disabled={pending}
+          aria-busy={pending}
+          onClick={() => setChosenDecision('reject')}
+        >
+          {pending && chosenDecision === 'reject' ? 'Saving…' : 'Reject'}
         </button>
-        <button name="decision" value="correct" type="submit" disabled={pending} aria-busy={pending}>
-          Save correction
+        <button
+          name="decision"
+          value="correct"
+          type="submit"
+          disabled={pending}
+          aria-busy={pending}
+          onClick={() => setChosenDecision('correct')}
+        >
+          {pending && chosenDecision === 'correct' ? 'Saving…' : 'Save correction'}
         </button>
       </div>
     </form>

@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   isDuplicateCorrection,
+  isReviewDecisionResult,
   parseReviewTimeDecision,
   readReviewTimeEntryFields,
   resolveBillableMinutes,
   statusesForReviewDecision,
   validateReviewTimeEntryRequest,
+  type ReviewTimeEntryResult,
   type ReviewTimeEntrySnapshot,
 } from './review-time-entry.ts';
 
@@ -65,7 +67,35 @@ describe('validateReviewTimeEntryRequest', () => {
       breakMinutesRaw: '15',
     };
     const result = validateReviewTimeEntryRequest(fields, ENTRY);
-    assert.deepEqual(result, { ok: true, decision: 'correct' });
+    assert.equal(result.ok, true);
+    assert.ok(isReviewDecisionResult(result));
+    assert.equal(result.decision, 'correct');
+  });
+
+  it('narrows decision results away from action noop success results', () => {
+    const validated = validateReviewTimeEntryRequest(
+      {
+        decision: 'approve',
+        entryId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0099',
+        billableRaw: '',
+        rejectionReason: null,
+        correctionNote: null,
+        startLocal: '',
+        endLocal: '',
+        breakMinutesRaw: '0',
+      },
+      ENTRY,
+    );
+    const noopSuccess: ReviewTimeEntryResult = {
+      ok: true,
+      noop: true,
+      message: 'Correction already saved.',
+    };
+    assert.equal(isReviewDecisionResult(validated), true);
+    assert.equal(isReviewDecisionResult(noopSuccess), false);
+    if (isReviewDecisionResult(validated)) {
+      assert.equal(validated.decision, 'approve');
+    }
   });
 
   it('requires rejection reason', () => {
