@@ -34,3 +34,11 @@ Premium and modern, using the existing Exceptional Electrical logo and its elect
 ## Operational notes
 
 The original `Agent-89/exceptional-electrical` repository remains untouched and is reference-only. The previous Vapi webhook points to the old Supabase project until deliberately reconfigured and tested. Never publish unverified phone numbers, licences, reviews, guarantees or emergency-service claims.
+
+## Cursor handover
+
+For architecture, migrations, Vercel release/rollback, integrations, and agent standards see:
+
+- `docs/CURSOR_HANDOVER.md`
+- `docs/RELEASE_CANDIDATE.md`
+- `.cursor/rules/hq-release-standards.mdc`

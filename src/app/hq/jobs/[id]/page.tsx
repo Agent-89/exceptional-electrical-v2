@@ -19,17 +19,14 @@ import {
 import ScheduleAppointmentForm from './schedule-appointment-form';
 import JobFieldActivity from './job-field-activity';
 import JobDetailTabs, { JobTabButton } from './job-detail-tabs';
+import JobQuotesPanel from './job-quotes-panel';
+import {
+  listLinkableQuotesForJob,
+  loadJobQuotesForDisplay,
+} from '@/lib/job-quotes-store';
 import '../../hq.css';
 
 export const dynamic = 'force-dynamic';
-
-type LinkedQuote = {
-  id: string;
-  quote_number: string;
-  title: string | null;
-  status: string;
-  updated_at: string;
-};
 
 function formatPerth(iso: string): string {
   return new Date(iso).toLocaleString('en-AU', {
@@ -53,12 +50,18 @@ export default async function JobPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string | string[] }>;
+  searchParams: Promise<{
+    tab?: string | string[];
+    notice?: string | string[];
+    error?: string | string[];
+  }>;
 }) {
   await requireOfficeUser();
   const { id } = await params;
-  const { tab } = await searchParams;
-  const initialTab = parseJobDetailTab(Array.isArray(tab) ? tab[0] : tab);
+  const query = await searchParams;
+  const initialTab = parseJobDetailTab(Array.isArray(query.tab) ? query.tab[0] : query.tab);
+  const notice = Array.isArray(query.notice) ? query.notice[0] : query.notice;
+  const actionError = Array.isArray(query.error) ? query.error[0] : query.error;
   const db = dbAdmin();
 
   const { data: job } = await db.from('jobs').select('*').eq('id', id).maybeSingle();
@@ -77,7 +80,7 @@ export default async function JobPage({
     { data: assignments },
     appointmentsResult,
     { data: customers },
-    quoteResult,
+    jobQuotesResult,
   ] = await Promise.all([
     job.customer_id
       ? db.from('customers').select('name,email,phone').eq('id', job.customer_id).maybeSingle()
@@ -96,14 +99,13 @@ export default async function JobPage({
       .eq('job_id', id)
       .order('starts_at', { ascending: true }),
     db.from('customers').select('id,name').order('name').limit(1000),
-    job.quote_id
-      ? db
-          .from('quotes')
-          .select('id,quote_number,title,status,updated_at')
-          .eq('id', job.quote_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
+    loadJobQuotesForDisplay(db, id, job.quote_id as string | null),
   ]);
+
+  const linkableQuotes = await listLinkableQuotesForJob(db, {
+    customerId: (job.customer_id as string | null) ?? null,
+    excludeQuoteIds: jobQuotesResult.quotes.map((quote) => quote.id),
+  });
 
   // Soft-fallback across schema vintages (base → field ops → follow-up resolution columns).
   let appointments: Array<Record<string, unknown>> | null =
@@ -237,9 +239,6 @@ export default async function JobPage({
       jobNoteId: photo.jobNoteId ?? null,
     })),
   };
-
-  const linkedQuote = (quoteResult.data ?? null) as LinkedQuote | null;
-  const quoteUnavailable = Boolean(job.quote_id) && (Boolean(quoteResult.error) || !linkedQuote);
 
   return (
     <main className="hq-detail">
@@ -381,40 +380,17 @@ export default async function JobPage({
             time: <JobFieldActivity {...field} section="time" />,
             costs: <JobFieldActivity {...field} section="costs" />,
             quotes: (
-              <section className="hq-panel ee-compact-panel">
-                <div className="ee-section-title">
-                  <div>
-                    <span className="ee-eyebrow">QUOTES</span>
-                    <h2>Linked quote</h2>
-                  </div>
-                </div>
-                {linkedQuote ? (
-                  <div className="ee-visit">
-                    <strong>
-                      {linkedQuote.quote_number}
-                      {linkedQuote.title ? ` · ${linkedQuote.title}` : ''}
-                    </strong>
-                    <span>
-                      {linkedQuote.status.replaceAll('_', ' ')} · Updated{' '}
-                      {formatPerth(linkedQuote.updated_at)}
-                    </span>
-                    <span className="ee-quote-links">
-                      <Link href={'/hq/quotes/' + linkedQuote.id}>Open quote</Link>
-                      <Link href={'/hq/quotes/' + linkedQuote.id + '/preview'}>Preview</Link>
-                    </span>
-                  </div>
-                ) : quoteUnavailable ? (
-                  <p className="ee-muted" style={{ marginBottom: 0 }}>
-                    This job points at a quote that could not be loaded. Linking and unlinking are
-                    not available on this screen yet.
-                  </p>
-                ) : (
-                  <p className="ee-muted" style={{ marginBottom: 0 }}>
-                    No quote is linked to this job yet. Linking a quote will be added in a later
-                    update.
-                  </p>
-                )}
-              </section>
+              <JobQuotesPanel
+                jobId={id}
+                customerId={(job.customer_id as string | null) ?? null}
+                quotes={jobQuotesResult.quotes}
+                linkableQuotes={linkableQuotes}
+                tableAvailable={jobQuotesResult.tableAvailable}
+                loadError={jobQuotesResult.error}
+                notice={notice}
+                actionError={actionError}
+                canEdit={canEdit}
+              />
             ),
             invoices: (
               <section className="hq-panel ee-compact-panel">
@@ -635,6 +611,33 @@ export default async function JobPage({
 .ee-text-action,.ee-summary-grid a,.ee-quote-links a{color:#0875c9;font-size:13px;text-decoration:none}
 button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;font-size:13px;font-weight:700;cursor:pointer;text-align:left}
 .ee-quote-links{display:flex;flex-wrap:wrap;gap:14px}
+.ee-job-quotes{display:grid;gap:0}
+.ee-job-quote-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.ee-job-quote-badges{display:flex;flex-wrap:wrap;gap:6px}
+.ee-job-quote-primary,.ee-job-quote-kind,.ee-job-quote-current{display:inline-flex;align-items:center;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:800;letter-spacing:.02em}
+.ee-job-quote-primary{background:#e7f3ff;color:#076ab5}
+.ee-job-quote-current{background:#e8f7ef;color:#0b6b3a}
+.ee-job-quote-kind{background:#f2f5f8;color:#4d677a}
+.ee-job-quote-create-actions a{display:inline-flex;align-items:center;justify-content:center;border:1px solid #d5e2ef;background:#fff;color:#18577d;border-radius:10px;padding:10px 14px;min-height:44px;font:inherit;font-size:14px;font-weight:750;text-decoration:none}
+.ee-job-quote-create-actions a.hq-detail-action-primary{border-color:#1688e9}
+.ee-job-quote-create-actions a.hq-detail-action-secondary{background:#fff}
+.ee-job-quote-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:2px}
+.ee-job-quote-forms{display:grid;gap:18px;margin-top:16px;padding-top:14px;border-top:1px solid #e1e8f0}
+.ee-job-quote-forms h3{margin:0 0 8px;font-size:15px}
+.ee-job-quote-link-form{display:grid;gap:10px;max-width:520px}
+.ee-job-quote-link-form label{display:grid;gap:5px;font-size:13px;font-weight:700}
+.ee-job-quote-link-form select,.ee-job-quote-link-form input[type="text"],.ee-job-quote-link-form input:not([type]){width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #cdd9e5;border-radius:10px;background:#fff;font:inherit;font-size:15px}
+.ee-job-quote-check{display:flex!important;align-items:center;gap:8px;font-weight:650!important}
+.ee-job-quote-check input{width:auto}
+.ee-job-quote-create-actions{display:flex;flex-wrap:wrap;gap:10px}
+.ee-job-quote-create-actions button{border:1px solid #d5e2ef;background:#fff;color:#18577d;border-radius:10px;padding:10px 14px;min-height:44px;font:inherit;font-size:14px;font-weight:750;cursor:pointer}
+.ee-job-quote-create-actions button:disabled{opacity:.55;cursor:not-allowed}
+.ee-job-quote-create-actions .hq-detail-action-primary{border-color:#1688e9}
+@media(max-width:700px){
+  .ee-job-quote-head{flex-direction:column;align-items:flex-start}
+  .ee-job-quote-create-actions{flex-direction:column}
+  .ee-job-quote-create-actions button{width:100%}
+}
 .ee-description{margin:6px 0 18px;line-height:1.5}
 .ee-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;border-top:1px solid #e1e8f0;padding-top:20px}
 .ee-summary-grid>div{display:grid;align-content:start;gap:6px;min-width:0}

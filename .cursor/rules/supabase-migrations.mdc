@@ -1,0 +1,14 @@
+---
+description: Supabase migration and schema safety for Exceptional Electrical HQ
+globs: supabase/**/*
+alwaysApply: false
+---
+
+# Supabase migration rules
+
+- Target project ref: `udwdurnknweavmksotii` when discussing hosted HQ.
+- Local migration filenames may differ from hosted `schema_migrations.version`. Match by migration **name**.
+- Commercial migrations listed in `docs/CURSOR_HANDOVER.md` are already applied — never reapply.
+- No hosted DDL/DML without explicit approval. Prefer `supabase db query --linked` for read-only verification.
+- New work: `supabase migration new <name>`, additive SQL, RLS on exposed tables, `service_role` for privileged RPCs called only after server-side authz.
+- Historical jobs/scheduling Git migrations are incomplete vs live schema; see `docs/tradify-migration-and-google-calendar.md`.
