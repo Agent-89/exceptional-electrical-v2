@@ -37,7 +37,9 @@ The original `Agent-89/exceptional-electrical` repository remains untouched and 
 
 ## Cursor handover
 
-For architecture, migrations, Vercel release/rollback, integrations, and agent standards see:
+Production commercial baseline (PR #15): `main` @ `ffd7e09f863c0690d847b8fd8de5658fd60f1bdc`.
+
+For architecture, migrations, Vercel release/rollback, integrations, roadmap, and agent standards see:
 
 - `docs/CURSOR_HANDOVER.md`
 - `docs/RELEASE_CANDIDATE.md`

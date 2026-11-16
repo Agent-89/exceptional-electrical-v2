@@ -1,8 +1,30 @@
 # Exceptional Electrical HQ — Cursor handover
 
-Version-controlled project handover for continuing development in Cursor after the commercial Production baseline release.
+Version-controlled project handover for continuing development in Cursor after the **Production commercial release** (PR #15, 16 Nov 2026).
 
 **Do not store credentials, API keys, or secrets in this repository.**
+
+## 0. Production baseline (current)
+
+| Item | Value |
+|------|--------|
+| Repository | `Agent-89/exceptional-electrical-v2` |
+| Branch of record | `main` |
+| Production merge SHA | `ffd7e09f863c0690d847b8fd8de5658fd60f1bdc` |
+| Validated release tip (merged) | `91b0e23f7d8346a5d4d0c62741e97ed6c68cf84f` |
+| Release PR | [#15](https://github.com/Agent-89/exceptional-electrical-v2/pull/15) (merged) |
+| Production smoke | 6/6 passed |
+| Previous Production rollback deployment | `dpl_BSfHgU3aG7B3N541rzEs1YpN8EvG` |
+| Hosted Supabase | `udwdurnknweavmksotii` (shared Preview/Production) |
+| Additional DB migrations for this release | None (six commercial migrations already hosted) |
+
+### GitHub cleanup after release
+
+- Merged: PR #15 (release cutover), PR #12 (commercial foundations; also recorded merged with the cutover).
+- Closed as superseded: PRs #13, #14, #4.
+- Historical feature branches **preserved** — do not delete without explicit approval.
+
+Treat `main` at the Production merge SHA as the single source of truth. Do not re-merge obsolete tips of #13/#14/#4.
 
 ## 1. System architecture
 
@@ -16,34 +38,31 @@ Version-controlled project handover for continuing development in Cursor after t
 
 ## 2. Main application modules
 
-| Area | Primary paths |
-|------|----------------|
-| Enquiries | `src/app/hq/enquiries` |
-| Customers | `src/app/hq/customers` |
-| Quotes / commercial | `src/app/hq/quotes`, `src/lib/quote-commercial.ts`, `src/lib/job-quotes.ts` |
-| Jobs | `src/app/hq/jobs` |
-| Schedule | `src/app/hq/schedule` |
-| Technician field | `src/app/hq/tech` |
-| Timesheets / time review | `src/app/hq/timesheets`, job detail time tab |
-| Google Calendar (Neil) | `src/lib/google-calendar.ts`, `src/app/api/integrations/google-calendar` |
-| Auth / session | `src/app/hq/login`, `src/app/hq/session`, `src/lib/hq-auth.ts` |
+| Area | Primary paths | Production status |
+|------|----------------|-------------------|
+| Enquiries | `src/app/hq/enquiries` | Live (public intake needs rate-limit/bot protection before domain cutover) |
+| Customers | `src/app/hq/customers` | Live |
+| Quotes / commercial | `src/app/hq/quotes`, `src/lib/quote-commercial.ts`, `src/lib/job-quotes.ts` | Live (C1 + C1.1 + workspace UX) |
+| Jobs | `src/app/hq/jobs` | Live |
+| Schedule | `src/app/hq/schedule` | Live (HQ electrician overlap hard-block) |
+| Technician field | `src/app/hq/tech` | Live |
+| Timesheets / time review | `src/app/hq/timesheets`, job detail time tab | Live |
+| Google Calendar (Neil) | `src/lib/google-calendar.ts`, `src/app/api/integrations/google-calendar` | Partial — Neil-only read; see §7 |
+| Auth / session | `src/app/hq/login`, `src/app/hq/session`, `src/lib/hq-auth.ts` | Live |
 
-Related design notes: `docs/commercial-multi-quote-c1.md`, `docs/commercial-quote-variations-c11.md`, `docs/tradify-migration-and-google-calendar.md`, `docs/vapi-receptionist-v1.md`, `docs/DEPLOYMENT.md`.
+Related design notes: `docs/commercial-multi-quote-c1.md`, `docs/commercial-quote-variations-c11.md`, `docs/tradify-migration-and-google-calendar.md`, `docs/vapi-receptionist-v1.md`, `docs/DEPLOYMENT.md`, `docs/RELEASE_CANDIDATE.md`.
 
 ## 3. GitHub branching and PR conventions
 
 Repository: `Agent-89/exceptional-electrical-v2`
 
-- **`main`** is the Production baseline and single source of truth after release.
-- Feature branches: `feature/<topic>` or `fix/<topic>`.
+- **`main`** is the Production baseline and single source of truth.
+- Feature branches: `feature/<topic>` or `fix/<topic>` or `docs/<topic>`.
 - Open PRs as **Draft** until validation is reported.
-- Prefer stacking dependent work (example release stack):
-  1. PR #12 commercial foundations → `main`
-  2. PR #13 variations → `main` (retarget after #12)
-  3. PR #14 quote workspace UX → `main` (retarget after #13)
-- Historical merges used squash; branch tips of merged PRs are often **not** ancestors of `main`. Do not re-merge obsolete tips.
+- Prefer stacking dependent work; avoid squash/cherry-pick that drops required behaviour across stacked PRs.
+- Historical merges often used squash; branch tips of superseded PRs may **not** be ancestors of `main`. Do not re-merge obsolete tips.
 - Never delete branches, merge, deploy, or apply hosted migrations without explicit owner approval.
-- Do not merge obsolete Draft PR #4 (`feature/release-b-conflict-warnings-20261111`); reimplement any missing behaviour on current `main`/RC instead.
+- Do not merge obsolete Draft PR #4 (`feature/release-b-conflict-warnings-20261111`) wholesale; reimplement any missing soft-override behaviour on current `main` if owners request it.
 
 ## 4. Supabase development and migrations
 
@@ -86,12 +105,13 @@ Repository: `Agent-89/exceptional-electrical-v2`
   - Optional: `NEXT_PUBLIC_HQ_ORIGIN`, `NEXT_PUBLIC_SITE_URL`
   - Google Calendar (when enabled): `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI`, `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`
 - Password-reset allowlists: see `docs/DEPLOYMENT.md` and `src/lib/hq-password-reset.ts`.
+- Known-good prior Production deployment for rollback: `dpl_BSfHgU3aG7B3N541rzEs1YpN8EvG`.
 
 ## 6. Roles and authorization
 
 | Role | Typical access |
 |------|----------------|
-| owner / admin | Full office ops + admin-only (quote approve, Google Calendar connect) |
+| owner / admin | Full office ops + admin-only actions (e.g. quote approve; Google Calendar OAuth connect/disconnect) |
 | office | Enquiries, customers, quotes (draft), jobs, schedule, time review |
 | technician | `/hq/tech` Today / jobs / visits / account; no office schedule mutations |
 
@@ -102,12 +122,20 @@ Helpers: `src/lib/hq-roles.ts`. Prefer server-side gates; do not trust client-on
 | Integration | Status | Notes |
 |-------------|--------|-------|
 | Supabase Auth + DB | Live | Shared Preview/Production DB |
-| Google Calendar | Neil-only read | Conflict override auditable; no write-back |
+| Google Calendar | Neil-only (see below) | Read-only; no write-back |
 | Xero | Not integrated | Job UI placeholder copy only |
 | Vapi receptionist | Draft / disconnected | `docs/vapi-receptionist-v1.md` |
-| Tradify import | Dry-run / planning | `docs/tradify-migration-and-google-calendar.md`; no live import without approval |
+| Tradify import | Dry-run / planning | Frozen CSVs may exist locally under `imports/`; no live import without approval |
 
-**Never** trigger real customer SMS/email, Xero writes, Tradify writes, or live Vapi cutover during Preview testing.
+### Neil Google Calendar rules
+
+- **Scope:** Only Neil’s connected Google Calendar is integrated. Other electricians have no Google Calendar sync in v1.
+- **Read behaviour:** Busy events on Neil’s calendar are considered only when Neil is on the visit crew. Show/hide is presentation-only; availability checks still use active busy events. No write-back to Google.
+- **Conflict override:** An auditable override exists solely for **Neil calendar busy conflicts** when Neil is assigned. Server-side, that override path is role-gated to `owner` / `admin` (`src/lib/neil-calendar-conflicts.ts`). Office and technician roles cannot override.
+- **Not a general override:** Do not treat “owner/admin” as a blanket calendar-override privilege for all staff or all conflict types. The Neil override never bypasses HQ electrician overlap hard-blocks (`hq_overlap`).
+- **Connect/disconnect:** OAuth connect/disconnect is an admin-ops action (owner/admin), separate from the Neil conflict-override checkbox on schedule mutations.
+
+**Never** trigger real customer SMS/email, Xero writes, Tradify writes, or live Vapi cutover during Preview testing. Do not mutate Production data or external integrations without approval.
 
 ## 8. Testing and verification commands
 
@@ -119,12 +147,12 @@ npm run build
 ```
 
 - Unit/integration tests: `src/lib/*.test.ts` via Node test runner.
-- After substantive changes, re-run the four commands above on the release-candidate tip.
+- After substantive changes, re-run the four commands above on the release tip.
 - Hosted schema checks: `supabase migration list --linked` and read-only `supabase db query --linked`.
 
 ## 9. Incident response and rollback
 
-1. **App regression:** Redeploy previous known-good Vercel Production deployment for `main` (or revert the merge commit and redeploy).
+1. **App regression:** Redeploy previous known-good Vercel Production deployment (`dpl_BSfHgU3aG7B3N541rzEs1YpN8EvG` or newer known-good) for `main` (or revert the merge commit and redeploy after approval).
 2. **Bad Preview:** Close/ignore the Preview URL; Preview must not be treated as a separate database.
 3. **Bad migration (if ever applied):** Do not “down” migrations casually. Prefer a forward fix migration after owner approval; restore from Supabase backup only with explicit approval.
 4. **Auth/session issues:** Verify Supabase Auth redirect allowlists and `staff_profiles` role rows.
@@ -135,23 +163,48 @@ npm run build
 - Historical Git migrations are incomplete vs live schema (scheduling_staff, status checks); see Tradify/calendar doc.
 - Local commercial migration filenames differ from hosted versions.
 - Client portal is not production-ready.
-- DEPLOYMENT.md still contains some stale placeholder language; trust code + this handover for HQ auth state.
+- DEPLOYMENT.md may still contain some stale placeholder language; trust code + this handover for HQ auth state.
 - Enquiry marketing launch still needs rate limiting / bot protection before public domain cutover.
 - Race-safe DB exclusion constraints for electrician overlaps are not yet present; app-layer hard-blocks cover create + schedule edit paths.
+- Quotes can be marked sent but do not email customers yet.
+- Job Costs / Invoices tabs are placeholders pending Xero (C2).
+- Inventory, purchasing, reports, payroll export, and tech offline mode are not built.
 
-## 11. Remaining development roadmap (suggested)
+## 11. Remaining development roadmap (post-Production)
 
-1. Production merge of commercial stack (#12 → #13 → #14) after Preview smoke approval.
-2. Optional DB-level overlap exclusion / advisory locks for scheduling races.
-3. Soft-confirm override UX (if owners want intentional double-book with audit), without merging obsolete PR #4.
-4. Tradify staged import dry-run → approved cutover.
-5. Xero invoice integration.
-6. Vapi webhook + signature verification behind staging.
-7. Client portal authentication and ownership boundaries.
-8. Greenfield migration reconciliation so `supabase db reset` matches hosted.
+Prioritised against fully replacing Tradify. Do **not** start implementation until the next milestone is explicitly approved.
 
-## 12. Release candidate notes (Nov 2026)
+### P0 — Safe day-to-day ops + cutover readiness
 
-- Integrated tip branch: `feature/hq-quote-workspace-ux`
-- Stack: #12 + #13 + #14
-- Scheduling hard-block for HQ electrician overlaps applied on visit editor + timeline persistence paths to match appointment creation (see release decision report).
+1. **Tradify staged import dry-run** — staging tables/report (counts, unmatched customers/sites/staff, collisions); idempotent batch design; **no live write** without approval. Do not treat ~873 Tradify “In Progress” jobs as active without owner review.
+2. **Enquiry rate limiting / bot protection** before public marketing domain cutover.
+3. **Production ops hardening** — confirm Neil Google Calendar live path; optional DB-level overlap exclusion / advisory locks; optional soft-confirm double-book override (reimplement ideas from PR #4 on current `main`, do not merge #4).
+4. Keep Production baseline stable; no hosted commercial migration reapply.
+
+### P1 — Money and customer communications (close the Tradify gap)
+
+5. **C2 billing** — HQ invoice surface + Xero reconciliation against commercial-current quotes.
+6. **Outbound email/SMS** — quote send, appointment reminders (gated; never from Preview against real customers).
+7. **Job materials / costing** (even before full inventory).
+8. **Vapi webhook** + signature verification behind staging; no live number forward until approved.
+
+### P2 — Full field-service parity
+
+9. Inventory, purchasing/POs, price catalogues.
+10. Client portal authentication and ownership boundaries.
+11. Reports/analytics, payments UI, certificates/compliance workflows, recurring/maintenance jobs.
+12. Technician offline / payroll export.
+13. Greenfield migration reconciliation so `supabase db reset` matches hosted.
+
+### Recommended next milestone (for approval)
+
+See `docs/RELEASE_CANDIDATE.md` § “Next milestone proposal”. Summary:
+
+**Tradify import dry-run readiness + Production ops hardening** — staging/dry-run tooling and reports, enquiry abuse protection design/implementation on Preview with fictional traffic patterns, scheduling race posture decision — **out of scope:** Xero, live Tradify import, Vapi cutover, portal, inventory.
+
+## 12. Release history notes (Nov 2026)
+
+- Production commercial cutover: PR #15 → `main` at `ffd7e09` (validated tip `91b0e23`).
+- Included: C1 multi-job quote associations, C1.1 variations/commercial-current, quote workspace UX, HQ electrician overlap hard-blocks, Preview defect fixes, initial Cursor handover docs.
+- Superseded stacked Drafts #13/#14 and obsolete #4 closed; historical branches retained.
+- No new hosted migrations required for the cutover.
