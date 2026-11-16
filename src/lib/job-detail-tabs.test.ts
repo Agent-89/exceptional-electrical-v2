@@ -23,6 +23,10 @@ const activitySource = readFileSync(
   new URL('../app/hq/jobs/[id]/job-field-activity.tsx', import.meta.url),
   'utf8',
 );
+const quotesPanelSource = readFileSync(
+  new URL('../app/hq/jobs/[id]/job-quotes-panel.tsx', import.meta.url),
+  'utf8',
+);
 
 describe('job detail tab registry', () => {
   it('lists the office tabs in navigation order', () => {
@@ -98,7 +102,11 @@ describe('job detail tab shell regression', () => {
     assert.match(pageSource, /visits:/);
     assert.match(pageSource, /quotes:/);
     assert.match(pageSource, /invoices:/);
-    assert.match(pageSource, /No quote is linked to this job yet/);
+    assert.match(pageSource, /JobQuotesPanel/);
+    assert.match(quotesPanelSource, /No quotes linked to this job yet/);
+    assert.match(quotesPanelSource, /Make primary/);
+    assert.match(quotesPanelSource, /Link existing quote/);
+    assert.match(quotesPanelSource, /New variation/);
     assert.match(pageSource, /This screen does not create or change invoices/);
     assert.match(activitySource, /No estimated or fabricated figures are\s+shown/);
     assert.match(activitySource, /section === 'visits'/);
@@ -108,6 +116,14 @@ describe('job detail tab shell regression', () => {
     assert.match(activitySource, /JobTimePanel/);
     assert.match(activitySource, /JobUpdatesPanel/);
     assert.doesNotMatch(activitySource, /showSummary/);
+  });
+
+  it('keeps Quotes tab presentation compact on mobile and desktop', () => {
+    assert.match(pageSource, /\.ee-job-quote-forms\{display:grid/);
+    assert.match(pageSource, /@media\(max-width:700px\)\{[\s\S]*\.ee-job-quote-create-actions\{flex-direction:column\}/);
+    assert.doesNotMatch(quotesPanelSource, /overflow-y:\s*scroll/);
+    assert.match(quotesPanelSource, /Open/);
+    assert.match(quotesPanelSource, /Preview/);
   });
 
   it('keeps desktop sticky tabs at the content top without the mobile header offset', () => {

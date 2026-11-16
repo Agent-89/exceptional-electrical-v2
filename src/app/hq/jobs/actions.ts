@@ -4,6 +4,7 @@ import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
 import {assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {syncPrimaryJobQuoteAfterCreate} from './job-quote-actions';
 export async function createJob(formData:FormData){
  const user=await requireHqUser();
  assertOfficeOps(user);
@@ -38,6 +39,7 @@ export async function createJob(formData:FormData){
  }
  if(!data)throw new Error('Unable to create job.');
  await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'created'});
+ if(quoteId)await syncPrimaryJobQuoteAfterCreate({jobId:data.id,quoteId,actorId:user.id});
  revalidatePath('/hq/jobs');
  redirect('/hq/jobs/'+data.id);
 }
