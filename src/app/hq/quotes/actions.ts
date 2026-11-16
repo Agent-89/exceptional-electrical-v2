@@ -3,6 +3,8 @@ import {revalidatePath} from 'next/cache';
 import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
 import {canManageAdminOps,canManageOfficeOps} from '@/lib/hq-roles';
 import {
+  QUOTE_PARENT_ANCESTOR_MAX_DEPTH,
+  canChangePersistedQuoteCustomer,
   canProceedToApproveAfterSave,
   commercialSchemaMissingMessage,
   interpretMakeCurrentResult,
@@ -13,6 +15,7 @@ import {
   isMissingSaveAndLinkJobsRpcError,
   isValidVariationParentCandidate,
   parentChainIntroducesCycle,
+  parentRevisionChainTooDeepMessage,
   partialJobLinkFailureMessage,
   uniqueJobIds,
   validateVariationParentSelection,
@@ -106,12 +109,13 @@ async function loadParentAncestorIds(args:{
   db:ReturnType<typeof dbAdmin>;
   parentId:string;
   maxDepth?:number;
-}):Promise<{ok:true;ancestorIds:string[]}|{ok:false;message:string}>{
-  const maxDepth=args.maxDepth??20;
+}):Promise<{ok:true;ancestorIds:string[];chainExceedsMaxDepth:boolean}|{ok:false;message:string}>{
+  const maxDepth=args.maxDepth??QUOTE_PARENT_ANCESTOR_MAX_DEPTH;
   const ancestorIds:string[]=[];
   const seen=new Set<string>([args.parentId]);
   let currentId:string|null=args.parentId;
-  for(let i=0;i<maxDepth&&currentId;i++){
+  for(let depth=0;depth<maxDepth;depth++){
+    if(!currentId)break;
     const lookupId:string=currentId;
     const {data,error}:{data:{parent_quote_id?:string|null}|null;error:{message?:string}|null}=await args.db
       .from('quotes')
@@ -120,7 +124,7 @@ async function loadParentAncestorIds(args:{
       .maybeSingle();
     if(error)return{ok:false,message:'Unable to validate parent revision chain.'};
     const nextId:string|null=data?.parent_quote_id?String(data.parent_quote_id):null;
-    if(!nextId)break;
+    if(!nextId)return{ok:true,ancestorIds,chainExceedsMaxDepth:false};
     if(seen.has(nextId)){
       return{ok:false,message:'That parent has a circular revision chain and cannot be used.'};
     }
@@ -128,7 +132,48 @@ async function loadParentAncestorIds(args:{
     ancestorIds.push(nextId);
     currentId=nextId;
   }
-  return{ok:true,ancestorIds};
+  // Exhausted supported depth while the chain may continue — fail closed.
+  if(currentId){
+    const {data,error}:{data:{parent_quote_id?:string|null}|null;error:{message?:string}|null}=await args.db
+      .from('quotes')
+      .select('parent_quote_id')
+      .eq('id',currentId)
+      .maybeSingle();
+    if(error)return{ok:false,message:'Unable to validate parent revision chain.'};
+    if(data?.parent_quote_id){
+      return{ok:false,message:parentRevisionChainTooDeepMessage()};
+    }
+  }
+  return{ok:true,ancestorIds,chainExceedsMaxDepth:false};
+}
+
+/** Count job_quotes + legacy jobs.quote_id associations for a persisted quote. */
+async function countQuoteJobAssociations(args:{
+  db:ReturnType<typeof dbAdmin>;
+  quoteId:string;
+}):Promise<{ok:true;count:number}|{ok:false;message:string}>{
+  const ids=new Set<string>();
+  const {data:links,error:linkError}=await args.db
+    .from('job_quotes')
+    .select('job_id')
+    .eq('quote_id',args.quoteId);
+  if(linkError&&!isMissingJobQuotesRelation(linkError)){
+    return{ok:false,message:'Unable to verify job associations before changing customer.'};
+  }
+  if(!(linkError&&isMissingJobQuotesRelation(linkError))){
+    for(const row of links||[]){
+      if(row.job_id)ids.add(String(row.job_id));
+    }
+  }
+  const {data:legacy,error:legacyError}=await args.db
+    .from('jobs')
+    .select('id')
+    .eq('quote_id',args.quoteId);
+  if(legacyError)return{ok:false,message:'Unable to verify legacy job associations before changing customer.'};
+  for(const row of legacy||[]){
+    if(row.id)ids.add(String(row.id));
+  }
+  return{ok:true,count:ids.size};
 }
 
 async function assertVariationParent(args:{
@@ -180,6 +225,7 @@ async function assertVariationParent(args:{
     parentId:parent.id,
     editingQuoteId:args.editingQuoteId||null,
     parentAncestorIds:chain.ancestorIds,
+    chainExceedsMaxDepth:chain.chainExceedsMaxDepth,
   });
   if(!cycle.ok)return cycle;
 
@@ -244,10 +290,23 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<QuoteSaveResult>{
   // Parent/family immutable after save — ignore client parent and validate stored parent vs customer.
   const {data:existing}=await db
     .from('quotes')
-    .select('parent_quote_id')
+    .select('parent_quote_id,customer_id')
     .eq('id',v.id)
     .maybeSingle();
-  const storedParent=existing?.parent_quote_id?String(existing.parent_quote_id):'';
+  if(!existing)return{ok:false,message:'Quote not found.'};
+  const storedCustomer=existing.customer_id?String(existing.customer_id):'';
+  if(storedCustomer!==(v.customerId||'')){
+   const assoc=await countQuoteJobAssociations({db,quoteId:v.id});
+   if(!assoc.ok)return assoc;
+   const customerChange=canChangePersistedQuoteCustomer({
+    quoteIsPersisted:true,
+    previousCustomerId:storedCustomer,
+    nextCustomerId:v.customerId,
+    associatedJobCount:assoc.count,
+   });
+   if(!customerChange.ok)return customerChange;
+  }
+  const storedParent=existing.parent_quote_id?String(existing.parent_quote_id):'';
   if(storedParent){
    const parentCheck=await assertVariationParent({
     db,

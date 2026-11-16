@@ -15,12 +15,15 @@ import {
   interpretMakeCurrentResult,
   nextRevisionNumber,
   onlyAcceptedCanBeCurrentMessage,
+  canChangePersistedQuoteCustomer,
   parentChainIntroducesCycle,
+  parentRevisionChainTooDeepMessage,
   parentSwitchConfirmMessage,
   partialJobLinkFailureMessage,
   pickCommercialCurrentBackfillId,
   quoteBuilderHeading,
   quoteBuilderNewHref,
+  quoteCustomerChangeBlockedMessage,
   quoteEditorReturnHref,
   quoteTypeFromParent,
   reconcileLinkedJobsForCustomerChange,
@@ -495,6 +498,15 @@ describe('quote-commercial helpers', () => {
       }).ok,
       true,
     );
+    assert.equal(
+      parentChainIntroducesCycle({
+        parentId: 'p1',
+        parentAncestorIds: Array.from({ length: 20 }, (_, i) => `a${i}`),
+        chainExceedsMaxDepth: true,
+      }).ok,
+      false,
+    );
+    assert.match(parentRevisionChainTooDeepMessage(), /too deep/);
 
     assert.deepEqual(
       reconcileLinkedJobsForCustomerChange({
@@ -511,6 +523,73 @@ describe('quote-commercial helpers', () => {
         linkedJobIds: ['j1', 'j1'],
       }),
       ['j1'],
+    );
+  });
+
+  it('blocks customer change on persisted quotes with job associations until unlinked', () => {
+    // Unsaved draft may change customer even with pending job selections (cleared in UI).
+    assert.equal(
+      canChangePersistedQuoteCustomer({
+        quoteIsPersisted: false,
+        previousCustomerId: 'c1',
+        nextCustomerId: 'c2',
+        associatedJobCount: 2,
+      }).ok,
+      true,
+    );
+
+    // Saved standard quote with one linked job.
+    const standardBlocked = canChangePersistedQuoteCustomer({
+      quoteIsPersisted: true,
+      previousCustomerId: 'c1',
+      nextCustomerId: 'c2',
+      associatedJobCount: 1,
+    });
+    assert.equal(standardBlocked.ok, false);
+    assert.equal(standardBlocked.ok === false && standardBlocked.message, quoteCustomerChangeBlockedMessage());
+
+    // Variation with multiple linked jobs.
+    assert.equal(
+      canChangePersistedQuoteCustomer({
+        quoteIsPersisted: true,
+        previousCustomerId: 'c1',
+        nextCustomerId: 'c2',
+        associatedJobCount: 3,
+      }).ok,
+      false,
+    );
+
+    // Legacy association still counts as associatedJobCount >= 1.
+    assert.equal(
+      canChangePersistedQuoteCustomer({
+        quoteIsPersisted: true,
+        previousCustomerId: 'c1',
+        nextCustomerId: 'c2',
+        associatedJobCount: 1,
+      }).ok,
+      false,
+    );
+
+    // Same customer is fine.
+    assert.equal(
+      canChangePersistedQuoteCustomer({
+        quoteIsPersisted: true,
+        previousCustomerId: 'c1',
+        nextCustomerId: 'c1',
+        associatedJobCount: 2,
+      }).ok,
+      true,
+    );
+
+    // After safe unlinking, customer change is allowed.
+    assert.equal(
+      canChangePersistedQuoteCustomer({
+        quoteIsPersisted: true,
+        previousCustomerId: 'c1',
+        nextCustomerId: 'c2',
+        associatedJobCount: 0,
+      }).ok,
+      true,
     );
   });
 });

@@ -19,10 +19,12 @@ import {createQuoteCustomer} from './customer-action';
 import type {CustomerMatchRecord} from '@/lib/customer-match';
 import {
   buildVariationPrefillFromParent,
+  canChangePersistedQuoteCustomer,
   draftHasUnsavedCommercialContent,
   groupParentQuotesByJob,
   parentSwitchConfirmMessage,
   quoteBuilderHeading,
+  quoteCustomerChangeBlockedMessage,
   quoteEditorReturnHref,
   quoteTypeFromParent,
   reconcileLinkedJobsForCustomerChange,
@@ -213,18 +215,33 @@ export default function QuoteEditor({
   setJobSearchId('');
  }
  function selectMatchedCustomer(match:CustomerMatchRecord){
-  setCustomerList(x=>x.some(c=>c.id===match.id)?x:[...x,match]);
   if(match.id!==draft.customerId){
+   const associatedCount=new Set([
+    ...associatedJobs.map(j=>j.id),
+    ...pendingJobIds,
+    ...(draft.linkedJobIds||[]),
+   ]).size;
+   const gate=canChangePersistedQuoteCustomer({
+    quoteIsPersisted:Boolean(draft.id),
+    previousCustomerId:draft.customerId,
+    nextCustomerId:match.id,
+    associatedJobCount:associatedCount,
+   });
+   if(!gate.ok){
+    setFeedback(gate.message||quoteCustomerChangeBlockedMessage());
+    return;
+   }
    clearJobsForCustomerChange();
   }
+  setCustomerList(x=>x.some(c=>c.id===match.id)?x:[...x,match]);
   setDraft(d=>({
    ...d,
    customerId:match.id,
    enquiryId:'',
    addressId:'',
    address:'',
-   parentQuoteId:'',
-   linkedJobId:'',
+   parentQuoteId:match.id===d.customerId?d.parentQuoteId:'',
+   linkedJobId:match.id===d.customerId?d.linkedJobId:'',
    linkedJobIds:reconcileLinkedJobsForCustomerChange({
     previousCustomerId:d.customerId,
     nextCustomerId:match.id,
@@ -243,6 +260,21 @@ export default function QuoteEditor({
    const result=await createQuoteCustomer(customerForm.name,customerForm.email,customerForm.phone,allowDuplicate);
    setFeedback(result.message);
    if(result.ok&&result.customer){
+    const associatedCount=new Set([
+     ...associatedJobs.map(j=>j.id),
+     ...pendingJobIds,
+     ...(draft.linkedJobIds||[]),
+    ]).size;
+    const gate=canChangePersistedQuoteCustomer({
+     quoteIsPersisted:Boolean(draft.id),
+     previousCustomerId:draft.customerId,
+     nextCustomerId:result.customer.id,
+     associatedJobCount:associatedCount,
+    });
+    if(!gate.ok){
+     setFeedback(gate.message||quoteCustomerChangeBlockedMessage());
+     return;
+    }
     setCustomerList(x=>x.some(c=>c.id===result.customer!.id)?x:[...x,result.customer!]);
     clearJobsForCustomerChange();
     setDraft(d=>({
@@ -332,7 +364,23 @@ export default function QuoteEditor({
 
  function handleCustomerChange(nextCustomerId:string):boolean{
   if(!nextCustomerId||nextCustomerId===draft.customerId)return true;
-  const hasJobs=associatedJobs.length>0||pendingJobIds.length>0||(draft.linkedJobIds||[]).length>0;
+  const associatedCount=new Set([
+   ...associatedJobs.map(j=>j.id),
+   ...pendingJobIds,
+   ...(draft.linkedJobIds||[]),
+  ]).size;
+  // Persisted quotes must unlink jobs first (DB also enforces this).
+  const persistedGate=canChangePersistedQuoteCustomer({
+   quoteIsPersisted:Boolean(draft.id),
+   previousCustomerId:draft.customerId,
+   nextCustomerId,
+   associatedJobCount:associatedCount,
+  });
+  if(!persistedGate.ok){
+   setFeedback(persistedGate.message||quoteCustomerChangeBlockedMessage());
+   return false;
+  }
+  const hasJobs=associatedCount>0;
   const hasParent=draft.quoteType==='variation'&&Boolean(draft.parentQuoteId);
   if(hasParent||hasJobs){
    const parts=[

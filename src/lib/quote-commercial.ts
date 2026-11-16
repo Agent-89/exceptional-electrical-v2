@@ -454,7 +454,12 @@ export function parentChainIntroducesCycle(args: {
   editingQuoteId?: string | null;
   /** Ordered ancestor ids of the selected parent (parent, grandparent, …). */
   parentAncestorIds: string[];
+  /** True when the walk stopped because max depth was reached with more parents remaining. */
+  chainExceedsMaxDepth?: boolean;
 }): { ok: true } | { ok: false; message: string } {
+  if (args.chainExceedsMaxDepth) {
+    return { ok: false, message: parentRevisionChainTooDeepMessage() };
+  }
   if (args.editingQuoteId && args.parentId === args.editingQuoteId) {
     return { ok: false, message: 'A quote cannot revise itself.' };
   }
@@ -467,6 +472,36 @@ export function parentChainIntroducesCycle(args: {
       return { ok: false, message: 'That parent has a circular revision chain and cannot be used.' };
     }
     seen.add(id);
+  }
+  return { ok: true };
+}
+
+export function parentRevisionChainTooDeepMessage(): string {
+  return 'Revision chain is too deep to validate safely. Choose a closer parent quote.';
+}
+
+export const QUOTE_PARENT_ANCESTOR_MAX_DEPTH = 20;
+
+export function quoteCustomerChangeBlockedMessage(): string {
+  return 'Unlink all jobs from this quote before changing the customer. Existing job associations (including legacy primary links) must be removed first.';
+}
+
+/**
+ * Persisted quotes with any job association (join table or legacy primary) cannot change customer.
+ * Unsaved quotes may change freely.
+ */
+export function canChangePersistedQuoteCustomer(args: {
+  quoteIsPersisted: boolean;
+  previousCustomerId: string | null | undefined;
+  nextCustomerId: string | null | undefined;
+  associatedJobCount: number;
+}): { ok: true } | { ok: false; message: string } {
+  if (!args.quoteIsPersisted) return { ok: true };
+  const prev = (args.previousCustomerId || '').trim();
+  const next = (args.nextCustomerId || '').trim();
+  if (!next || prev === next) return { ok: true };
+  if (args.associatedJobCount > 0) {
+    return { ok: false, message: quoteCustomerChangeBlockedMessage() };
   }
   return { ok: true };
 }
