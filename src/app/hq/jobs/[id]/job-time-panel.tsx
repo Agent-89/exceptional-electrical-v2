@@ -12,7 +12,7 @@ import {
   jobTimeListSummary,
   type JobTimeListFilter,
 } from '@/lib/job-time-list';
-import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
+import TimeEntryReviewForm from '@/app/hq/time-entry-review-form';
 
 function perthWhen(iso: string): string {
   return new Date(iso).toLocaleString('en-AU', {
@@ -40,14 +40,6 @@ function perthClock(iso: string | null): string {
   });
 }
 
-function perthInputValue(iso: string | null): string {
-  if (!iso) return '';
-  return new Date(iso)
-    .toLocaleString('sv-SE', { timeZone: 'Australia/Perth', hour12: false })
-    .replace(' ', 'T')
-    .slice(0, 16);
-}
-
 function TimeEntryReview({ entry }: { entry: JobDetailTimeEntry }) {
   if (!canReviewJobTimeEntry(entry.status)) return null;
   return (
@@ -61,58 +53,7 @@ function TimeEntryReview({ entry }: { entry: JobDetailTimeEntry }) {
           ＋
         </span>
       </summary>
-      <form action={reviewTimeEntryAction} className="ee-edit-form">
-        <input type="hidden" name="entry_id" value={entry.id} />
-        <label>
-          Billable minutes
-          <input
-            name="billable_minutes"
-            type="number"
-            min={0}
-            defaultValue={entry.billableMinutes ?? entry.workedMinutes ?? 0}
-          />
-        </label>
-        <label>
-          Rejection reason
-          <textarea name="rejection_reason" rows={2} maxLength={2000} />
-        </label>
-        <label>
-          Corrected start (Perth)
-          <input
-            type="datetime-local"
-            name="started_at"
-            defaultValue={perthInputValue(entry.startedAt)}
-          />
-        </label>
-        <label>
-          Corrected end (Perth)
-          <input type="datetime-local" name="ended_at" defaultValue={perthInputValue(entry.endedAt)} />
-        </label>
-        <label>
-          Break minutes
-          <input type="number" name="break_minutes" min={0} defaultValue={entry.breakMinutes} />
-        </label>
-        <label>
-          Correction note
-          <textarea
-            name="correction_note"
-            rows={2}
-            maxLength={2000}
-            placeholder="Required when saving a correction"
-          />
-        </label>
-        <div className="ee-review-actions">
-          <button name="decision" value="approve" type="submit">
-            Approve
-          </button>
-          <button name="decision" value="reject" type="submit">
-            Reject
-          </button>
-          <button name="decision" value="correct" type="submit">
-            Save correction
-          </button>
-        </div>
-      </form>
+      <TimeEntryReviewForm entry={entry} />
     </details>
   );
 }

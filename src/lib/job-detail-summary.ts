@@ -6,6 +6,7 @@ import {
   isTerminalVisitOutcome,
   type VisitOutcomeStatus,
 } from '@/lib/tech-visit-report';
+import { isFollowUpOutstanding } from '@/lib/job-follow-up';
 
 export type JobDetailTimeEntry = {
   id: string;
@@ -40,6 +41,10 @@ export type JobDetailAppointment = {
   status: string;
   fieldStatus: string;
   followUp: boolean;
+  followUpResolvedAt?: string | null;
+  followUpLinkedAppointmentId?: string | null;
+  followUpResolution?: 'linked_visit' | 'office_cleared' | null;
+  followUpResolutionNote?: string | null;
   completionNote: string | null;
   outstanding: string | null;
   issues: string | null;
@@ -185,12 +190,12 @@ export function buildJobAttentionItems(input: {
   }
 
   for (const a of input.appointments) {
-    if (a.followUp) {
+    if (isFollowUpOutstanding(a)) {
       items.push({
         id: `follow-up-${a.id}`,
         kind: 'follow_up',
         label: 'Further visit flagged',
-        detail: `${perthDateLabel(a.startsAt)} · shared outcome ${FIELD_STATUS_LABELS[a.fieldStatus as FieldStatus] ?? a.fieldStatus}`,
+        detail: `${perthDateLabel(a.startsAt)} · shared outcome ${FIELD_STATUS_LABELS[a.fieldStatus as FieldStatus] ?? a.fieldStatus} · resolve on Visits`,
       });
     }
     if (!isTerminalVisitOutcome(a.fieldStatus) && a.fieldStatus !== 'scheduled') {

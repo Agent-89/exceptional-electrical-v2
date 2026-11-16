@@ -41,6 +41,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   time_approved: 'Time approved',
   time_rejected: 'Time rejected',
   time_corrected: 'Time corrected',
+  follow_up_resolved: 'Further visit resolved',
 };
 
 type LinkedQuote = {
@@ -84,6 +85,8 @@ export default async function JobPage({
   const { data: job } = await db.from('jobs').select('*').eq('id', id).maybeSingle();
   if (!job) notFound();
 
+  const appointmentSelectWithResolution =
+    'id,starts_at,ends_at,notes,status,field_status,field_follow_up_required,field_follow_up_resolved_at,field_follow_up_resolution,field_follow_up_linked_appointment_id,field_follow_up_resolution_note,field_completion_note,field_outstanding_work,field_issues';
   const appointmentSelectWithField =
     'id,starts_at,ends_at,notes,status,field_status,field_follow_up_required,field_completion_note,field_outstanding_work,field_issues';
   const appointmentSelectBase = 'id,starts_at,ends_at,notes,status';
@@ -110,7 +113,7 @@ export default async function JobPage({
     db.from('job_assignments').select('staff_id').eq('job_id', id),
     db
       .from('job_appointments')
-      .select(appointmentSelectWithField)
+      .select(appointmentSelectWithResolution)
       .eq('job_id', id)
       .order('starts_at', { ascending: true }),
     db.from('customers').select('id,name').order('name').limit(1000),
@@ -123,17 +126,30 @@ export default async function JobPage({
       : Promise.resolve({ data: null, error: null }),
   ]);
 
-  const appointments = appointmentsResult.error
-    ? (
-        await db
-          .from('job_appointments')
-          .select(appointmentSelectBase)
-          .eq('job_id', id)
-          .order('starts_at', { ascending: true })
-      ).data
-    : appointmentsResult.data;
+  // Soft-fallback across schema vintages (base → field ops → follow-up resolution columns).
+  let appointments: Array<Record<string, unknown>> | null =
+    (appointmentsResult.data as Array<Record<string, unknown>> | null) ?? null;
+  if (appointmentsResult.error) {
+    const fieldOnly = await db
+      .from('job_appointments')
+      .select(appointmentSelectWithField)
+      .eq('job_id', id)
+      .order('starts_at', { ascending: true });
+    if (fieldOnly.error) {
+      appointments =
+        ((
+          await db
+            .from('job_appointments')
+            .select(appointmentSelectBase)
+            .eq('job_id', id)
+            .order('starts_at', { ascending: true })
+        ).data as Array<Record<string, unknown>> | null) ?? null;
+    } else {
+      appointments = (fieldOnly.data as Array<Record<string, unknown>> | null) ?? null;
+    }
+  }
 
-  const appointmentIds = (appointments ?? []).map((a) => a.id as string);
+  const appointmentIds = (appointments ?? []).map((a) => String(a.id));
   const { data: appointmentStaffRows } = appointmentIds.length
     ? await db
         .from('job_appointment_staff')
@@ -173,22 +189,29 @@ export default async function JobPage({
   }
 
   const upcoming = (appointments ?? []).find(
-    (a) => a.status === 'scheduled' && new Date(a.ends_at).getTime() >= Date.now(),
+    (a) => a.status === 'scheduled' && new Date(String(a.ends_at)).getTime() >= Date.now(),
   );
-  const upcomingCrew = upcoming ? visitCrewByAppointment.get(upcoming.id as string) ?? [] : [];
+  const upcomingCrew = upcoming ? visitCrewByAppointment.get(String(upcoming.id)) ?? [] : [];
 
   const appointmentViews = (appointments ?? []).map((a) => ({
-    id: a.id as string,
-    startsAt: a.starts_at as string,
-    endsAt: a.ends_at as string,
-    status: a.status as string,
-    fieldStatus: (a as { field_status?: string }).field_status ?? 'scheduled',
-    followUp: Boolean((a as { field_follow_up_required?: boolean }).field_follow_up_required),
-    completionNote: (a as { field_completion_note?: string | null }).field_completion_note ?? null,
-    outstanding: (a as { field_outstanding_work?: string | null }).field_outstanding_work ?? null,
-    issues: (a as { field_issues?: string | null }).field_issues ?? null,
-    electricianNames: visitCrewByAppointment.get(a.id as string) ?? [],
-    scheduleNotes: (a.notes as string | null) ?? null,
+    id: String(a.id),
+    startsAt: String(a.starts_at),
+    endsAt: String(a.ends_at),
+    status: String(a.status),
+    fieldStatus: (a.field_status as string | undefined) ?? 'scheduled',
+    followUp: Boolean(a.field_follow_up_required),
+    followUpResolvedAt: (a.field_follow_up_resolved_at as string | null | undefined) ?? null,
+    followUpLinkedAppointmentId:
+      (a.field_follow_up_linked_appointment_id as string | null | undefined) ?? null,
+    followUpResolution:
+      (a.field_follow_up_resolution as 'linked_visit' | 'office_cleared' | null | undefined) ?? null,
+    followUpResolutionNote:
+      (a.field_follow_up_resolution_note as string | null | undefined) ?? null,
+    completionNote: (a.field_completion_note as string | null | undefined) ?? null,
+    outstanding: (a.field_outstanding_work as string | null | undefined) ?? null,
+    issues: (a.field_issues as string | null | undefined) ?? null,
+    electricianNames: visitCrewByAppointment.get(String(a.id)) ?? [],
+    scheduleNotes: (a.notes as string | null | undefined) ?? null,
   }));
 
   const field = {
@@ -694,7 +717,15 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-edit-form button{justify-self:start}
 .ee-review-actions{display:flex;flex-wrap:wrap;gap:8px}
 .ee-review-actions button{border:1px solid #d4e1ed;border-radius:10px;background:#fff;color:#17669e;padding:10px 12px;min-height:44px;font:inherit;font-weight:800;cursor:pointer}
+.ee-review-actions button:disabled{opacity:.6;cursor:wait}
 .ee-review-actions button[value=approve]{background:#1688e9;border-color:#1688e9;color:#fff}
+.ee-form-error{margin:0;color:#b42318;font-size:13px;font-weight:700}
+.ee-form-success{margin:0;color:#0875c9;font-size:13px;font-weight:700}
+.ee-time-calc{display:grid;gap:4px}
+.ee-time-calc p{margin:0}
+.ee-billable-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:-6px}
+.ee-billable-manual{color:#9a3412;font-size:13px;font-weight:700}
+.ee-follow-up-resolve{margin-top:12px;padding-top:12px;border-top:1px solid #e1e8f0}
 .ee-team-list{display:grid;gap:10px}
 .ee-team-list>div{display:flex;align-items:center;gap:12px}
 .ee-team-list form{margin-left:auto}

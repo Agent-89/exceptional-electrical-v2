@@ -3,7 +3,7 @@ import { dbAdmin, requireOfficeUser } from '@/lib/hq-auth';
 import { formatJobNumber } from '@/lib/perth-day';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import { aggregateLabourByJob } from '@/lib/tech-time-multi';
-import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
+import TimeEntryReviewForm from '@/app/hq/time-entry-review-form';
 import '../hq.css';
 
 export const dynamic = 'force-dynamic';
@@ -24,14 +24,6 @@ type EntryRow = {
   note: string | null;
   original_worked_minutes: number | null;
 };
-
-function perthInputValue(iso: string | null): string {
-  if (!iso) return '';
-  return new Date(iso)
-    .toLocaleString('sv-SE', { timeZone: 'Australia/Perth', hour12: false })
-    .replace(' ', 'T')
-    .slice(0, 16);
-}
 
 export default async function TimesheetsPage({
   searchParams,
@@ -282,54 +274,17 @@ export default async function TimesheetsPage({
                   {canReview ? (
                     <details>
                       <summary>Review</summary>
-                      <form action={reviewTimeEntryAction} className="ee-edit-form">
-                        <input type="hidden" name="entry_id" value={entry.id} />
-                        <label>
-                          Billable minutes
-                          <input
-                            name="billable_minutes"
-                            type="number"
-                            min={0}
-                            defaultValue={entry.billable_minutes ?? entry.worked_minutes ?? 0}
-                          />
-                        </label>
-                        <label>
-                          Corrected start (Perth)
-                          <input
-                            type="datetime-local"
-                            name="started_at"
-                            defaultValue={perthInputValue(entry.started_at)}
-                          />
-                        </label>
-                        <label>
-                          Corrected end (Perth)
-                          <input
-                            type="datetime-local"
-                            name="ended_at"
-                            defaultValue={perthInputValue(entry.ended_at)}
-                          />
-                        </label>
-                        <label>
-                          Break minutes
-                          <input type="number" name="break_minutes" min={0} defaultValue={entry.break_minutes} />
-                        </label>
-                        <label>
-                          Rejection / correction note
-                          <textarea name="rejection_reason" rows={2} maxLength={2000} />
-                          <textarea name="correction_note" rows={2} maxLength={2000} placeholder="Required for corrections" />
-                        </label>
-                        <div className="ee-timesheet-actions">
-                          <button name="decision" value="approve" type="submit">
-                            Approve
-                          </button>
-                          <button name="decision" value="reject" type="submit">
-                            Reject
-                          </button>
-                          <button name="decision" value="correct" type="submit">
-                            Save correction
-                          </button>
-                        </div>
-                      </form>
+                      <TimeEntryReviewForm
+                        entry={{
+                          id: entry.id,
+                          startedAt: entry.started_at,
+                          endedAt: entry.ended_at,
+                          breakMinutes: entry.break_minutes,
+                          workedMinutes: entry.worked_minutes,
+                          billableMinutes: entry.billable_minutes,
+                        }}
+                        actionsClassName="ee-timesheet-actions"
+                      />
                     </details>
                   ) : null}
                 </article>
@@ -347,6 +302,13 @@ export default async function TimesheetsPage({
 .ee-timesheet-row a{color:#0875c9;text-decoration:none;font-weight:700}
 .ee-timesheet-actions{display:flex;flex-wrap:wrap;gap:8px}
 .ee-timesheet-actions button{border:1px solid #d4e1ed;border-radius:8px;background:#fff;padding:10px 12px;cursor:pointer;font-weight:700}
+.ee-timesheet-actions button:disabled{opacity:.6;cursor:wait}
+.ee-form-error{margin:0;color:#b42318;font-size:13px;font-weight:700}
+.ee-form-success{margin:0;color:#0875c9;font-size:13px;font-weight:700}
+.ee-time-calc{display:grid;gap:4px}
+.ee-time-calc p{margin:0}
+.ee-billable-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:-6px}
+.ee-billable-manual{color:#9a3412;font-size:13px;font-weight:700}
 .ee-timesheet-actions button[value=approve]{background:#1688e9;border-color:#1688e9;color:#fff}
 `}</style>
     </main>
