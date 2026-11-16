@@ -6,8 +6,8 @@ import {
   commercialSchemaMissingMessage,
   interpretMakeCurrentResult,
   isMissingCommercialSchemaError,
+  uniqueJobIds,
   validateVariationParentSelection,
-  variationParentJobCompatible,
 } from '@/lib/quote-commercial';
 import {canLinkQuoteToJob,interpretJobQuoteAtomicResult} from '@/lib/job-quotes';
 import {isMissingJobQuotesRelation} from '@/lib/job-quotes-store';
@@ -31,8 +31,10 @@ export type QuoteDraft={
   /** standard | variation — variation requires parentQuoteId */
   quoteType?:'standard'|'variation';
   parentQuoteId?:string;
-  /** Optional / contextual job to link after save (does not set commercial current). */
+  /** @deprecated Prefer linkedJobIds. Kept for callers that pass a single job. */
   linkedJobId?:string;
+  /** Jobs to associate after save (same customer; duplicates ignored). */
+  linkedJobIds?:string[];
 };
 
 const validId=(s:string)=>/^[0-9a-f-]{36}$/i.test(s);
@@ -42,7 +44,7 @@ function missingJobQuoteRpc(error:{message?:string;code?:string}|null):boolean{
   const message=error.message||'';
   return(
     error.code==='PGRST202'||
-    /job_quote_link_atomic/i.test(message)||
+    /job_quote_link_atomic|job_quote_unlink_atomic/i.test(message)||
     /could not find the function/i.test(message)
   );
 }
@@ -84,7 +86,6 @@ async function assertVariationParent(args:{
   quoteType:'standard'|'variation';
   parentQuoteId:string;
   customerId:string;
-  linkedJobId:string;
 }):Promise<{ok:true;parent:{id:string;customer_id:string|null;revision_number:number}}|{ok:false;message:string}>{
   if(args.quoteType!=='variation'){
     return{ok:true,parent:{id:'',customer_id:null,revision_number:0}};
@@ -94,10 +95,13 @@ async function assertVariationParent(args:{
   }
   const {data:parent,error}=await args.db
     .from('quotes')
-    .select('id,customer_id,revision_number')
+    .select('id,customer_id,revision_number,status')
     .eq('id',args.parentQuoteId)
     .maybeSingle();
   if(error||!parent)return{ok:false,message:'Parent quote not found.'};
+  if(['cancelled','expired','superseded','declined'].includes(String(parent.status||''))){
+    return{ok:false,message:'That quote cannot be used as a variation parent.'};
+  }
 
   const customerCheck=validateVariationParentSelection({
     quoteType:'variation',
@@ -107,30 +111,11 @@ async function assertVariationParent(args:{
   });
   if(!customerCheck.ok)return customerCheck;
 
-  if(args.linkedJobId&&validId(args.linkedJobId)){
-    const parentJobIds:string[]=[];
-    const {data:links,error:linkError}=await args.db
-      .from('job_quotes')
-      .select('job_id')
-      .eq('quote_id',parent.id);
-    if(linkError&&!isMissingJobQuotesRelation(linkError)){
-      return{ok:false,message:'Unable to validate parent job compatibility.'};
-    }
-    for(const row of links||[]){
-      if(row.job_id)parentJobIds.push(String(row.job_id));
-    }
-    const {data:legacyJobs}=await args.db.from('jobs').select('id').eq('quote_id',parent.id);
-    for(const row of legacyJobs||[]){
-      if(row.id&&!parentJobIds.includes(String(row.id)))parentJobIds.push(String(row.id));
-    }
-    const jobCheck=variationParentJobCompatible({
-      jobId:args.linkedJobId,
-      parentLinkedJobIds:parentJobIds,
-    });
-    if(!jobCheck.ok)return jobCheck;
-  }
-
   return{ok:true,parent:{id:parent.id,customer_id:parent.customer_id,revision_number:Number(parent.revision_number)||0}};
+}
+
+function resolveLinkedJobIds(v:QuoteDraft):string[]{
+  return uniqueJobIds([...(v.linkedJobIds||[]),v.linkedJobId||'']).filter(validId);
 }
 
 export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:string;id?:string}>{
@@ -138,7 +123,8 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
  if(!canManageOfficeOps(user.role))return {ok:false,message:'No permission to edit quotes'};
  if((v.id&&!validId(v.id))||(v.customerId&&!validId(v.customerId))||(v.enquiryId&&!validId(v.enquiryId))||(v.addressId&&!validId(v.addressId)))return {ok:false,message:'Invalid record reference'};
  if(v.parentQuoteId&&!validId(v.parentQuoteId))return {ok:false,message:'Invalid parent quote reference'};
- if(v.linkedJobId&&!validId(v.linkedJobId))return {ok:false,message:'Invalid linked job reference'};
+ const linkedJobIds=resolveLinkedJobIds(v);
+ if(linkedJobIds.some(id=>!validId(id)))return {ok:false,message:'Invalid linked job reference'};
  if(!v.title.trim())return {ok:false,message:'Enter a quote title'};
  if(v.title.length>200||v.scope.length>12000||v.address.length>1500||v.internalNotes.length>6000||v.lines.length>100)return {ok:false,message:'Quote exceeds field limits'};
  if(!['itemised','total_only'].includes(v.display)||!['fixed','detailed','mixed'].includes(v.mode))return {ok:false,message:'Invalid quote options'};
@@ -153,7 +139,6 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
     quoteType,
     parentQuoteId:v.parentQuoteId||'',
     customerId:v.customerId,
-    linkedJobId:v.linkedJobId||'',
   });
   if(!parentCheck.ok)return parentCheck;
  }
@@ -194,24 +179,75 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
  }
 
  let message='Draft saved';
- if(v.linkedJobId){
+ const linkMessages:string[]=[];
+ for(const jobId of linkedJobIds){
   const link=await linkQuoteAfterSave({
    db,
-   jobId:v.linkedJobId,
+   jobId,
    quoteId:String(id),
    actorId:user.id,
    associationKind:quoteType==='variation'?'variation':'quote',
   });
   if(!link.ok){
-   message=`Draft saved. ${link.message||'Job link needs review.'}`;
+   linkMessages.push(link.message||'Job link needs review.');
   }else{
-   message='Draft saved and linked to job.';
-   revalidatePath(`/hq/jobs/${v.linkedJobId}`);
+   revalidatePath(`/hq/jobs/${jobId}`);
   }
+ }
+ if(linkedJobIds.length&&!linkMessages.length){
+  message=linkedJobIds.length>1?'Draft saved and linked to jobs.':'Draft saved and linked to job.';
+ }else if(linkMessages.length){
+  message=`Draft saved. ${linkMessages[0]}`;
  }
 
  revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);
  return {ok:true,message,id:String(id)};
+}
+
+export async function associateQuoteWithJob(args:{
+  quoteId:string;
+  jobId:string;
+}):Promise<{ok:boolean;message:string}>{
+ const user=await requireHqUser();
+ if(!canManageOfficeOps(user.role))return{ok:false,message:'No permission to link quotes'};
+ if(!validId(args.quoteId)||!validId(args.jobId))return{ok:false,message:'Invalid record reference'};
+ const db=dbAdmin();
+ const {data:quote}=await db.from('quotes').select('id,customer_id,parent_quote_id').eq('id',args.quoteId).maybeSingle();
+ if(!quote)return{ok:false,message:'Quote not found.'};
+ const link=await linkQuoteAfterSave({
+  db,
+  jobId:args.jobId,
+  quoteId:args.quoteId,
+  actorId:user.id,
+  associationKind:quote.parent_quote_id?'variation':'quote',
+ });
+ if(!link.ok)return{ok:false,message:link.message||'Unable to link job.'};
+ revalidatePath(`/hq/quotes/${args.quoteId}`);
+ revalidatePath(`/hq/jobs/${args.jobId}`);
+ return{ok:true,message:'Job linked to quote.'};
+}
+
+export async function unlinkQuoteFromJob(args:{
+  quoteId:string;
+  jobId:string;
+}):Promise<{ok:boolean;message:string}>{
+ const user=await requireHqUser();
+ if(!canManageOfficeOps(user.role))return{ok:false,message:'No permission to unlink quotes'};
+ if(!validId(args.quoteId)||!validId(args.jobId))return{ok:false,message:'Invalid record reference'};
+ const db=dbAdmin();
+ const {data,error}=await db.rpc('job_quote_unlink_atomic',{
+  p_job_id:args.jobId,
+  p_quote_id:args.quoteId,
+  p_actor:user.id,
+ });
+ if(error&&(isMissingJobQuotesRelation(error)||missingJobQuoteRpc(error))){
+  return{ok:false,message:'Unlinking needs the job_quotes migration.'};
+ }
+ const result=interpretJobQuoteAtomicResult(data,'Unable to unlink job.');
+ if(error||!result.ok)return{ok:false,message:result.message||error?.message||'Unable to unlink job.'};
+ revalidatePath(`/hq/quotes/${args.quoteId}`);
+ revalidatePath(`/hq/jobs/${args.jobId}`);
+ return{ok:true,message:result.message||'Job unlinked from quote.'};
 }
 
 export async function approveQuote(id:string):Promise<{ok:boolean;message:string}>{
@@ -339,3 +375,68 @@ export async function markQuoteAccepted(id:string):Promise<{ok:boolean;message:s
 /** Records that the office issued the quote. Does not send email. */
 export async function markQuoteSent(id:string){return advanceQuoteStatus(id,'sent')}
 export async function markQuoteDeclined(id:string){return advanceQuoteStatus(id,'declined')}
+
+/** Immediate-parent commercial snapshot for variation prefill (deep-copied lines; no ids/status). */
+export async function getParentQuotePrefill(parentId:string):Promise<{
+  ok:boolean;
+  message?:string;
+  prefill?:{
+    title:string;
+    scope:string;
+    inclusions:string;
+    exclusions:string;
+    notes:string;
+    internalNotes:string;
+    display:string;
+    mode:string;
+    address:string;
+    addressId:string;
+    customerId:string;
+    lines:{description:string;category:string;quantity:number;unit:string;price:number;cost:number|null;gst:boolean}[];
+  };
+}>{
+  const user=await requireHqUser();
+  if(!canManageOfficeOps(user.role))return{ok:false,message:'No permission'};
+  if(!validId(parentId))return{ok:false,message:'Invalid parent quote'};
+  const db=dbAdmin();
+  const {data:parent}=await db
+    .from('quotes')
+    .select('id,title,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,site_address_id,site_address_snapshot,customer_id,status')
+    .eq('id',parentId)
+    .maybeSingle();
+  if(!parent)return{ok:false,message:'Parent quote not found'};
+  if(['cancelled','expired','superseded','declined'].includes(String(parent.status||''))){
+    return{ok:false,message:'That quote cannot be used as a variation parent.'};
+  }
+  const {data:items}=await db
+    .from('quote_items')
+    .select('description,category,quantity,unit,unit_price_cents,internal_unit_cost_cents,gst_applicable')
+    .eq('quote_id',parentId)
+    .order('position');
+  const snap=parent.site_address_snapshot as {address?:string}|null;
+  return{
+    ok:true,
+    prefill:{
+      title:String(parent.title||''),
+      scope:String(parent.scope_of_work||''),
+      inclusions:String(parent.inclusions||''),
+      exclusions:String(parent.exclusions||''),
+      notes:String(parent.customer_notes||''),
+      internalNotes:String(parent.internal_notes||''),
+      display:String(parent.customer_display||'itemised'),
+      mode:String(parent.pricing_mode||'detailed'),
+      address:String(snap?.address||''),
+      addressId:String(parent.site_address_id||''),
+      customerId:String(parent.customer_id||''),
+      lines:(items||[]).map(i=>({
+        description:String(i.description||''),
+        category:String(i.category||'other'),
+        quantity:Number(i.quantity)||0,
+        unit:String(i.unit||'each'),
+        price:Number(i.unit_price_cents)||0,
+        cost:i.internal_unit_cost_cents===null||i.internal_unit_cost_cents===undefined?null:Number(i.internal_unit_cost_cents),
+        gst:Boolean(i.gst_applicable),
+      })),
+    },
+  };
+}

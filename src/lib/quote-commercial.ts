@@ -3,6 +3,16 @@
 export const QUOTE_COMMERCIAL_STATUSES = ['approved', 'sent', 'accepted'] as const;
 export type QuoteCommercialStatus = (typeof QUOTE_COMMERCIAL_STATUSES)[number];
 
+/** Statuses that may be selected as a variation parent. */
+export const VARIATION_PARENT_ELIGIBLE_STATUSES = [
+  'draft',
+  'changes_requested',
+  'pending_approval',
+  'approved',
+  'sent',
+  'accepted',
+] as const;
+
 export function isQuoteCommercialStatus(status: string): status is QuoteCommercialStatus {
   return (QUOTE_COMMERCIAL_STATUSES as readonly string[]).includes(status);
 }
@@ -45,10 +55,6 @@ export function onlyAcceptedCanBeCurrentMessage(): string {
   return 'Only accepted quotes can be the current commercial version. Draft, approved and sent quotes are not commercial current.';
 }
 
-/**
- * Backfill / eligibility: commercial current is the accepted commercial version only.
- * A family may have no current member.
- */
 export function isEligibleCommercialCurrentStatus(status: string): boolean {
   return status === 'accepted';
 }
@@ -66,20 +72,13 @@ export function pickCommercialCurrentBackfillId(
   return accepted[0]?.id ?? null;
 }
 
-/**
- * Costing prep only — never sum superseded + replacement totals.
- * C2 owns billing reconciliation; do not treat this flag as invoice authority.
- */
 export function resolveCommercialCurrentQuoteId(
   family: { id: string; isCommercialCurrent: boolean; status: string }[],
 ): string | null {
-  const current = family.find(
-    (q) => q.isCommercialCurrent && q.status === 'accepted',
-  );
+  const current = family.find((q) => q.isCommercialCurrent && q.status === 'accepted');
   return current?.id ?? null;
 }
 
-/** Prep helper for invoices: take the current accepted member's total only. */
 export function resolveCommercialCurrentTotalCents(
   family: { id: string; isCommercialCurrent: boolean; status: string; totalCents: number }[],
 ): number {
@@ -88,7 +87,6 @@ export function resolveCommercialCurrentTotalCents(
   return family.find((q) => q.id === id)?.totalCents ?? 0;
 }
 
-/** Revisions auto-make-current inside accept_quote_atomic; standards also become current on accept. */
 export function shouldAutoMakeCurrentOnAccept(args: {
   parentQuoteId: string | null | undefined;
   statusBeforeAccept: string;
@@ -96,13 +94,16 @@ export function shouldAutoMakeCurrentOnAccept(args: {
   return args.statusBeforeAccept === 'approved' || args.statusBeforeAccept === 'sent';
 }
 
-export type QuoteSaveIntent = 'continue' | 'return_to_job';
+export type QuoteSaveIntent = 'continue' | 'return_to_job' | 'return_to_quotes';
 
 export function quoteEditorReturnHref(args: {
   jobId: string | null | undefined;
   intent: QuoteSaveIntent;
   quoteId?: string | null;
 }): string | null {
+  if (args.intent === 'return_to_quotes') {
+    return args.quoteId ? `/hq/quotes/${args.quoteId}` : '/hq/quotes';
+  }
   if (args.intent !== 'return_to_job' || !args.jobId) return null;
   const base = `/hq/jobs/${args.jobId}?tab=quotes`;
   return args.quoteId ? `${base}&notice=${encodeURIComponent('Quote saved and linked.')}` : base;
@@ -122,7 +123,7 @@ export function quoteBuilderNewHref(args: {
   return qs ? `/hq/quotes/new?${qs}` : '/hq/quotes/new';
 }
 
-/** Parent must share the job context when already linked elsewhere. */
+/** Legacy helper: job-scoped parent check (optional). Parent may be any same-customer quote. */
 export function variationParentJobCompatible(args: {
   jobId: string | null | undefined;
   parentLinkedJobIds: string[];
@@ -148,10 +149,189 @@ export function validateVariationParentSelection(args: {
   return { ok: true };
 }
 
+export function isEligibleVariationParentStatus(status: string): boolean {
+  return (VARIATION_PARENT_ELIGIBLE_STATUSES as readonly string[]).includes(status);
+}
+
+/** Exclude self, cancelled/superseded/declined/expired, and circular ancestors. */
+export function isValidVariationParentCandidate(args: {
+  candidateId: string;
+  candidateStatus: string;
+  candidateCustomerId: string | null | undefined;
+  quoteCustomerId: string | null | undefined;
+  editingQuoteId?: string | null;
+  /** Ancestor chain of the editing quote (parent → root). */
+  editingAncestorIds?: string[];
+}): boolean {
+  if (!args.candidateId) return false;
+  if (args.editingQuoteId && args.candidateId === args.editingQuoteId) return false;
+  if (args.editingAncestorIds?.includes(args.candidateId)) return false;
+  if (!isEligibleVariationParentStatus(args.candidateStatus)) return false;
+  if (!args.quoteCustomerId || !args.candidateCustomerId) return false;
+  if (args.quoteCustomerId !== args.candidateCustomerId) return false;
+  return true;
+}
+
+export type ParentQuoteOption = {
+  id: string;
+  quoteNumber: string;
+  title: string | null;
+  status: string;
+  revisionNumber?: number | null;
+  parentQuoteNumber?: string | null;
+  linkedJobs: { id: string; jobNumber: string | null; title: string | null }[];
+};
+
+export type ParentQuoteGroup = {
+  key: string;
+  label: string;
+  quotes: ParentQuoteOption[];
+};
+
+/** Group by first linked job; quotes with multiple jobs appear once under primary listing job or Unlinked. */
+export function groupParentQuotesByJob(options: ParentQuoteOption[]): ParentQuoteGroup[] {
+  const byJob = new Map<string, ParentQuoteGroup>();
+  const unlinked: ParentQuoteOption[] = [];
+  const seen = new Set<string>();
+
+  for (const option of options) {
+    if (seen.has(option.id)) continue;
+    seen.add(option.id);
+    if (!option.linkedJobs.length) {
+      unlinked.push(option);
+      continue;
+    }
+    const job = option.linkedJobs[0];
+    const key = job.id;
+    const existing = byJob.get(key);
+    if (existing) existing.quotes.push(option);
+    else {
+      byJob.set(key, {
+        key,
+        label: `${job.jobNumber || 'Job'} · ${job.title || 'Untitled job'}`,
+        quotes: [option],
+      });
+    }
+  }
+
+  const groups = [...byJob.values()].sort((a, b) => a.label.localeCompare(b.label));
+  if (unlinked.length) {
+    groups.push({ key: 'unlinked', label: 'Unlinked quotes', quotes: unlinked });
+  }
+  return groups;
+}
+
+export type PrefillLine = {
+  description: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  price: number;
+  cost: number | null;
+  gst: boolean;
+};
+
+export type PrefillCommercialContent = {
+  title: string;
+  scope: string;
+  inclusions: string;
+  exclusions: string;
+  notes: string;
+  internalNotes: string;
+  display: string;
+  mode: string;
+  address: string;
+  addressId: string;
+  lines: PrefillLine[];
+};
+
+export function variationTitleFromParent(parentTitle: string | null | undefined): string {
+  const base = String(parentTitle || 'Electrical work').trim() || 'Electrical work';
+  if (/^variation\b/i.test(base)) return base.slice(0, 200);
+  return `Variation — ${base}`.slice(0, 200);
+}
+
+/** Deep-copy commercial fields from an immediate parent (not root). Does not copy ids/status/current. */
+export function buildVariationPrefillFromParent(parent: {
+  title?: string | null;
+  scope?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
+  notes?: string | null;
+  internalNotes?: string | null;
+  display?: string | null;
+  mode?: string | null;
+  address?: string | null;
+  addressId?: string | null;
+  lines?: PrefillLine[] | null;
+}): PrefillCommercialContent {
+  const mode = parent.mode || 'detailed';
+  const lines = (parent.lines || []).map((line) => ({
+    description: line.description,
+    category: line.category,
+    quantity: Number(line.quantity) || 0,
+    unit: line.unit || 'each',
+    price: Number(line.price) || 0,
+    cost: line.cost === null || line.cost === undefined ? null : Number(line.cost),
+    gst: Boolean(line.gst),
+  }));
+  return {
+    title: variationTitleFromParent(parent.title),
+    scope: String(parent.scope || ''),
+    inclusions: String(parent.inclusions || ''),
+    exclusions: String(parent.exclusions || ''),
+    notes: String(parent.notes || ''),
+    internalNotes: String(parent.internalNotes || ''),
+    display: parent.display === 'total_only' ? 'total_only' : 'itemised',
+    mode: ['fixed', 'detailed', 'mixed'].includes(mode) ? mode : 'detailed',
+    address: String(parent.address || ''),
+    addressId: String(parent.addressId || ''),
+    lines,
+  };
+}
+
+export function draftHasUnsavedCommercialContent(draft: {
+  title?: string;
+  scope?: string;
+  inclusions?: string;
+  exclusions?: string;
+  notes?: string;
+  internalNotes?: string;
+  lines?: PrefillLine[];
+}): boolean {
+  if ((draft.title || '').trim()) return true;
+  if ((draft.scope || '').trim()) return true;
+  if ((draft.inclusions || '').trim()) return true;
+  if ((draft.exclusions || '').trim()) return true;
+  if ((draft.notes || '').trim()) return true;
+  if ((draft.internalNotes || '').trim()) return true;
+  return (draft.lines || []).some((line) => (line.description || '').trim() || Number(line.price) > 0);
+}
+
+export function parentSwitchConfirmMessage(): string {
+  return 'Replace the current quote content with a copy of the newly selected parent? Your unsaved edits will be lost.';
+}
+
+export function uniqueJobIds(ids: (string | null | undefined)[]): string[] {
+  const out: string[] = [];
+  for (const id of ids) {
+    const value = (id || '').trim();
+    if (!value || out.includes(value)) continue;
+    out.push(value);
+  }
+  return out;
+}
+
 export function interpretMakeCurrentResult(
   data: unknown,
   fallback = 'Unable to update commercial current version.',
-): { ok: boolean; message: string; quoteId?: string; requiresReview?: boolean; madeCommercialCurrent?: boolean } {
+): {
+  ok: boolean;
+  message: string;
+  quoteId?: string;
+  requiresReview?: boolean;
+  madeCommercialCurrent?: boolean;
+} {
   if (!data || typeof data !== 'object') return { ok: false, message: fallback };
   const row = data as Record<string, unknown>;
   const ok = row.ok === true;
@@ -184,15 +364,18 @@ export function commercialSchemaMissingMessage(): string {
   return 'Quote variations need the commercial-current migration. Apply it locally before using this feature.';
 }
 
-/** Primary badge vs commercial current are independent labels. */
 export function commercialCurrentLabel(isCommercialCurrent: boolean): string | null {
   return isCommercialCurrent ? 'Current commercial' : null;
 }
 
-/**
- * C1.1 does not establish whether historical invoices or payments exist outside HQ.
- * Do not auto-drive invoicing from is_commercial_current; full reconciliation is C2.
- */
 export function billingReconciliationDeferredMessage(): string {
   return 'C1.1 does not reconcile invoices or payments outside HQ. Billing decisions belong to C2.';
+}
+
+export function quoteBuilderHeading(args: {
+  savedNumber?: string | null;
+  quoteType: 'standard' | 'variation';
+}): string {
+  if (args.savedNumber) return args.savedNumber;
+  return args.quoteType === 'variation' ? 'New Variation' : 'New Quote';
 }

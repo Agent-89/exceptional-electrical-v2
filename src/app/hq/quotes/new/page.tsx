@@ -2,6 +2,7 @@ import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 import {canManageOfficeOps} from '@/lib/hq-roles';
 import {isMissingCommercialSchemaError} from '@/lib/quote-commercial';
 import {isMissingJobQuotesRelation} from '@/lib/job-quotes-store';
+import {loadCustomerJobs,loadParentQuoteOptions,type ParentOptionsDb} from '@/lib/quote-parent-options';
 import QuoteEditor from '../quote-editor';
 import '../../hq.css';
 
@@ -56,40 +57,50 @@ export default async function NewQuote({
     }
   }
 
-  let parentQuote:{id:string;quote_number:string;title:string|null;customer_id:string|null;revision_number:number|null}|null=null;
+  let parentQuote:{
+    id:string;
+    quote_number:string;
+    title:string|null;
+    customer_id:string|null;
+    revision_number:number|null;
+    scope_of_work?:string|null;
+    inclusions?:string|null;
+    exclusions?:string|null;
+    customer_notes?:string|null;
+    internal_notes?:string|null;
+    customer_display?:string|null;
+    pricing_mode?:string|null;
+    site_address_id?:string|null;
+    site_address_snapshot?:{address?:string}|null;
+  }|null=null;
+  let parentLines:{description:string;category:string;quantity:number;unit:string;price:number;cost:number|null;gst:boolean}[]=[];
+
   if(parentId){
     const {data:parent}=await db
       .from('quotes')
-      .select('id,quote_number,title,customer_id,revision_number')
+      .select('id,quote_number,title,customer_id,revision_number,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,site_address_id,site_address_snapshot')
       .eq('id',parentId)
       .maybeSingle();
     parentQuote=parent;
+    if(parent){
+      const {data:items}=await db
+        .from('quote_items')
+        .select('description,category,quantity,unit,unit_price_cents,internal_unit_cost_cents,gst_applicable')
+        .eq('quote_id',parent.id)
+        .order('position');
+      parentLines=(items||[]).map(i=>({
+        description:i.description,
+        category:i.category,
+        quantity:Number(i.quantity),
+        unit:i.unit,
+        price:Number(i.unit_price_cents),
+        cost:i.internal_unit_cost_cents===null?null:Number(i.internal_unit_cost_cents),
+        gst:i.gst_applicable,
+      }));
+    }
   }
 
   const customerId=jobCustomerId||parentQuote?.customer_id||e?.customer_id||'';
-
-  let parentOptions:{id:string;quote_number:string;title:string|null;status:string;revision_number?:number|null}[]=[];
-  if(customerId){
-    const {data:parents}=await db
-      .from('quotes')
-      .select('id,quote_number,title,status,revision_number')
-      .eq('customer_id',customerId)
-      .not('status','eq','cancelled')
-      .order('created_at',{ascending:false})
-      .limit(100);
-    parentOptions=parents||[];
-  }
-
-  let linkedJobOptions:{id:string;job_number:string|null;title:string|null}[]=[];
-  if(customerId&&!jobContext){
-    const {data:jobs}=await db
-      .from('jobs')
-      .select('id,job_number,title')
-      .eq('customer_id',customerId)
-      .order('updated_at',{ascending:false})
-      .limit(50);
-    linkedJobOptions=jobs||[];
-  }
 
   // Prefer commercial current / primary as default parent for job variations.
   let defaultParentId=parentQuote?.id||'';
@@ -118,9 +129,52 @@ export default async function NewQuote({
     }
   }
 
-  const titleSeed=asVariation
-    ?`Variation — ${(jobTitleSeed||parentQuote?.title||e?.service_category?.replaceAll('_',' ')||'Electrical work')}`.slice(0,200)
-    :(jobTitleSeed||e?.service_category?.replaceAll('_',' ')||'Electrical work');
+  // Load prefill parent if default differs from URL parent
+  if(asVariation&&defaultParentId&&defaultParentId!==parentQuote?.id){
+    const {data:parent}=await db
+      .from('quotes')
+      .select('id,quote_number,title,customer_id,revision_number,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,site_address_id,site_address_snapshot')
+      .eq('id',defaultParentId)
+      .maybeSingle();
+    if(parent){
+      parentQuote=parent;
+      const {data:items}=await db
+        .from('quote_items')
+        .select('description,category,quantity,unit,unit_price_cents,internal_unit_cost_cents,gst_applicable')
+        .eq('quote_id',parent.id)
+        .order('position');
+      parentLines=(items||[]).map(i=>({
+        description:i.description,
+        category:i.category,
+        quantity:Number(i.quantity),
+        unit:i.unit,
+        price:Number(i.unit_price_cents),
+        cost:i.internal_unit_cost_cents===null?null:Number(i.internal_unit_cost_cents),
+        gst:i.gst_applicable,
+      }));
+    }
+  }
+
+  const parentDb=db as unknown as ParentOptionsDb;
+  const parentOptions=customerId
+    ?await loadParentQuoteOptions({db:parentDb,customerId})
+    :[];
+
+  const linkedJobOptions=customerId
+    ?await loadCustomerJobs({db:parentDb,customerId})
+    :[];
+
+  const linkedJobs=jobContext
+    ?[{id:jobContext.jobId,jobNumber:jobContext.jobNumber||null,title:jobContext.jobTitle||null}]
+    :[];
+
+  const titleSeed=asVariation&&parentQuote
+    ?(`Variation — ${parentQuote.title||jobTitleSeed||'Electrical work'}`).slice(0,200)
+    :asVariation
+      ?`Variation — ${(jobTitleSeed||e?.service_category?.replaceAll('_',' ')||'Electrical work')}`.slice(0,200)
+      :(jobTitleSeed||e?.service_category?.replaceAll('_',' ')||'Electrical work');
+
+  const useParentPrefill=asVariation&&Boolean(parentQuote)&&parentLines.length>=0&&Boolean(defaultParentId);
 
   return (
     <QuoteEditor
@@ -132,7 +186,8 @@ export default async function NewQuote({
       addresses={addresses||[]}
       jobContext={jobContext}
       parentOptions={parentOptions}
-      linkedJobOptions={linkedJobOptions}
+      linkedJobOptions={linkedJobOptions.map(j=>({id:j.id,job_number:j.jobNumber,jobNumber:j.jobNumber,title:j.title}))}
+      linkedJobs={linkedJobs}
       commercial={{
         parentQuoteId:defaultParentId||null,
         parentQuoteNumber:parentQuote?.quote_number||null,
@@ -142,12 +197,23 @@ export default async function NewQuote({
       initial={{
         customerId,
         enquiryId:jobEnquiryId||e?.id||'',
-        address:jobAddressSeed,
-        title:titleSeed,
-        scope:jobScopeSeed||e?.message||'',
+        addressId:useParentPrefill?String(parentQuote?.site_address_id||''):'',
+        address:useParentPrefill
+          ?String(parentQuote?.site_address_snapshot?.address||jobAddressSeed||'')
+          :jobAddressSeed,
+        title:useParentPrefill?titleSeed:titleSeed,
+        scope:useParentPrefill?String(parentQuote?.scope_of_work||jobScopeSeed||e?.message||''):jobScopeSeed||e?.message||'',
+        inclusions:useParentPrefill?String(parentQuote?.inclusions||''):'',
+        exclusions:useParentPrefill?String(parentQuote?.exclusions||''):'',
+        notes:useParentPrefill?String(parentQuote?.customer_notes||''):'',
+        internalNotes:useParentPrefill?String(parentQuote?.internal_notes||''):'',
+        display:useParentPrefill?(parentQuote?.customer_display||'itemised'):'itemised',
+        mode:useParentPrefill?(parentQuote?.pricing_mode||'detailed'):'detailed',
+        lines:useParentPrefill?parentLines:[],
         quoteType:asVariation?'variation':'standard',
         parentQuoteId:defaultParentId,
         linkedJobId:jobId||'',
+        linkedJobIds:jobId?[jobId]:[],
       }}
     />
   );

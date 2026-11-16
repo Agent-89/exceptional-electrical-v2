@@ -3,21 +3,30 @@ import { describe, it } from 'node:test';
 import {
   billingBlocksSupersessionMessage,
   billingReconciliationDeferredMessage,
+  buildVariationPrefillFromParent,
   commercialCurrentLabel,
+  draftHasUnsavedCommercialContent,
+  groupParentQuotesByJob,
   isEligibleCommercialCurrentStatus,
+  isValidVariationParentCandidate,
   interpretMakeCurrentResult,
   nextRevisionNumber,
   onlyAcceptedCanBeCurrentMessage,
+  parentSwitchConfirmMessage,
   pickCommercialCurrentBackfillId,
+  quoteBuilderHeading,
   quoteBuilderNewHref,
   quoteEditorReturnHref,
   quoteTypeFromParent,
   resolveCommercialCurrentQuoteId,
   resolveCommercialCurrentTotalCents,
   shouldAutoMakeCurrentOnAccept,
+  uniqueJobIds,
   validateVariationParentSelection,
   variationParentJobCompatible,
+  variationTitleFromParent,
 } from './quote-commercial.ts';
+import { canLinkQuoteToJob, mergeJobQuoteAssociations } from './job-quotes.ts';
 
 describe('quote-commercial helpers', () => {
   it('derives type and next revision from parent', () => {
@@ -176,5 +185,244 @@ describe('quote-commercial helpers', () => {
     assert.equal(commercialCurrentLabel(false), null);
     assert.match(onlyAcceptedCanBeCurrentMessage(), /Only accepted/);
     assert.match(billingReconciliationDeferredMessage(), /C2/);
+  });
+
+  it('allows same-customer parent from a different job or unlinked quote', () => {
+    assert.equal(
+      isValidVariationParentCandidate({
+        candidateId: 'q-other-job',
+        candidateStatus: 'accepted',
+        candidateCustomerId: 'cust-1',
+        quoteCustomerId: 'cust-1',
+      }),
+      true,
+    );
+    assert.equal(
+      isValidVariationParentCandidate({
+        candidateId: 'q-unlinked',
+        candidateStatus: 'sent',
+        candidateCustomerId: 'cust-1',
+        quoteCustomerId: 'cust-1',
+      }),
+      true,
+    );
+    assert.equal(
+      isValidVariationParentCandidate({
+        candidateId: 'q-cross',
+        candidateStatus: 'accepted',
+        candidateCustomerId: 'cust-2',
+        quoteCustomerId: 'cust-1',
+      }),
+      false,
+    );
+  });
+
+  it('excludes self, ancestors, and disallowed statuses from parent candidates', () => {
+    assert.equal(
+      isValidVariationParentCandidate({
+        candidateId: 'self',
+        candidateStatus: 'draft',
+        candidateCustomerId: 'c',
+        quoteCustomerId: 'c',
+        editingQuoteId: 'self',
+      }),
+      false,
+    );
+    assert.equal(
+      isValidVariationParentCandidate({
+        candidateId: 'ancestor',
+        candidateStatus: 'accepted',
+        candidateCustomerId: 'c',
+        quoteCustomerId: 'c',
+        editingAncestorIds: ['ancestor'],
+      }),
+      false,
+    );
+    assert.equal(
+      isValidVariationParentCandidate({
+        candidateId: 'x',
+        candidateStatus: 'superseded',
+        candidateCustomerId: 'c',
+        quoteCustomerId: 'c',
+      }),
+      false,
+    );
+  });
+
+  it('groups parent options by linked job without duplicating multi-job quotes', () => {
+    const groups = groupParentQuotesByJob([
+      {
+        id: 'q1',
+        quoteNumber: 'EEQ-000001',
+        title: 'Board upgrade',
+        status: 'accepted',
+        linkedJobs: [
+          { id: 'j1', jobNumber: 'JOB-1', title: 'Site A' },
+          { id: 'j2', jobNumber: 'JOB-2', title: 'Site B' },
+        ],
+      },
+      {
+        id: 'q1',
+        quoteNumber: 'EEQ-000001',
+        title: 'Board upgrade',
+        status: 'accepted',
+        linkedJobs: [{ id: 'j2', jobNumber: 'JOB-2', title: 'Site B' }],
+      },
+      {
+        id: 'q2',
+        quoteNumber: 'EEQ-000002',
+        title: 'Spare',
+        status: 'draft',
+        linkedJobs: [],
+      },
+    ]);
+    const ids = groups.flatMap((g) => g.quotes.map((q) => q.id));
+    assert.deepEqual(ids, ['q1', 'q2']);
+    assert.ok(groups.some((g) => g.key === 'unlinked'));
+    assert.ok(groups.some((g) => g.key === 'j1'));
+  });
+
+  it('prefills variation commercial content from immediate parent (fixed and detailed)', () => {
+    const detailed = buildVariationPrefillFromParent({
+      title: 'Switchboard',
+      scope: 'Replace MSB',
+      inclusions: 'Labour',
+      exclusions: 'Council fees',
+      notes: 'Customer note',
+      internalNotes: 'Internal',
+      display: 'itemised',
+      mode: 'detailed',
+      address: '1 Test St',
+      addressId: 'addr-1',
+      lines: [
+        {
+          description: 'Labour',
+          category: 'labour',
+          quantity: 4,
+          unit: 'hour',
+          price: 12000,
+          cost: 6000,
+          gst: true,
+        },
+        {
+          description: 'Cable',
+          category: 'material',
+          quantity: 20,
+          unit: 'm',
+          price: 350,
+          cost: 180,
+          gst: false,
+        },
+      ],
+    });
+    assert.equal(detailed.title, 'Variation — Switchboard');
+    assert.equal(detailed.scope, 'Replace MSB');
+    assert.equal(detailed.lines[0].quantity, 4);
+    assert.equal(detailed.lines[0].price, 12000);
+    assert.equal(detailed.lines[0].cost, 6000);
+    assert.equal(detailed.lines[0].gst, true);
+    assert.equal(detailed.lines[1].gst, false);
+    const originalLine = {
+      description: 'Labour',
+      category: 'labour',
+      quantity: 4,
+      unit: 'hour',
+      price: 12000,
+      cost: 6000,
+      gst: true,
+    };
+    const fromSame = buildVariationPrefillFromParent({
+      title: 'Switchboard',
+      mode: 'detailed',
+      lines: [originalLine],
+    });
+    fromSame.lines[0].price = 1;
+    assert.equal(originalLine.price, 12000);
+
+    const fixed = buildVariationPrefillFromParent({
+      title: 'Variation — Switchboard',
+      mode: 'fixed',
+      display: 'total_only',
+      lines: [
+        {
+          description: 'Fixed-price electrical work',
+          category: 'other',
+          quantity: 1,
+          unit: 'each',
+          price: 550000,
+          cost: 300000,
+          gst: true,
+        },
+      ],
+    });
+    assert.equal(fixed.title, 'Variation — Switchboard');
+    assert.equal(fixed.mode, 'fixed');
+    assert.equal(fixed.display, 'total_only');
+    assert.equal(fixed.lines[0].price, 550000);
+    assert.equal(fixed.lines[0].cost, 300000);
+  });
+
+  it('variation-of-variation uses immediate parent title/content helpers', () => {
+    assert.equal(variationTitleFromParent('Variation — Board'), 'Variation — Board');
+    const child = buildVariationPrefillFromParent({
+      title: 'Variation — Board',
+      scope: 'Rev 2 scope',
+      mode: 'detailed',
+      lines: [{ description: 'Item', category: 'other', quantity: 1, unit: 'each', price: 100, cost: null, gst: true }],
+    });
+    assert.equal(child.scope, 'Rev 2 scope');
+    assert.equal(child.lines[0].price, 100);
+  });
+
+  it('detects unsaved content and requires parent-switch confirmation copy', () => {
+    assert.equal(draftHasUnsavedCommercialContent({ title: '', scope: '', lines: [] }), false);
+    assert.equal(draftHasUnsavedCommercialContent({ title: 'Work', scope: '', lines: [] }), true);
+    assert.equal(
+      draftHasUnsavedCommercialContent({
+        title: '',
+        lines: [{ description: 'x', category: 'other', quantity: 1, unit: 'each', price: 0, cost: null, gst: true }],
+      }),
+      true,
+    );
+    assert.match(parentSwitchConfirmMessage(), /Replace the current quote content/);
+  });
+
+  it('dedupes multi-job association ids and rejects cross-customer links', () => {
+    assert.deepEqual(uniqueJobIds(['a', 'a', '', 'b', null]), ['a', 'b']);
+    assert.equal(canLinkQuoteToJob('c1', 'c1').ok, true);
+    assert.equal(canLinkQuoteToJob('c1', 'c2').ok, false);
+    const merged = mergeJobQuoteAssociations({
+      legacyPrimaryQuoteId: 'q1',
+      associations: [
+        { quoteId: 'q1', isPrimary: true, associationKind: 'quote', label: null, source: 'job_quotes' },
+        { quoteId: 'q2', isPrimary: false, associationKind: 'quote', label: null, source: 'job_quotes' },
+      ],
+    });
+    assert.equal(merged.filter((r) => r.quoteId === 'q1').length, 1);
+  });
+
+  it('returns unlinked quotes to quote detail and compact builder headings', () => {
+    assert.equal(
+      quoteEditorReturnHref({ jobId: null, intent: 'return_to_quotes', quoteId: 'q9' }),
+      '/hq/quotes/q9',
+    );
+    assert.equal(quoteBuilderHeading({ savedNumber: null, quoteType: 'standard' }), 'New Quote');
+    assert.equal(quoteBuilderHeading({ savedNumber: null, quoteType: 'variation' }), 'New Variation');
+    assert.equal(quoteBuilderHeading({ savedNumber: 'EEQ-000042', quoteType: 'variation' }), 'EEQ-000042');
+  });
+
+  it('keeps commercial-current families independent and primary separate conceptually', () => {
+    const familyA = [
+      { id: 'a1', isCommercialCurrent: true, status: 'accepted', totalCents: 1000 },
+      { id: 'a2', isCommercialCurrent: false, status: 'superseded', totalCents: 900 },
+    ];
+    const familyB = [
+      { id: 'b1', isCommercialCurrent: true, status: 'accepted', totalCents: 5000 },
+    ];
+    assert.equal(resolveCommercialCurrentQuoteId(familyA), 'a1');
+    assert.equal(resolveCommercialCurrentQuoteId(familyB), 'b1');
+    assert.notEqual(resolveCommercialCurrentQuoteId(familyA), resolveCommercialCurrentQuoteId(familyB));
+    // Job primary is not derived from commercial current helpers.
+    assert.equal(commercialCurrentLabel(true), 'Current commercial');
   });
 });

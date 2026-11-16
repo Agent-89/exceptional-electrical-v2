@@ -3,6 +3,7 @@ import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 import {canManageOfficeOps} from '@/lib/hq-roles';
 import {isMissingCommercialSchemaError,quoteTypeFromParent} from '@/lib/quote-commercial';
 import {isMissingJobQuotesRelation} from '@/lib/job-quotes-store';
+import {loadCustomerJobs,loadLinkedJobsForQuote,loadParentQuoteOptions,type ParentOptionsDb} from '@/lib/quote-parent-options';
 import QuoteEditor from '../quote-editor';
 import '../../hq.css';
 
@@ -44,29 +45,38 @@ export default async function QuoteDetail({
   ]);
 
   let parentQuoteNumber:string|null=null;
+  const ancestorIds:string[]=[];
   if(parentQuoteId){
-    const {data:parent}=await db.from('quotes').select('quote_number').eq('id',parentQuoteId).maybeSingle();
+    const {data:parent}=await db.from('quotes').select('quote_number,parent_quote_id').eq('id',parentQuoteId).maybeSingle();
     parentQuoteNumber=parent?.quote_number||null;
+    ancestorIds.push(parentQuoteId);
+    if(parent?.parent_quote_id)ancestorIds.push(String(parent.parent_quote_id));
   }
 
-  let parentOptions:{id:string;quote_number:string;title:string|null;status:string;revision_number?:number|null}[]=[];
-  if(q.customer_id){
-    const {data:parents}=await db
-      .from('quotes')
-      .select('id,quote_number,title,status,revision_number')
-      .eq('customer_id',q.customer_id)
-      .neq('id',id)
-      .not('status','eq','cancelled')
-      .order('created_at',{ascending:false})
-      .limit(100);
-    parentOptions=parents||[];
-  }
+  const parentDb=db as unknown as ParentOptionsDb;
+  const parentOptions=q.customer_id
+    ?await loadParentQuoteOptions({
+      db:parentDb,
+      customerId:q.customer_id,
+      editingQuoteId:id,
+      editingAncestorIds:ancestorIds,
+    })
+    :[];
+
+  const linkedJobs=await loadLinkedJobsForQuote({db:parentDb,quoteId:id});
 
   let jobContext:{jobId:string;jobNumber?:string|null;jobTitle?:string|null}|null=null;
   const preferredJob=sp.job&&/^[0-9a-f-]{36}$/i.test(sp.job)?sp.job:null;
   if(preferredJob){
-    const {data:job}=await db.from('jobs').select('id,job_number,title').eq('id',preferredJob).maybeSingle();
-    if(job)jobContext={jobId:job.id,jobNumber:job.job_number,jobTitle:job.title};
+    const match=linkedJobs.find(j=>j.id===preferredJob);
+    if(match)jobContext={jobId:match.id,jobNumber:match.jobNumber,jobTitle:match.title};
+    else{
+      const {data:job}=await db.from('jobs').select('id,job_number,title').eq('id',preferredJob).maybeSingle();
+      if(job)jobContext={jobId:job.id,jobNumber:job.job_number,jobTitle:job.title};
+    }
+  }
+  if(!jobContext&&linkedJobs[0]){
+    jobContext={jobId:linkedJobs[0].id,jobNumber:linkedJobs[0].jobNumber,jobTitle:linkedJobs[0].title};
   }
   if(!jobContext){
     const {data:link,error:linkError}=await db
@@ -79,22 +89,16 @@ export default async function QuoteDetail({
     if(link?.job_id&&!(linkError&&isMissingJobQuotesRelation(linkError))){
       const {data:job}=await db.from('jobs').select('id,job_number,title').eq('id',link.job_id).maybeSingle();
       if(job)jobContext={jobId:job.id,jobNumber:job.job_number,jobTitle:job.title};
-    }else{
-      const {data:legacy}=await db.from('jobs').select('id,job_number,title').eq('quote_id',id).limit(1).maybeSingle();
-      if(legacy)jobContext={jobId:legacy.id,jobNumber:legacy.job_number,jobTitle:legacy.title};
     }
   }
 
-  let linkedJobOptions:{id:string;job_number:string|null;title:string|null}[]=[];
-  if(q.customer_id&&!jobContext){
-    const {data:jobs}=await db
-      .from('jobs')
-      .select('id,job_number,title')
-      .eq('customer_id',q.customer_id)
-      .order('updated_at',{ascending:false})
-      .limit(50);
-    linkedJobOptions=jobs||[];
-  }
+  const linkedJobOptions=q.customer_id
+    ?await loadCustomerJobs({
+      db:parentDb,
+      customerId:q.customer_id,
+      excludeJobIds:linkedJobs.map(j=>j.id),
+    })
+    :[];
 
   return (
     <QuoteEditor
@@ -106,7 +110,8 @@ export default async function QuoteDetail({
       locked={!['draft','changes_requested'].includes(q.status)}
       jobContext={jobContext}
       parentOptions={parentOptions}
-      linkedJobOptions={linkedJobOptions}
+      linkedJobOptions={linkedJobOptions.map(j=>({id:j.id,job_number:j.jobNumber,jobNumber:j.jobNumber,title:j.title}))}
+      linkedJobs={linkedJobs}
       commercial={{
         parentQuoteId,
         parentQuoteNumber,
@@ -132,7 +137,8 @@ export default async function QuoteDetail({
         mode:q.pricing_mode,
         quoteType:quoteTypeFromParent(parentQuoteId),
         parentQuoteId:parentQuoteId||'',
-        linkedJobId:jobContext?.jobId||'',
+        linkedJobId:jobContext?.jobId||linkedJobs[0]?.id||'',
+        linkedJobIds:linkedJobs.map(j=>j.id),
         lines:(items||[]).map(i=>({
           description:i.description,
           category:i.category,
