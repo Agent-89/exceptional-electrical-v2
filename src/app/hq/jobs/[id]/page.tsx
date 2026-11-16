@@ -614,9 +614,13 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-job-quotes{display:grid;gap:0}
 .ee-job-quote-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
 .ee-job-quote-badges{display:flex;flex-wrap:wrap;gap:6px}
-.ee-job-quote-primary,.ee-job-quote-kind{display:inline-flex;align-items:center;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:800;letter-spacing:.02em}
+.ee-job-quote-primary,.ee-job-quote-kind,.ee-job-quote-current{display:inline-flex;align-items:center;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:800;letter-spacing:.02em}
 .ee-job-quote-primary{background:#e7f3ff;color:#076ab5}
+.ee-job-quote-current{background:#e8f7ef;color:#0b6b3a}
 .ee-job-quote-kind{background:#f2f5f8;color:#4d677a}
+.ee-job-quote-create-actions a{display:inline-flex;align-items:center;justify-content:center;border:1px solid #d5e2ef;background:#fff;color:#18577d;border-radius:10px;padding:10px 14px;min-height:44px;font:inherit;font-size:14px;font-weight:750;text-decoration:none}
+.ee-job-quote-create-actions a.hq-detail-action-primary{border-color:#1688e9}
+.ee-job-quote-create-actions a.hq-detail-action-secondary{background:#fff}
 .ee-job-quote-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:2px}
 .ee-job-quote-forms{display:grid;gap:18px;margin-top:16px;padding-top:14px;border-top:1px solid #e1e8f0}
 .ee-job-quote-forms h3{margin:0 0 8px;font-size:15px}

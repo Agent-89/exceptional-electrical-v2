@@ -2,18 +2,45 @@
 import Link from 'next/link';
 import {useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
-import {saveQuoteDraft,saveAndApproveQuote,approveQuote,markQuoteSent,markQuoteAccepted,markQuoteDeclined,type QuoteDraft} from './actions';
+import {
+  saveQuoteDraft,
+  saveAndApproveQuote,
+  approveQuote,
+  markQuoteSent,
+  markQuoteAccepted,
+  markQuoteDeclined,
+  makeQuoteCommercialCurrent,
+  type QuoteDraft,
+} from './actions';
 import {createQuoteCustomer} from './customer-action';
 import type {CustomerMatchRecord} from '@/lib/customer-match';
+import {quoteEditorReturnHref,quoteTypeFromParent,type QuoteSaveIntent} from '@/lib/quote-commercial';
+
 type Customer={id:string;name:string;email:string|null;phone:string|null};
 type Enquiry={id:string;name:string;customer_id:string|null;message:string;service_category:string|null};
 type Address={id:string;customer_id:string;label:string;address_line1:string;suburb:string;state:string;postcode:string};
+type ParentOption={id:string;quote_number:string;title:string|null;status:string;revision_number?:number|null};
+type JobOption={id:string;job_number:string|null;title:string|null};
+type JobContext={jobId:string;jobNumber?:string|null;jobTitle?:string|null};
+type CommercialMeta={
+  parentQuoteId?:string|null;
+  parentQuoteNumber?:string|null;
+  revisionNumber?:number|null;
+  isCommercialCurrent?:boolean;
+  schemaAvailable?:boolean;
+};
 type Initial=Partial<Omit<QuoteDraft,'lines'>> & {lines?:QuoteDraft['lines'];number?:string;status?:string};
-const empty:QuoteDraft={customerId:'',enquiryId:'',addressId:'',address:'',title:'',scope:'',inclusions:'',exclusions:'',notes:'',internalNotes:'',display:'itemised',mode:'detailed',lines:[]};
+
+const empty:QuoteDraft={
+  customerId:'',enquiryId:'',addressId:'',address:'',title:'',scope:'',inclusions:'',exclusions:'',
+  notes:'',internalNotes:'',display:'itemised',mode:'detailed',lines:[],
+  quoteType:'standard',parentQuoteId:'',linkedJobId:'',
+};
 const FIXED='Fixed-price electrical work';
 const isFixed=(l:QuoteDraft['lines'][number])=>l.category==='other'&&l.description===FIXED;
 const money=(n:number)=>(n/100).toLocaleString('en-AU',{style:'currency',currency:'AUD'});
 type Choice={id:string;label:string;detail?:string};
+
 function SearchPicker({value,placeholder,choices,onSelect,optional=false}:{value:string;placeholder:string;choices:Choice[];onSelect:(id:string)=>void;optional?:boolean}){
  const [open,setOpen]=useState(false);const [query,setQuery]=useState('');const [active,setActive]=useState(0);
  const selected=choices.find(c=>c.id===value);
@@ -24,13 +51,49 @@ function SearchPicker({value,placeholder,choices,onSelect,optional=false}:{value
   {open&&<div className="hq-search-picker-menu" role="listbox">{optional&&<button type="button" className="hq-search-picker-option" onMouseDown={e=>e.preventDefault()} onClick={()=>pick('')}>No linked enquiry (standalone)</button>}{filtered.length?filtered.map((c,i)=><button type="button" role="option" aria-selected={c.id===value} key={c.id} className={'hq-search-picker-option'+(i===active?' is-active':'')} onMouseDown={e=>e.preventDefault()} onClick={()=>pick(c.id)}><strong>{c.label}</strong>{c.detail&&<small>{c.detail}</small>}</button>):<p className="hq-search-picker-empty">No matches found</p>}</div>}
  </div>;
 }
-export default function QuoteEditor({customers,enquiries,addresses,initial,locked=false,nextQuoteNumber,canApprove=false}:{customers:Customer[];enquiries:Enquiry[];addresses:Address[];initial?:Initial;locked?:boolean;nextQuoteNumber?:string;canApprove?:boolean}){
+
+export default function QuoteEditor({
+  customers,enquiries,addresses,initial,locked=false,nextQuoteNumber,canApprove=false,
+  jobContext=null,parentOptions=[],linkedJobOptions=[],commercial=null,canMakeCurrent=false,
+}:{
+  customers:Customer[];
+  enquiries:Enquiry[];
+  addresses:Address[];
+  initial?:Initial;
+  locked?:boolean;
+  nextQuoteNumber?:string;
+  canApprove?:boolean;
+  jobContext?:JobContext|null;
+  parentOptions?:ParentOption[];
+  linkedJobOptions?:JobOption[];
+  commercial?:CommercialMeta|null;
+  canMakeCurrent?:boolean;
+}){
  const router=useRouter();
- const [draft,setDraft]=useState<QuoteDraft>({...empty,...initial,lines:initial?.mode==='fixed'&&!(initial?.lines||[]).some(l=>l.category==='other'&&l.description==='Fixed-price electrical work')?[...(initial?.lines||[]),{description:'Fixed-price electrical work',category:'other',quantity:1,unit:'each',price:0,cost:null,gst:true}]:initial?.lines||[]});
+ const inferredType=quoteTypeFromParent(initial?.parentQuoteId||commercial?.parentQuoteId);
+ const [draft,setDraft]=useState<QuoteDraft>({
+  ...empty,
+  ...initial,
+  quoteType:initial?.quoteType||inferredType,
+  parentQuoteId:initial?.parentQuoteId||commercial?.parentQuoteId||'',
+  linkedJobId:initial?.linkedJobId||jobContext?.jobId||'',
+  lines:initial?.mode==='fixed'&&!(initial?.lines||[]).some(l=>l.category==='other'&&l.description==='Fixed-price electrical work')
+    ?[...(initial?.lines||[]),{description:'Fixed-price electrical work',category:'other',quantity:1,unit:'each',price:0,cost:null,gst:true}]
+    :initial?.lines||[],
+ });
  const customerLabel=(c:Customer)=>`${c.name} · ${c.phone||c.email||'No contact details'} (${c.id.slice(0,8)})`;
  const enquiryLabel=(e:Enquiry)=>`${e.name} · ${e.service_category||'Enquiry'} (${e.id.slice(0,8)})`;
  const addressLabel=(a:Address)=>[a.address_line1,a.suburb,a.state,a.postcode].filter(Boolean).join(', ');
- const [customerSearch,setCustomerSearch]=useState(customers.find(c=>c.id===initial?.customerId)?customerLabel(customers.find(c=>c.id===initial?.customerId)!):'');const [customerList,setCustomerList]=useState(customers);const [newCustomer,setNewCustomer]=useState(false);const [customerForm,setCustomerForm]=useState({name:'',email:'',phone:''});const [customerBusy,setCustomerBusy]=useState(false);const [customerMatches,setCustomerMatches]=useState<CustomerMatchRecord[]>([]);const [customerConflict,setCustomerConflict]=useState<'single'|'multiple'|null>(null);const [enquirySearch,setEnquirySearch]=useState(enquiries.find(e=>e.id===initial?.enquiryId)?enquiryLabel(enquiries.find(e=>e.id===initial?.enquiryId)!):'');const [pending,start]=useTransition();const [feedback,setFeedback]=useState('');
+ const [,setCustomerSearch]=useState(customers.find(c=>c.id===initial?.customerId)?customerLabel(customers.find(c=>c.id===initial?.customerId)!):'');
+ const [customerList,setCustomerList]=useState(customers);
+ const [newCustomer,setNewCustomer]=useState(false);
+ const [customerForm,setCustomerForm]=useState({name:'',email:'',phone:''});
+ const [customerBusy,setCustomerBusy]=useState(false);
+ const [customerMatches,setCustomerMatches]=useState<CustomerMatchRecord[]>([]);
+ const [customerConflict,setCustomerConflict]=useState<'single'|'multiple'|null>(null);
+ const [,setEnquirySearch]=useState(enquiries.find(e=>e.id===initial?.enquiryId)?enquiryLabel(enquiries.find(e=>e.id===initial?.enquiryId)!):'');
+ const [pending,start]=useTransition();
+ const [feedback,setFeedback]=useState('');
  const set=(key:keyof QuoteDraft,value:unknown)=>setDraft(d=>({...d,[key]:value}));
  const editLine=(i:number,key:string,value:unknown)=>setDraft(d=>({...d,lines:d.lines.map((l,j)=>j===i?{...l,[key]:value}:l)}));
  const visibleLines=draft.lines.filter(l=>draft.mode==='fixed'?isFixed(l):!isFixed(l));
@@ -40,11 +103,23 @@ export default function QuoteEditor({customers,enquiries,addresses,initial,locke
  const hasMissingCosts=visibleLines.some(l=>l.cost===null);
  const hasInvalidLines=draft.lines.some(l=>!l.description.trim()||!Number.isFinite(l.quantity)||l.quantity<=0||!Number.isFinite(l.price)||l.price<0);
  const [fixedIncludesGst,setFixedIncludesGst]=useState(false);
- const [expanded,setExpanded]=useState<number[]>([]);const addLine=(category='other')=>{setExpanded(x=>[...x,draft.lines.length]);set('lines',[...draft.lines,{description:'',category,quantity:1,unit:category==='labour'?'hour':'each',price:0,cost:null,gst:true}])};
+ const [expanded,setExpanded]=useState<number[]>([]);
+ const addLine=(category='other')=>{setExpanded(x=>[...x,draft.lines.length]);set('lines',[...draft.lines,{description:'',category,quantity:1,unit:category==='labour'?'hour':'each',price:0,cost:null,gst:true}])};
+ const parentLocked=Boolean(draft.id)||Boolean(jobContext?.jobId&&draft.quoteType==='variation'&&initial?.parentQuoteId);
+ const showReturn=Boolean(draft.linkedJobId||jobContext?.jobId);
+ const jobHref=jobContext?.jobId?`/hq/jobs/${jobContext.jobId}?tab=quotes`:draft.linkedJobId?`/hq/jobs/${draft.linkedJobId}?tab=quotes`:null;
+ const status=initial?.status||'draft';
+ const canOfferMakeCurrent=
+  canMakeCurrent&&
+  Boolean(draft.id)&&
+  status==='accepted'&&
+  !commercial?.isCommercialCurrent&&
+  commercial?.schemaAvailable!==false;
+
  function resetCustomerConflict(){setCustomerMatches([]);setCustomerConflict(null)}
  function selectMatchedCustomer(match:CustomerMatchRecord){
   setCustomerList(x=>x.some(c=>c.id===match.id)?x:[...x,match]);
-  setDraft(d=>({...d,customerId:match.id,enquiryId:'',addressId:''}));
+  setDraft(d=>({...d,customerId:match.id,enquiryId:'',addressId:'',parentQuoteId:d.quoteType==='variation'?'':d.parentQuoteId}));
   setCustomerSearch(customerLabel(match));
   setNewCustomer(false);
   setCustomerForm({name:'',email:'',phone:''});
@@ -58,7 +133,7 @@ export default function QuoteEditor({customers,enquiries,addresses,initial,locke
    setFeedback(result.message);
    if(result.ok&&result.customer){
     setCustomerList(x=>x.some(c=>c.id===result.customer!.id)?x:[...x,result.customer!]);
-    setDraft(d=>({...d,customerId:result.customer!.id,enquiryId:'',addressId:''}));
+    setDraft(d=>({...d,customerId:result.customer!.id,enquiryId:'',addressId:'',parentQuoteId:''}));
     setNewCustomer(false);
     setCustomerForm({name:'',email:'',phone:''});
     resetCustomerConflict();
@@ -77,12 +152,142 @@ export default function QuoteEditor({customers,enquiries,addresses,initial,locke
    resetCustomerConflict();
   }finally{setCustomerBusy(false)}
  }
- function save(approve=false){if(!draft.title.trim()){setFeedback('Enter a quote title before saving.');return;}if(hasInvalidLines){setFeedback('Check item descriptions, quantities and prices before saving.');return;}start(async()=>{try{const result=approve?await saveAndApproveQuote(draft):await saveQuoteDraft(draft);setFeedback(result.message);if(result.ok&&result.id){if(!draft.id)router.replace('/hq/quotes/'+result.id);else router.refresh();}}catch{setFeedback('Unable to save. Try again.')}})}
- return <main className="hq-detail"><div className="hq-detail-inner"><Link href="/hq/quotes" className="hq-back">← Quotes</Link><div className="hq-detail-head"><div><div className="hq-kicker">QUOTE BUILDER</div><h1>{initial?.number?`Quote — ${initial.number}`:`New Quote — ${nextQuoteNumber||'Pending'}`}</h1><p className="hq-quote-number-note">{initial?.number?'Assigned quote reference':`Estimated next reference${nextQuoteNumber?'':' unavailable'} · Confirmed when saved. Another staff member may save first.`}</p><p>{locked?'This quote is locked and cannot be edited.':'Prepare a draft. Internal costs are never included in the customer view.'}</p></div><span className="hq-status">{initial?.status||'Draft'}</span></div><fieldset disabled={locked||pending} style={{border:0,padding:0,minWidth:0}}><div className="hq-quote-editor">
- <section className="hq-panel"><h2>Customer and location</h2><label>Customer<SearchPicker value={draft.customerId} placeholder="Search name, phone or email" choices={customerList.map(c=>({id:c.id,label:c.name,detail:c.phone||c.email||''}))} onSelect={id=>{setDraft(d=>({...d,customerId:id,enquiryId:id===d.customerId?d.enquiryId:'',addressId:id===d.customerId?d.addressId:'',address:id===d.customerId?d.address:''}));setEnquirySearch('');resetCustomerConflict()}}/></label><button type="button" className="hq-quote-add-customer" onClick={()=>{setNewCustomer(x=>!x);resetCustomerConflict();setFeedback('')}}>{newCustomer?'Cancel new customer':'+ Create new customer'}</button>{newCustomer&&<div className="hq-quote-new-customer"><label>Name<input value={customerForm.name} onChange={e=>{setCustomerForm(x=>({...x,name:e.target.value}));resetCustomerConflict()}}/></label><label>Email<input type="email" value={customerForm.email} onChange={e=>{setCustomerForm(x=>({...x,email:e.target.value}));resetCustomerConflict()}}/></label><label>Phone<input type="tel" value={customerForm.phone} onChange={e=>{setCustomerForm(x=>({...x,phone:e.target.value}));resetCustomerConflict()}}/></label>{!customerConflict&&<button type="button" disabled={customerBusy} onClick={()=>addCustomer(false)}>{customerBusy?'Creating…':'Create and select customer'}</button>}{customerConflict&&customerMatches.length>0&&<div className="hq-quote-customer-match" role="status"><p><strong>{customerConflict==='single'?'Existing customer found':'Multiple matching customers'}</strong></p><p>{feedback}</p><ul>{customerMatches.map(m=><li key={m.id}><strong>{m.name}</strong><span>{[m.phone,m.email].filter(Boolean).join(' · ')||'No contact details'}</span><button type="button" disabled={customerBusy} onClick={()=>selectMatchedCustomer(m)}>Select this customer</button></li>)}</ul><button type="button" disabled={customerBusy} onClick={()=>addCustomer(true)}>{customerBusy?'Creating…':'Create separate customer anyway'}</button></div>}</div>}<label>Linked enquiry <span className="hq-quote-optional">(optional)</span><SearchPicker value={draft.enquiryId} placeholder="Search customer or service" optional choices={enquiries.filter(e=>!draft.customerId||!e.customer_id||e.customer_id===draft.customerId).map(e=>({id:e.id,label:enquiryLabel(e),detail:e.service_category||'Enquiry'}))} onSelect={id=>{const source=enquiries.find(e=>e.id===id);setDraft(d=>({...d,enquiryId:id,customerId:source?.customer_id||d.customerId,title:d.title||source?.service_category?.replaceAll('_',' ')||'',scope:d.scope||source?.message||''}))}}/></label><label>Job site address<input list="quote-addresses" placeholder="Select a saved address or type a new site address" value={draft.address} onChange={e=>{const value=e.target.value;const match=addresses.filter(a=>a.customer_id===draft.customerId).find(a=>addressLabel(a)===value);setDraft(d=>({...d,address:value,addressId:match?.id||''}));}}/><datalist id="quote-addresses">{addresses.filter(a=>a.customer_id===draft.customerId).map(a=><option key={a.id} value={addressLabel(a)}/>)}</datalist></label><p className="hq-quote-field-hint">{draft.addressId?'Using a saved customer site address.':'New site? Type the full address here. It will be stored on this quote; adding it to the customer address book is a separate step.'}</p></section>
+
+ function save(approve=false,intent:QuoteSaveIntent='continue'){
+  if(!draft.title.trim()){setFeedback('Enter a quote title before saving.');return;}
+  if(hasInvalidLines){setFeedback('Check item descriptions, quantities and prices before saving.');return;}
+  if(draft.quoteType==='variation'&&!draft.parentQuoteId){setFeedback('Select the quote this variation revises.');return;}
+  start(async()=>{
+   try{
+    const payload:QuoteDraft={
+     ...draft,
+     parentQuoteId:draft.quoteType==='variation'?draft.parentQuoteId:'',
+     linkedJobId:draft.linkedJobId||jobContext?.jobId||'',
+    };
+    const result=approve?await saveAndApproveQuote(payload):await saveQuoteDraft(payload);
+    setFeedback(result.message);
+    if(result.ok&&result.id){
+     const returnHref=quoteEditorReturnHref({
+      jobId:payload.linkedJobId,
+      intent,
+      quoteId:result.id,
+     });
+     if(returnHref){
+      router.push(returnHref);
+      return;
+     }
+     if(!draft.id)router.replace('/hq/quotes/'+result.id);
+     else router.refresh();
+    }
+   }catch{setFeedback('Unable to save. Try again.')}
+  });
+ }
+
+ return <main className="hq-detail"><div className="hq-detail-inner">
+  <nav className="hq-quote-breadcrumbs" aria-label="Breadcrumb">
+   {jobContext?.jobId?(
+    <>
+     <Link href="/hq/jobs">Jobs</Link>
+     <span aria-hidden="true">/</span>
+     <Link href={`/hq/jobs/${jobContext.jobId}`}>{jobContext.jobNumber||'Job'}</Link>
+     <span aria-hidden="true">/</span>
+     <Link href={`/hq/jobs/${jobContext.jobId}?tab=quotes`}>Quotes</Link>
+     <span aria-hidden="true">/</span>
+     <span>{initial?.number||nextQuoteNumber||'New'}</span>
+    </>
+   ):(
+    <>
+     <Link href="/hq/quotes">Quotes</Link>
+     <span aria-hidden="true">/</span>
+     <span>{initial?.number||nextQuoteNumber||'New'}</span>
+    </>
+   )}
+  </nav>
+  {jobHref?<Link href={jobHref} className="hq-back">← Back to job</Link>:<Link href="/hq/quotes" className="hq-back">← Quotes</Link>}
+  <div className="hq-detail-head"><div>
+   <div className="hq-kicker">QUOTE BUILDER</div>
+   <h1>{initial?.number?`Quote — ${initial.number}`:`New Quote — ${nextQuoteNumber||'Pending'}`}</h1>
+   <p className="hq-quote-number-note">{initial?.number?'Assigned quote reference':`Estimated next reference${nextQuoteNumber?'':' unavailable'} · Confirmed when saved. Another staff member may save first.`}</p>
+   <p>{locked?'This quote is locked and cannot be edited.':'Prepare a draft. Internal costs are never included in the customer view. Variations are full replacement totals, not incremental charges.'}</p>
+   {(commercial?.parentQuoteNumber||commercial?.isCommercialCurrent||(commercial?.revisionNumber||0)>0)&&(
+    <p className="hq-quote-commercial-meta">
+     {commercial?.parentQuoteNumber?<>Revision of <strong>{commercial.parentQuoteNumber}</strong>{(commercial.revisionNumber||0)>0?` · rev ${commercial.revisionNumber}`:''}. </> :null}
+     {commercial?.isCommercialCurrent?<span className="hq-quote-current-chip">Current commercial version</span>:null}
+     <span className="hq-quote-field-hint"> Job primary is separate and is not changed by commercial current.</span>
+    </p>
+   )}
+  </div><span className="hq-status">{initial?.status||'Draft'}</span></div>
+  <fieldset disabled={locked||pending} style={{border:0,padding:0,minWidth:0}}><div className="hq-quote-editor">
+ <section className="hq-panel"><h2>Quote type</h2>
+  <div className="hq-quote-type-row" role="radiogroup" aria-label="Quote type">
+   <label className="hq-quote-type-option"><input type="radio" name="quoteType" disabled={parentLocked} checked={draft.quoteType!=='variation'} onChange={()=>setDraft(d=>({...d,quoteType:'standard',parentQuoteId:''}))}/> Standard quote</label>
+   <label className="hq-quote-type-option"><input type="radio" name="quoteType" disabled={parentLocked} checked={draft.quoteType==='variation'} onChange={()=>setDraft(d=>({...d,quoteType:'variation'}))}/> Variation (full replacement)</label>
+  </div>
+  {draft.quoteType==='variation'?(
+   <label>Parent quote
+    <select
+     value={draft.parentQuoteId||''}
+     disabled={parentLocked||!draft.customerId}
+     onChange={e=>set('parentQuoteId',e.target.value)}
+    >
+     <option value="">{draft.customerId?'Select parent quote':'Select a customer first'}</option>
+     {parentOptions.map(p=>(
+      <option key={p.id} value={p.id}>{p.quote_number}{p.title?` · ${p.title}`:''} · {p.status.replaceAll('_',' ')}</option>
+     ))}
+    </select>
+   </label>
+  ):null}
+  {!jobContext?.jobId?(
+   <label>Linked job <span className="hq-quote-optional">(optional)</span>
+    <select
+     value={draft.linkedJobId||''}
+     disabled={Boolean(draft.id)}
+     onChange={e=>set('linkedJobId',e.target.value)}
+    >
+     <option value="">No linked job</option>
+     {linkedJobOptions.map(j=>(
+      <option key={j.id} value={j.id}>{j.job_number||j.id.slice(0,8)}{j.title?` · ${j.title}`:''}</option>
+     ))}
+    </select>
+   </label>
+  ):(
+   <p className="hq-quote-field-hint">Saving will link this quote to job {jobContext.jobNumber||jobContext.jobId.slice(0,8)}. Job primary is unchanged unless you set it on the job Quotes tab.</p>
+  )}
+ </section>
+ <section className="hq-panel"><h2>Customer and location</h2><label>Customer<SearchPicker value={draft.customerId} placeholder="Search name, phone or email" choices={customerList.map(c=>({id:c.id,label:c.name,detail:c.phone||c.email||''}))} onSelect={id=>{setDraft(d=>({...d,customerId:id,enquiryId:id===d.customerId?d.enquiryId:'',addressId:id===d.customerId?d.addressId:'',address:id===d.customerId?d.address:'',parentQuoteId:id===d.customerId?d.parentQuoteId:''}));setEnquirySearch('');resetCustomerConflict()}}/></label><button type="button" className="hq-quote-add-customer" onClick={()=>{setNewCustomer(x=>!x);resetCustomerConflict();setFeedback('')}}>{newCustomer?'Cancel new customer':'+ Create new customer'}</button>{newCustomer&&<div className="hq-quote-new-customer"><label>Name<input value={customerForm.name} onChange={e=>{setCustomerForm(x=>({...x,name:e.target.value}));resetCustomerConflict()}}/></label><label>Email<input type="email" value={customerForm.email} onChange={e=>{setCustomerForm(x=>({...x,email:e.target.value}));resetCustomerConflict()}}/></label><label>Phone<input type="tel" value={customerForm.phone} onChange={e=>{setCustomerForm(x=>({...x,phone:e.target.value}));resetCustomerConflict()}}/></label>{!customerConflict&&<button type="button" disabled={customerBusy} onClick={()=>addCustomer(false)}>{customerBusy?'Creating…':'Create and select customer'}</button>}{customerConflict&&customerMatches.length>0&&<div className="hq-quote-customer-match" role="status"><p><strong>{customerConflict==='single'?'Existing customer found':'Multiple matching customers'}</strong></p><p>{feedback}</p><ul>{customerMatches.map(m=><li key={m.id}><strong>{m.name}</strong><span>{[m.phone,m.email].filter(Boolean).join(' · ')||'No contact details'}</span><button type="button" disabled={customerBusy} onClick={()=>selectMatchedCustomer(m)}>Select this customer</button></li>)}</ul><button type="button" disabled={customerBusy} onClick={()=>addCustomer(true)}>{customerBusy?'Creating…':'Create separate customer anyway'}</button></div>}</div>}<label>Linked enquiry <span className="hq-quote-optional">(optional)</span><SearchPicker value={draft.enquiryId} placeholder="Search customer or service" optional choices={enquiries.filter(e=>!draft.customerId||!e.customer_id||e.customer_id===draft.customerId).map(e=>({id:e.id,label:enquiryLabel(e),detail:e.service_category||'Enquiry'}))} onSelect={id=>{const source=enquiries.find(e=>e.id===id);setDraft(d=>({...d,enquiryId:id,customerId:source?.customer_id||d.customerId,title:d.title||source?.service_category?.replaceAll('_',' ')||'',scope:d.scope||source?.message||''}))}}/></label><label>Job site address<input list="quote-addresses" placeholder="Select a saved address or type a new site address" value={draft.address} onChange={e=>{const value=e.target.value;const match=addresses.filter(a=>a.customer_id===draft.customerId).find(a=>addressLabel(a)===value);setDraft(d=>({...d,address:value,addressId:match?.id||''}));}}/><datalist id="quote-addresses">{addresses.filter(a=>a.customer_id===draft.customerId).map(a=><option key={a.id} value={addressLabel(a)}/>)}</datalist></label><p className="hq-quote-field-hint">{draft.addressId?'Using a saved customer site address.':'New site? Type the full address here. It will be stored on this quote; adding it to the customer address book is a separate step.'}</p></section>
  <section className="hq-panel"><h2>Scope of work</h2><label>Quote title<input value={draft.title} maxLength={200} onChange={e=>set('title',e.target.value)}/></label><label>Description<textarea rows={5} value={draft.scope} onChange={e=>set('scope',e.target.value)}/></label><details className="hq-quote-optional-details" open={Boolean(initial?.inclusions||initial?.exclusions)}><summary>Optional inclusions and exclusions</summary><label>Inclusions<textarea rows={3} value={draft.inclusions} onChange={e=>set('inclusions',e.target.value)}/></label><label>Exclusions<textarea rows={3} value={draft.exclusions} onChange={e=>set('exclusions',e.target.value)}/></label></details></section>
  <section className="hq-panel"><h2>Pricing</h2><label>Pricing approach<select value={draft.mode} onChange={e=>{const mode=e.target.value;setDraft(d=>({...d,mode,lines:mode==='fixed'&&!d.lines.some(isFixed)?[...d.lines,{description:FIXED,category:'other',quantity:1,unit:'each',price:0,cost:null,gst:true}]:d.lines}))}}><option value="detailed">Detailed line items</option><option value="fixed">Fixed price</option><option value="mixed">Mixed</option></select></label><label>Customer presentation<select value={draft.display} onChange={e=>set('display',e.target.value)}><option value="itemised">Itemised (default)</option><option value="total_only">Total only</option></select></label>{draft.mode==='fixed'?<div className="hq-quote-fixed">{(()=>{const l=draft.lines.find(isFixed);const i=draft.lines.findIndex(isFixed);const amount=l?.price||0;const includes=fixedIncludesGst&&l?.gst;return <><label>Fixed quote amount (AUD)<input type="number" min="0" step=".01" placeholder="Enter fixed amount" value={amount?String((includes?Math.round(amount*1.1):amount)/100):''} onFocus={e=>e.currentTarget.select()} onChange={e=>{const raw=Math.max(0,Math.round(Number(e.target.value)*100));editLine(i,'price',includes?Math.round(raw/1.1):raw)}}/></label><label className="hq-quote-gst"><input type="checkbox" checked={l?.gst??true} onChange={e=>editLine(i,'gst',e.target.checked)}/> GST applies (10%)</label>{l?.gst&&<label className="hq-quote-gst"><input type="checkbox" checked={fixedIncludesGst} onChange={e=>setFixedIncludesGst(e.target.checked)}/> Entered amount includes GST</label>}<label>Estimated internal job cost (AUD) — staff only<input type="number" min="0" step=".01" placeholder="Optional" value={l?.cost==null||l.cost===0?'':String(l.cost/100)} onFocus={e=>e.currentTarget.select()} onChange={e=>editLine(i,'cost',e.target.value===''?null:Math.round(Number(e.target.value)*100))}/></label><p className="hq-quote-fixed-note">A single fixed-price line is saved for the customer quote. Detailed line items are retained if you switch pricing modes.</p>{l?.cost!==null&&<p className="hq-quote-profit">Estimated gross profit (ex GST): <strong>{money(amount-(l?.cost||0))}</strong></p>}</>})()}</div>:<>{draft.lines.map((l,i)=>isFixed(l)?null:<div key={i} className="hq-quote-line"><button className="hq-quote-line-toggle" type="button" aria-expanded={expanded.includes(i)} onClick={()=>setExpanded(x=>x.includes(i)?x.filter(n=>n!==i):[...x,i])}><span>{l.description||`Item ${i+1}`} · {money(Math.round(l.quantity*l.price))}</span><span>{expanded.includes(i)?"−":"+"}</span></button>{expanded.includes(i)&&<div className="hq-quote-line-fields"><label>Description<input value={l.description} onChange={e=>editLine(i,'description',e.target.value)}/></label><label>Category<select value={l.category} onChange={e=>editLine(i,'category',e.target.value)}>{['labour','material','equipment','subcontractor','other'].map(x=><option key={x} value={x}>{x}</option>)}</select></label><div className="hq-quote-line-grid"><label>Qty<input type="number" min="0" step=".001" value={l.quantity===0?"":l.quantity} placeholder="0" onChange={e=>editLine(i,'quantity',e.target.value===""?0:Number(e.target.value))}/></label><label>Unit<input value={l.unit} onChange={e=>editLine(i,'unit',e.target.value)}/></label><label>Unit price (AUD)<input type="number" min="0" step=".01" value={l.price===0?"":String(l.price/100)} onFocus={e=>e.currentTarget.select()} onChange={e=>editLine(i,'price',Math.round(Number(e.target.value)*100))}/></label><label>Internal unit cost (AUD)<input type="number" min="0" step=".01" placeholder="Optional" value={l.cost===null||l.cost===0?"":String(l.cost/100)} onFocus={e=>e.currentTarget.select()} onChange={e=>editLine(i,'cost',e.target.value===''?null:Math.round(Number(e.target.value)*100))}/></label></div><label className="hq-quote-gst"><input type="checkbox" checked={l.gst} onChange={e=>editLine(i,'gst',e.target.checked)}/> GST applies</label><div className="hq-quote-line-footer"><strong>{money(Math.round(l.quantity*l.price))}</strong><button type="button" onClick={()=>set('lines',draft.lines.filter((_,j)=>j!==i))}>Remove item</button></div></div>}</div>)}<div className="hq-quote-add-actions"><button type="button" className="hq-quote-button" onClick={()=>addLine()}>+ Custom item</button><button type="button" onClick={()=>addLine("labour")}>+ Labour</button><button type="button" onClick={()=>addLine("material")}>+ Material</button><button type="button" onClick={()=>addLine("equipment")}>+ Equipment</button></div></>}<div className="hq-quote-totals"><p>Subtotal <strong>{money(subtotal)}</strong></p><p>GST <strong>{money(gst)}</strong></p><p>Total inc GST <strong>{money(subtotal+gst)}</strong></p></div><details className="hq-quote-cost-summary"><summary>Internal costing — staff only</summary><p>Estimated costs entered: <strong>{money(estimatedCost)}</strong></p><p>Estimated gross profit (ex GST): <strong>{money(subtotal-estimatedCost)}</strong></p>{hasMissingCosts&&<p className="hq-quote-cost-warning">Some items have no internal cost entered. Profit is incomplete until costs are added.</p>}</details></section>
- <section className="hq-panel"><h2>Notes</h2><label>Customer-facing notes<textarea rows={3} value={draft.notes} onChange={e=>set('notes',e.target.value)}/></label><label>Internal notes (staff only)<textarea rows={3} value={draft.internalNotes} onChange={e=>set('internalNotes',e.target.value)}/></label></section></div></fieldset>{draft.id&&<div className="hq-quote-save hq-quote-lifecycle"><Link className="hq-quote-button" href={'/hq/quotes/'+draft.id+'/preview'} target="_blank" rel="noopener noreferrer">Preview quote ↗</Link>{['approved','sent','accepted'].includes(initial?.status||'')&&<Link className="hq-quote-button" href={'/hq/jobs/new?quote='+draft.id}>+ Create job</Link>}{canApprove&&['draft','changes_requested','pending_approval'].includes(initial?.status||'')&&<button type="button" className="hq-quote-button" disabled={pending} onClick={()=>start(async()=>{const r=await approveQuote(draft.id!);setFeedback(r.message);router.refresh()})}>Approve saved quote</button>}{initial?.status==='approved'&&<button type="button" className="hq-quote-button hq-quote-button-secondary" disabled={pending} onClick={()=>start(async()=>{const r=await markQuoteSent(draft.id!);setFeedback(r.message);router.refresh()})}>Mark as sent</button>}{(initial?.status==='approved'||initial?.status==='sent')&&<button type="button" className="hq-quote-button hq-quote-button-secondary" disabled={pending} onClick={()=>start(async()=>{const r=await markQuoteAccepted(draft.id!);setFeedback(r.message);router.refresh()})}>Mark as accepted</button>}{(initial?.status==='approved'||initial?.status==='sent')&&<button type="button" className="hq-quote-button hq-quote-button-secondary" disabled={pending} onClick={()=>start(async()=>{const r=await markQuoteDeclined(draft.id!);setFeedback(r.message);router.refresh()})}>Mark as declined</button>}<span>{feedback||(locked?'Quote is locked. Status changes above do not edit pricing.':'Preview uses the last saved version. Save changes first.')}</span>{initial?.status==='approved'&&!feedback&&<span className="hq-quote-lifecycle-hint">“Mark as sent” records that the quote was issued. It does not email the customer.</span>}</div>}{!locked&&<div className="hq-quote-save hq-quote-save-sticky"><button className="hq-quote-button" disabled={pending} onClick={()=>save(false)}>{pending?'Saving…':'Save draft'}</button>{canApprove&&<button className="hq-quote-button" disabled={pending} onClick={()=>save(true)}>{pending?'Working…':'Save & approve'}</button>}<span role="status">{feedback}</span></div>}</div>
- <style>{`.hq-quote-customer-match{display:grid;gap:10px;margin-top:10px;padding:12px;border:1px solid #d7e3ee;border-radius:10px;background:#f7fbff}.hq-quote-customer-match ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}.hq-quote-customer-match li{display:grid;gap:4px}.hq-quote-customer-match span{color:#6b8498;font-size:13px}.hq-quote-customer-match button{justify-self:start}`}</style>
+ <section className="hq-panel"><h2>Notes</h2><label>Customer-facing notes<textarea rows={3} value={draft.notes} onChange={e=>set('notes',e.target.value)}/></label><label>Internal notes (staff only)<textarea rows={3} value={draft.internalNotes} onChange={e=>set('internalNotes',e.target.value)}/></label></section></div></fieldset>
+ {draft.id&&<div className="hq-quote-save hq-quote-lifecycle">
+  <Link className="hq-quote-button" href={'/hq/quotes/'+draft.id+'/preview'} target="_blank" rel="noopener noreferrer">Preview quote ↗</Link>
+  {['approved','sent','accepted'].includes(status)&&<Link className="hq-quote-button" href={'/hq/jobs/new?quote='+draft.id}>+ Create job</Link>}
+  {canApprove&&['draft','changes_requested','pending_approval'].includes(status)&&<button type="button" className="hq-quote-button" disabled={pending} onClick={()=>start(async()=>{const r=await approveQuote(draft.id!);setFeedback(r.message);router.refresh()})}>Approve saved quote</button>}
+  {status==='approved'&&<button type="button" className="hq-quote-button hq-quote-button-secondary" disabled={pending} onClick={()=>start(async()=>{const r=await markQuoteSent(draft.id!);setFeedback(r.message);router.refresh()})}>Mark as sent</button>}
+  {(status==='approved'||status==='sent')&&<button type="button" className="hq-quote-button hq-quote-button-secondary" disabled={pending} onClick={()=>start(async()=>{const r=await markQuoteAccepted(draft.id!);setFeedback(r.message);router.refresh()})}>Mark as accepted</button>}
+  {(status==='approved'||status==='sent')&&<button type="button" className="hq-quote-button hq-quote-button-secondary" disabled={pending} onClick={()=>start(async()=>{const r=await markQuoteDeclined(draft.id!);setFeedback(r.message);router.refresh()})}>Mark as declined</button>}
+  {canOfferMakeCurrent&&<button type="button" className="hq-quote-button hq-quote-button-secondary" disabled={pending} onClick={()=>start(async()=>{const r=await makeQuoteCommercialCurrent(draft.id!);setFeedback(r.message);router.refresh()})}>Make current commercial version</button>}
+  <span>{feedback||(locked?'Quote is locked. Status changes above do not edit pricing.':'Preview uses the last saved version. Save changes first.')}</span>
+  {status==='approved'&&!feedback&&<span className="hq-quote-lifecycle-hint">“Mark as sent” records that the quote was issued. It does not email the customer.</span>}
+ </div>}
+ {!locked&&<div className="hq-quote-save hq-quote-save-sticky">
+  <button className="hq-quote-button" disabled={pending} onClick={()=>save(false,'continue')}>{pending?'Saving…':'Save & continue'}</button>
+  {showReturn?<button className="hq-quote-button hq-quote-button-secondary" disabled={pending} onClick={()=>save(false,'return_to_job')}>{pending?'Saving…':'Save & return to job'}</button>:null}
+  {canApprove&&<button className="hq-quote-button" disabled={pending} onClick={()=>save(true,'continue')}>{pending?'Working…':'Save & approve'}</button>}
+  <span role="status">{feedback}</span>
+ </div>}
+ </div>
+ <style>{`
+ .hq-quote-breadcrumbs{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;font-size:13px;color:#5b7386}
+ .hq-quote-breadcrumbs a{color:#18577d;text-decoration:none;font-weight:650}
+ .hq-quote-type-row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:12px}
+ .hq-quote-type-option{display:flex;align-items:center;gap:8px;font-weight:650}
+ .hq-quote-commercial-meta{margin:8px 0 0;font-size:14px;color:#355468}
+ .hq-quote-current-chip{display:inline-flex;align-items:center;border-radius:8px;padding:2px 8px;background:#e7f3ff;color:#076ab5;font-size:12px;font-weight:800}
+ .hq-quote-customer-match{display:grid;gap:10px;margin-top:10px;padding:12px;border:1px solid #d7e3ee;border-radius:10px;background:#f7fbff}
+ .hq-quote-customer-match ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+ .hq-quote-customer-match li{display:grid;gap:4px}
+ .hq-quote-customer-match span{color:#6b8498;font-size:13px}
+ .hq-quote-customer-match button{justify-self:start}
+ `}</style>
  </main>;
 }

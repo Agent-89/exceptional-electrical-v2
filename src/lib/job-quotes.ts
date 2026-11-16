@@ -19,6 +19,11 @@ export type JobQuoteDisplay = JobQuoteAssociationInput & {
   status: string;
   updatedAt: string;
   totalCentsIncGst: number;
+  /** Independent of isPrimary — commercial acceptance / current version. */
+  isCommercialCurrent?: boolean;
+  parentQuoteId?: string | null;
+  parentQuoteNumber?: string | null;
+  revisionNumber?: number;
 };
 
 export type QuoteLineForTotal = {

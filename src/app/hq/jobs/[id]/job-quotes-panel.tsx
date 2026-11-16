@@ -4,8 +4,8 @@ import {
   formatAudFromCents,
   type JobQuoteDisplay,
 } from '@/lib/job-quotes';
+import { quoteBuilderNewHref } from '@/lib/quote-commercial';
 import {
-  createLinkedQuoteFromJob,
   linkQuoteToJob,
   setPrimaryJobQuote,
 } from '../job-quote-actions';
@@ -85,6 +85,12 @@ export default function JobQuotesPanel({
                 </strong>
                 <span className="ee-job-quote-badges">
                   {quote.isPrimary ? <span className="ee-job-quote-primary">Primary</span> : null}
+                  {quote.isCommercialCurrent ? (
+                    <span className="ee-job-quote-current">Current commercial</span>
+                  ) : null}
+                  {quote.parentQuoteNumber ? (
+                    <span className="ee-job-quote-kind">Rev of {quote.parentQuoteNumber}</span>
+                  ) : null}
                   {quote.associationKind !== 'quote' || quote.label ? (
                     <span className="ee-job-quote-kind">
                       {quote.label || associationKindLabel(quote.associationKind)}
@@ -183,24 +189,43 @@ export default function JobQuotesPanel({
           <div className="ee-job-quote-create">
             <h3>Create from this job</h3>
             <p className="ee-muted" style={{ marginTop: 0 }}>
-              Opens a new draft linked to this job. Edit pricing on the quote screen.
+              Opens the quote builder with this job context. Variations get a normal EEQ number and
+              must select a parent quote. Saving links the draft without changing commercial current.
             </p>
             <div className="ee-job-quote-create-actions">
-              <form action={createLinkedQuoteFromJob}>
-                <input type="hidden" name="job_id" value={jobId} />
-                <input type="hidden" name="association_kind" value="quote" />
-                <button type="submit" className="hq-detail-action-primary" disabled={!customerId}>
-                  New quote
-                </button>
-              </form>
-              <form action={createLinkedQuoteFromJob}>
-                <input type="hidden" name="job_id" value={jobId} />
-                <input type="hidden" name="association_kind" value="variation" />
-                <input type="hidden" name="label" value="Variation" />
-                <button type="submit" disabled={!customerId}>
-                  New variation
-                </button>
-              </form>
+              {customerId ? (
+                <>
+                  <Link
+                    className="hq-detail-action-primary"
+                    href={quoteBuilderNewHref({ jobId, type: 'standard' })}
+                  >
+                    New quote
+                  </Link>
+                  <Link
+                    className="hq-detail-action-secondary"
+                    href={quoteBuilderNewHref({
+                      jobId,
+                      type: 'variation',
+                      parentQuoteId:
+                        quotes.find((q) => q.isCommercialCurrent)?.id ||
+                        quotes.find((q) => q.isPrimary)?.id ||
+                        quotes[0]?.id ||
+                        null,
+                    })}
+                  >
+                    New variation
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="hq-detail-action-primary" disabled>
+                    New quote
+                  </button>
+                  <button type="button" disabled>
+                    New variation
+                  </button>
+                </>
+              )}
             </div>
             {!customerId ? (
               <p className="ee-muted">A customer is required before creating a quote.</p>

@@ -111,6 +111,7 @@ describe('job detail tab shell regression', () => {
     assert.match(quotesPanelSource, /Make primary/);
     assert.match(quotesPanelSource, /Link existing quote/);
     assert.match(quotesPanelSource, /New variation/);
+    assert.match(quotesPanelSource, /quoteBuilderNewHref/);
     assert.match(quotesPanelSource, /UnlinkJobQuoteButton/);
     assert.match(quotesPanelSource, /Add a customer to this job before linking a quote/);
     assert.match(unlinkButtonSource, /window\.confirm/);

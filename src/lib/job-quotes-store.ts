@@ -17,6 +17,9 @@ type QuoteRow = {
   updated_at: string;
   pricing_mode: string | null;
   customer_id: string | null;
+  parent_quote_id?: string | null;
+  revision_number?: number | null;
+  is_commercial_current?: boolean | null;
   quote_items:
     | {
         description: string | null;
@@ -95,12 +98,24 @@ export async function loadJobQuotesForDisplay(
   }
 
   const ids = merged.map((row) => row.quoteId);
-  const { data: quoteRows, error: quoteError } = await db
-    .from('quotes')
-    .select(
-      'id,quote_number,title,status,updated_at,pricing_mode,customer_id,quote_items(description,category,quantity,unit_price_cents,gst_applicable)',
-    )
-    .in('id', ids);
+  const commercialSelect =
+    'id,quote_number,title,status,updated_at,pricing_mode,customer_id,parent_quote_id,revision_number,is_commercial_current,quote_items(description,category,quantity,unit_price_cents,gst_applicable)';
+  const baseSelect =
+    'id,quote_number,title,status,updated_at,pricing_mode,customer_id,parent_quote_id,revision_number,quote_items(description,category,quantity,unit_price_cents,gst_applicable)';
+
+  let quoteRows: QuoteRow[] | null = null;
+  let quoteError: { message?: string; code?: string } | null = null;
+  {
+    const first = await db.from('quotes').select(commercialSelect).in('id', ids);
+    if (first.error && /is_commercial_current|commercial_family_id/i.test(first.error.message || '')) {
+      const second = await db.from('quotes').select(baseSelect).in('id', ids);
+      quoteRows = (second.data ?? null) as QuoteRow[] | null;
+      quoteError = second.error;
+    } else {
+      quoteRows = (first.data ?? null) as QuoteRow[] | null;
+      quoteError = first.error;
+    }
+  }
 
   if (quoteError) {
     return {
@@ -111,8 +126,23 @@ export async function loadJobQuotesForDisplay(
   }
 
   const byId = new Map<string, QuoteRow>();
-  for (const row of (quoteRows ?? []) as QuoteRow[]) {
+  for (const row of quoteRows ?? []) {
     byId.set(row.id, row);
+  }
+
+  const parentIds = [
+    ...new Set(
+      (quoteRows ?? [])
+        .map((row) => row.parent_quote_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  const parentNumberById = new Map<string, string>();
+  if (parentIds.length) {
+    const { data: parents } = await db.from('quotes').select('id,quote_number').in('id', parentIds);
+    for (const parent of parents ?? []) {
+      parentNumberById.set(String(parent.id), String(parent.quote_number));
+    }
   }
 
   const quotes: JobQuoteDisplay[] = [];
@@ -127,6 +157,10 @@ export async function loadJobQuotesForDisplay(
       status: q.status,
       updatedAt: q.updated_at,
       totalCentsIncGst: quoteTotalIncGstCents(q.quote_items, q.pricing_mode),
+      isCommercialCurrent: Boolean(q.is_commercial_current),
+      parentQuoteId: q.parent_quote_id ?? null,
+      parentQuoteNumber: q.parent_quote_id ? parentNumberById.get(q.parent_quote_id) || null : null,
+      revisionNumber: Number(q.revision_number || 0),
     });
   }
 

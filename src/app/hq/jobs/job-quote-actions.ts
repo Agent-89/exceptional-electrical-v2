@@ -14,6 +14,7 @@ import {
 } from '@/lib/job-quotes';
 import { isMissingJobQuotesRelation } from '@/lib/job-quotes-store';
 import { jobDetailTabHref } from '@/lib/job-detail-tabs';
+import { quoteBuilderNewHref } from '@/lib/quote-commercial';
 
 const uuid = /^[0-9a-f-]{36}$/i;
 
@@ -193,7 +194,11 @@ export async function setPrimaryJobQuote(formData: FormData): Promise<void> {
   }
 }
 
-/** Create a draft quote (or variation) and link it in one DB transaction. */
+/**
+ * Create a standard/additional-works draft and link it.
+ * Variations must use the quote builder with a parent (`quoteBuilderNewHref`) —
+ * association_kind alone is not a commercial parent relationship.
+ */
 export async function createLinkedQuoteFromJob(formData: FormData): Promise<void> {
   const user = await requireHqUser();
   assertOfficeOps(user);
@@ -201,10 +206,25 @@ export async function createLinkedQuoteFromJob(formData: FormData): Promise<void
   const jobId = String(formData.get('job_id') || '').trim();
   const kindRaw = String(formData.get('association_kind') || 'quote').trim();
   const labelRaw = String(formData.get('label') || '').trim();
+  const parentRaw = String(formData.get('parent_quote_id') || '').trim();
 
   try {
     if (!uuid.test(jobId)) throw new Error('Invalid job reference.');
     if (!isJobQuoteKind(kindRaw)) throw new Error('Invalid association type.');
+
+    const kind = kindRaw as JobQuoteKind;
+
+    // Legacy association-kind-only variation path: redirect to builder (no orphan draft).
+    if (kind === 'variation') {
+      const parentId = uuid.test(parentRaw) ? parentRaw : null;
+      redirect(
+        quoteBuilderNewHref({
+          jobId,
+          type: 'variation',
+          parentQuoteId: parentId,
+        }),
+      );
+    }
 
     const db = await requireJobQuotesTable();
     const { data: job } = await db
@@ -224,14 +244,11 @@ export async function createLinkedQuoteFromJob(formData: FormData): Promise<void
       .maybeSingle();
     if (!customer) throw new Error('Customer not found.');
 
-    const kind = kindRaw as JobQuoteKind;
     const titleBase = String(job.title || 'Electrical work').trim();
     const title =
-      kind === 'variation'
-        ? `Variation — ${titleBase}`.slice(0, 200)
-        : kind === 'additional_works'
-          ? `Additional works — ${titleBase}`.slice(0, 200)
-          : titleBase.slice(0, 200);
+      kind === 'additional_works'
+        ? `Additional works — ${titleBase}`.slice(0, 200)
+        : titleBase.slice(0, 200);
 
     const values = {
       customer_id: job.customer_id,
