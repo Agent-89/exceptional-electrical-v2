@@ -44,6 +44,7 @@ export type JobDetailAppointment = {
   outstanding: string | null;
   issues: string | null;
   electricianNames?: string[];
+  scheduleNotes?: string | null;
 };
 
 const PENDING_APPROVAL_STATUSES = new Set(['submitted', 'rejected', 'corrected']);
@@ -179,7 +180,7 @@ export function buildJobAttentionItems(input: {
       id: 'pending-approvals',
       kind: 'approval',
       label: `${pending.length} time ${pending.length === 1 ? 'entry' : 'entries'} awaiting approval`,
-      detail: `${formatDurationMinutes(minutes)} worked · review in Time & labour`,
+      detail: `${formatDurationMinutes(minutes)} worked · review on the Time tab`,
     });
   }
 

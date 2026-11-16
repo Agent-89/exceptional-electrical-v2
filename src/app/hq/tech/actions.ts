@@ -935,6 +935,184 @@ export async function addOfficeNoteAction(formData: FormData) {
   revalidatePath('/hq/jobs/' + jobId);
 }
 
+type OfficeUpdateResult =
+  | { ok: true; message: string; linkedPhotos: boolean }
+  | { ok: false; error: string };
+
+async function prepareOfficePhotoUpload(file: File): Promise<{
+  id: string;
+  uploadBytes: Uint8Array;
+  uploadType: string;
+  width: number | null;
+  height: number | null;
+}> {
+  if (file.size <= 0) throw new Error('Choose a photo to upload.');
+  if (file.size > MAX_PHOTO_BYTES) throw new Error('Photo must be 15 MB or smaller.');
+  const contentType = file.type || 'application/octet-stream';
+  if (!ALLOWED_PHOTO_TYPES.has(contentType)) {
+    throw new Error('Use a JPEG, PNG, WebP, or HEIC photo.');
+  }
+  const bytes = Buffer.from(await file.arrayBuffer());
+  let uploadBytes: Uint8Array = bytes;
+  let uploadType = contentType === 'image/png' ? 'image/png' : 'image/jpeg';
+  let width: number | null = null;
+  let height: number | null = null;
+  try {
+    const image = sharp(bytes, { failOn: 'none' }).rotate();
+    const meta = await image.metadata();
+    width = meta.width ?? null;
+    height = meta.height ?? null;
+    if (contentType === 'image/png') {
+      uploadBytes = new Uint8Array(await image.png({ compressionLevel: 8 }).toBuffer());
+      uploadType = 'image/png';
+    } else {
+      uploadBytes = new Uint8Array(await image.jpeg({ quality: 82, mozjpeg: true }).toBuffer());
+      uploadType = 'image/jpeg';
+    }
+  } catch {
+    uploadBytes = bytes;
+    uploadType = contentType;
+  }
+  if (uploadBytes.length > MAX_PHOTO_BYTES) throw new Error('Compressed photo still exceeds size limit.');
+  return { id: crypto.randomUUID(), uploadBytes, uploadType, width, height };
+}
+
+/**
+ * Office unified update: note only, photos only, or note with photos.
+ * Photo→note linking uses job_attachments.job_note_id when that column exists.
+ * If the additive migration is not applied yet, photos still save as standalone.
+ */
+export async function addOfficeJobUpdateAction(formData: FormData): Promise<OfficeUpdateResult> {
+  const user = await requireOfficeUser();
+  assertOfficeOps(user);
+  const jobId = String(formData.get('job_id') || '');
+  const body = textField(formData, 'body', 4000);
+  const visibility = String(formData.get('visibility') || 'office_only');
+  const files = formData
+    .getAll('photos')
+    .filter((item): item is File => item instanceof File && item.size > 0);
+
+  if (!/^[0-9a-f-]{36}$/i.test(jobId)) return { ok: false, error: 'Invalid job.' };
+  if (!body && files.length === 0) {
+    return { ok: false, error: 'Add a note, at least one photo, or both.' };
+  }
+  if (body && visibility !== 'shared' && visibility !== 'office_only') {
+    return { ok: false, error: 'Invalid visibility.' };
+  }
+  if (files.length > 8) return { ok: false, error: 'Upload up to 8 photos at a time.' };
+
+  const db = dbAdmin();
+  const { data: job } = await db.from('jobs').select('id').eq('id', jobId).maybeSingle();
+  if (!job) return { ok: false, error: 'Job not found.' };
+
+  let noteId: string | null = null;
+  if (body) {
+    const { data, error } = await db
+      .from('job_notes')
+      .insert({
+        job_id: jobId,
+        author_id: user.id,
+        visibility,
+        body,
+        updated_at: new Date().toISOString(),
+      })
+      .select('id')
+      .maybeSingle();
+    if (error || !data) return { ok: false, error: 'Unable to save office note.' };
+    noteId = data.id as string;
+    await db.from('job_activity').insert({
+      job_id: jobId,
+      actor_id: user.id,
+      action: visibility === 'office_only' ? 'office_note_added' : 'note_added',
+      note: body.slice(0, 240),
+    });
+  }
+
+  let linkedPhotos = false;
+  for (const file of files) {
+    let prepared;
+    try {
+      prepared = await prepareOfficePhotoUpload(file);
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Unable to process photo.',
+      };
+    }
+    const ext =
+      prepared.uploadType === 'image/png'
+        ? 'png'
+        : prepared.uploadType === 'image/webp'
+          ? 'webp'
+          : 'jpg';
+    const storagePath = `${jobId}/office/${user.id}/${prepared.id}.${ext}`;
+    const { error: uploadError } = await db.storage
+      .from('job-photos')
+      .upload(storagePath, prepared.uploadBytes, {
+        contentType: prepared.uploadType,
+        upsert: false,
+      });
+    if (uploadError) return { ok: false, error: 'Photo upload failed. Please try again.' };
+
+    const baseRow = {
+      id: prepared.id,
+      job_id: jobId,
+      appointment_id: null as string | null,
+      uploaded_by: user.id,
+      storage_path: storagePath,
+      content_type: prepared.uploadType,
+      byte_size: prepared.uploadBytes.length,
+      width: prepared.width,
+      height: prepared.height,
+      caption: body ? body.slice(0, 120) : null,
+    };
+
+    let insertError = null as { message?: string } | null;
+    if (noteId) {
+      const linked = await db
+        .from('job_attachments')
+        .insert({ ...baseRow, job_note_id: noteId })
+        .select('id')
+        .maybeSingle();
+      if (!linked.error && linked.data) {
+        linkedPhotos = true;
+      } else if (linked.error && /job_note_id|column/i.test(linked.error.message || '')) {
+        const fallback = await db.from('job_attachments').insert(baseRow).select('id').maybeSingle();
+        insertError = fallback.error;
+      } else {
+        insertError = linked.error;
+      }
+    } else {
+      const standalone = await db.from('job_attachments').insert(baseRow).select('id').maybeSingle();
+      insertError = standalone.error;
+    }
+
+    if (insertError) {
+      await db.storage.from('job-photos').remove([storagePath]);
+      return { ok: false, error: 'Unable to save photo record.' };
+    }
+
+    await db.from('job_activity').insert({
+      job_id: jobId,
+      actor_id: user.id,
+      action: 'photo_uploaded',
+      note: 'Photo ' + prepared.id + (noteId ? ` · note ${noteId}` : ''),
+    });
+  }
+
+  revalidatePath('/hq/jobs/' + jobId);
+  const message = body && files.length
+    ? linkedPhotos
+      ? 'Note and photos saved together'
+      : 'Note and photos saved. Photo linking will activate after the approved database update.'
+    : body
+      ? 'Note saved'
+      : files.length === 1
+        ? 'Photo saved'
+        : 'Photos saved';
+  return { ok: true, message, linkedPhotos };
+}
+
 /** Deny technicians from approving timesheets via forged form posts. */
 export async function technicianCannotApproveGuard() {
   const crew = await requireTechnicianCrew();

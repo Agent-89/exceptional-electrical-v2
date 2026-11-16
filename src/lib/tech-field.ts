@@ -33,6 +33,8 @@ export type JobAttachmentRow = {
   byteSize: number;
   caption: string | null;
   createdAt: string;
+  /** Present after the additive note-link migration; null/undefined = standalone photo. */
+  jobNoteId?: string | null;
   signedUrl?: string | null;
 };
 
@@ -78,16 +80,39 @@ export async function listJobAttachments(options: {
   appointmentId?: string | null;
 }): Promise<JobAttachmentRow[]> {
   const db = dbAdmin();
-  let query = db
+  const selectWithNote =
+    'id,job_id,appointment_id,uploaded_by,storage_path,content_type,byte_size,caption,created_at,job_note_id';
+  const selectBase =
+    'id,job_id,appointment_id,uploaded_by,storage_path,content_type,byte_size,caption,created_at';
+
+  let withNote = db
     .from('job_attachments')
-    .select('id,job_id,appointment_id,uploaded_by,storage_path,content_type,byte_size,caption,created_at')
+    .select(selectWithNote)
     .eq('job_id', options.jobId)
     .order('created_at', { ascending: false })
     .limit(100);
-  if (options.appointmentId) query = query.eq('appointment_id', options.appointmentId);
-  const { data, error } = await query;
-  if (error) throw new Error('Unable to load job photos.');
-  const rows = data ?? [];
+  if (options.appointmentId) withNote = withNote.eq('appointment_id', options.appointmentId);
+  const first = await withNote;
+
+  let rows: Array<Record<string, unknown>> = [];
+  if (!first.error) {
+    rows = (first.data ?? []) as Array<Record<string, unknown>>;
+  } else if (/job_note_id|column/i.test(first.error.message || '')) {
+    // Soft-fallback until the additive job_note_id migration is applied on hosted DB.
+    let fallback = db
+      .from('job_attachments')
+      .select(selectBase)
+      .eq('job_id', options.jobId)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (options.appointmentId) fallback = fallback.eq('appointment_id', options.appointmentId);
+    const second = await fallback;
+    if (second.error) throw new Error('Unable to load job photos.');
+    rows = (second.data ?? []) as Array<Record<string, unknown>>;
+  } else {
+    throw new Error('Unable to load job photos.');
+  }
+
   const uploaderIds = [...new Set(rows.map((r) => r.uploaded_by as string))];
   const { data: uploaders } = uploaderIds.length
     ? await db.from('staff_profiles').select('user_id,full_name').in('user_id', uploaderIds)
@@ -104,6 +129,7 @@ export async function listJobAttachments(options: {
     byteSize: r.byte_size as number,
     caption: (r.caption as string | null) ?? null,
     createdAt: r.created_at as string,
+    jobNoteId: (r.job_note_id as string | null | undefined) ?? null,
   }));
 }
 
