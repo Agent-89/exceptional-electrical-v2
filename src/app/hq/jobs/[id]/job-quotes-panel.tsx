@@ -8,8 +8,8 @@ import {
   createLinkedQuoteFromJob,
   linkQuoteToJob,
   setPrimaryJobQuote,
-  unlinkQuoteFromJob,
 } from '../job-quote-actions';
+import UnlinkJobQuoteButton from './unlink-job-quote-button';
 
 export type LinkableQuoteOption = {
   id: string;
@@ -110,13 +110,12 @@ export default function JobQuotesPanel({
                       </button>
                     </form>
                   ) : null}
-                  <form action={unlinkQuoteFromJob}>
-                    <input type="hidden" name="job_id" value={jobId} />
-                    <input type="hidden" name="quote_id" value={quote.id} />
-                    <button type="submit" className="ee-text-action">
-                      Unlink
-                    </button>
-                  </form>
+                  <UnlinkJobQuoteButton
+                    jobId={jobId}
+                    quoteId={quote.id}
+                    quoteNumber={quote.quoteNumber}
+                    isPrimary={quote.isPrimary}
+                  />
                 </div>
               ) : null}
             </article>
@@ -129,12 +128,13 @@ export default function JobQuotesPanel({
           <form action={linkQuoteToJob} className="ee-job-quote-link-form">
             <h3>Link existing quote</h3>
             {!customerId ? (
-              <p className="ee-muted">Add a customer to this job to filter compatible quotes.</p>
-            ) : null}
-            {linkableQuotes.length === 0 ? (
               <p className="ee-muted" style={{ marginBottom: 0 }}>
-                No other quotes are available to link
-                {customerId ? ' for this customer' : ''}.
+                Add a customer to this job before linking a quote. Jobs without a customer cannot
+                link customer quotes.
+              </p>
+            ) : linkableQuotes.length === 0 ? (
+              <p className="ee-muted" style={{ marginBottom: 0 }}>
+                No other quotes are available to link for this customer.
               </p>
             ) : (
               <>

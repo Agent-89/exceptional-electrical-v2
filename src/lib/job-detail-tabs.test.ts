@@ -27,6 +27,10 @@ const quotesPanelSource = readFileSync(
   new URL('../app/hq/jobs/[id]/job-quotes-panel.tsx', import.meta.url),
   'utf8',
 );
+const unlinkButtonSource = readFileSync(
+  new URL('../app/hq/jobs/[id]/unlink-job-quote-button.tsx', import.meta.url),
+  'utf8',
+);
 
 describe('job detail tab registry', () => {
   it('lists the office tabs in navigation order', () => {
@@ -107,6 +111,11 @@ describe('job detail tab shell regression', () => {
     assert.match(quotesPanelSource, /Make primary/);
     assert.match(quotesPanelSource, /Link existing quote/);
     assert.match(quotesPanelSource, /New variation/);
+    assert.match(quotesPanelSource, /UnlinkJobQuoteButton/);
+    assert.match(quotesPanelSource, /Add a customer to this job before linking a quote/);
+    assert.match(unlinkButtonSource, /window\.confirm/);
+    assert.match(unlinkButtonSource, /confirm_unlink/);
+    assert.match(unlinkButtonSource, /unlinkQuoteConfirmMessage/);
     assert.match(pageSource, /This screen does not create or change invoices/);
     assert.match(activitySource, /No estimated or fabricated figures are\s+shown/);
     assert.match(activitySource, /section === 'visits'/);

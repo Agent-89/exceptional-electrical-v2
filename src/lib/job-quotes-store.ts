@@ -137,17 +137,16 @@ export async function listLinkableQuotesForJob(
   db: SupabaseClient,
   args: { customerId: string | null; excludeQuoteIds: string[] },
 ): Promise<{ id: string; quote_number: string; title: string | null; status: string }[]> {
-  let query = db
+  // Never list quotes when the job has no customer — prevents unrelated customer picks.
+  if (!args.customerId) return [];
+
+  const { data, error } = await db
     .from('quotes')
     .select('id,quote_number,title,status,customer_id,updated_at')
+    .eq('customer_id', args.customerId)
     .order('updated_at', { ascending: false })
     .limit(100);
 
-  if (args.customerId) {
-    query = query.eq('customer_id', args.customerId);
-  }
-
-  const { data, error } = await query;
   if (error || !data) return [];
 
   const excluded = new Set(args.excludeQuoteIds);

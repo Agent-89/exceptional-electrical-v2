@@ -79,11 +79,18 @@ Columns (minimal):
 
 ### Behaviour rules
 
-1. Link: office-only; reject cross-customer when both job and quote have customers; unique `(job_id, quote_id)`.
-2. First link (or explicit “make primary”) sets `is_primary` and `jobs.quote_id`.
-3. Unlink: deletes association only — never deletes the quote; if primary removed, clear `jobs.quote_id` (office can set another primary).
-4. Create-job-from-quote: still sets `jobs.quote_id`; also inserts primary `job_quotes` row when the table exists.
+1. Link: office-only via service-role RPCs after `assertOfficeOps`. Job **must** have a customer; quote customer must match. Unique `(job_id, quote_id)`.
+2. First link (or explicit “make primary”) sets `is_primary` and `jobs.quote_id` in **one transaction** (`job_quote_*_atomic` RPCs, `FOR UPDATE` on the job row).
+3. Unlink: browser confirm + association delete only — never deletes the quote; if primary removed, clear `jobs.quote_id` (office can set another primary).
+4. Create-job-from-quote: still sets `jobs.quote_id`; syncs primary `job_quotes` via `job_quote_sync_primary_after_create_atomic` when available.
 5. No invoice/costing in this milestone.
+
+### Atomic RPC privileges
+
+- `job_quote_link_atomic`, `job_quote_unlink_atomic`, `job_quote_set_primary_atomic`, `job_quote_sync_primary_after_create_atomic`
+- `security invoker`, `search_path = ''`
+- `REVOKE` from `public` / `anon` / `authenticated`; `GRANT EXECUTE` to `service_role` only
+- Concurrent primary races return a clear refresh/retry message (unique_violation handler)
 
 ### Release safety
 
@@ -97,7 +104,9 @@ Stop here until an owner explicitly approves each step:
 1. **Review this PR** on GitHub (app + migration SQL only; no Production deploy yet).
 2. **Read-only hosted check** on project `udwdurnknweavmksotii`: confirm `public.quotes` / `public.jobs.quote_id` exist and `public.job_quotes` does not.
 3. **Approve migration apply** to hosted Supabase (staging first if available; otherwise Production with a maintenance window).
-4. Apply **only** `supabase/migrations/20261116120000_job_quotes_associations.sql` (forward-only). Do not rewrite historical migrations.
+4. Apply **in order** (forward-only):  
+   `20261116120000_job_quotes_associations.sql` then `20261116130000_job_quotes_atomic_ops.sql`.  
+   Do not rewrite historical migrations.
 5. Smoke-test Quotes tab on a **fictional** job: legacy primary display, link/unlink, create variation, create-job-from-quote.
 6. Approve **Production app deploy** (Vercel) after migration is confirmed.
 7. Do **not** merge/deploy invoices, Xero writes, Tradify writes, email, or Google Calendar changes as part of C1.

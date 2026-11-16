@@ -33,12 +33,30 @@ export function isJobQuoteKind(value: string): value is JobQuoteKind {
   return (JOB_QUOTE_KINDS as readonly string[]).includes(value);
 }
 
+/** Legacy pairwise check: both missing is treated as compatible for display helpers. */
 export function quoteCustomersCompatible(
   jobCustomerId: string | null | undefined,
   quoteCustomerId: string | null | undefined,
 ): boolean {
-  if (!jobCustomerId || !quoteCustomerId) return true;
+  if (!jobCustomerId || !quoteCustomerId) return jobCustomerId === quoteCustomerId;
   return jobCustomerId === quoteCustomerId;
+}
+
+/** Server-side gate for linking: job must have a customer and the quote must match it. */
+export function canLinkQuoteToJob(
+  jobCustomerId: string | null | undefined,
+  quoteCustomerId: string | null | undefined,
+): { ok: true } | { ok: false; message: string } {
+  if (!jobCustomerId) {
+    return { ok: false, message: jobCustomerRequiredErrorMessage() };
+  }
+  if (!quoteCustomerId) {
+    return { ok: false, message: quoteCustomerRequiredErrorMessage() };
+  }
+  if (jobCustomerId !== quoteCustomerId) {
+    return { ok: false, message: crossCustomerErrorMessage() };
+  }
+  return { ok: true };
 }
 
 /** Inc-GST total; respects fixed-price mode filter used on the quotes register. */
@@ -127,6 +145,64 @@ export function duplicateAssociationErrorMessage(): string {
 
 export function crossCustomerErrorMessage(): string {
   return 'Quotes must belong to the same customer as the job.';
+}
+
+export function jobCustomerRequiredErrorMessage(): string {
+  return 'Add a customer to this job before linking a quote.';
+}
+
+export function quoteCustomerRequiredErrorMessage(): string {
+  return 'Choose a quote that belongs to this job’s customer.';
+}
+
+export function concurrentPrimaryChangeErrorMessage(): string {
+  return 'Another primary quote change happened at the same time. Refresh and try again.';
+}
+
+/** Browser confirm copy for unlinking. Does not delete the quote record. */
+export function unlinkQuoteConfirmMessage(args: {
+  quoteNumber: string;
+  isPrimary: boolean;
+}): string {
+  const label = args.quoteNumber.trim() || 'this quote';
+  const base =
+    `Unlink ${label} from this job?\n\n` +
+    'This only removes the job association. The quote and its history stay in Quotes.';
+  if (!args.isPrimary) return base;
+  return (
+    base +
+    '\n\nThis is the primary quote. After unlinking, the job will have no primary quote until you select another.'
+  );
+}
+
+export type JobQuoteAtomicResult = {
+  ok: boolean;
+  message?: string;
+  isPrimary?: boolean;
+  clearedPrimary?: boolean;
+};
+
+export function interpretJobQuoteAtomicResult(
+  data: unknown,
+  fallbackError: string,
+): JobQuoteAtomicResult {
+  if (!data || typeof data !== 'object') {
+    return { ok: false, message: fallbackError };
+  }
+  const row = data as Record<string, unknown>;
+  const ok = row.ok === true;
+  const message =
+    typeof row.message === 'string' && row.message.trim()
+      ? row.message
+      : ok
+        ? undefined
+        : fallbackError;
+  return {
+    ok,
+    message,
+    isPrimary: row.isPrimary === true,
+    clearedPrimary: row.clearedPrimary === true,
+  };
 }
 
 /**

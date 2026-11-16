@@ -2,27 +2,84 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   associationKindLabel,
+  canLinkQuoteToJob,
+  concurrentPrimaryChangeErrorMessage,
   crossCustomerErrorMessage,
   duplicateAssociationErrorMessage,
   formatAudFromCents,
+  interpretJobQuoteAtomicResult,
   isJobQuoteKind,
+  jobCustomerRequiredErrorMessage,
   mergeJobQuoteAssociations,
   nextPrimaryQuoteId,
+  quoteCustomerRequiredErrorMessage,
   quoteCustomersCompatible,
   quoteTotalIncGstCents,
   resolvePrimaryOnLink,
+  unlinkQuoteConfirmMessage,
 } from './job-quotes.ts';
 
 describe('quoteCustomersCompatible', () => {
-  it('allows when either side is missing a customer', () => {
-    assert.equal(quoteCustomersCompatible(null, 'c1'), true);
-    assert.equal(quoteCustomersCompatible('c1', null), true);
+  it('requires both sides to be set and matching for compatibility', () => {
+    assert.equal(quoteCustomersCompatible(null, 'c1'), false);
+    assert.equal(quoteCustomersCompatible('c1', null), false);
     assert.equal(quoteCustomersCompatible(undefined, undefined), true);
-  });
-
-  it('rejects cross-customer links', () => {
     assert.equal(quoteCustomersCompatible('c1', 'c2'), false);
     assert.equal(quoteCustomersCompatible('c1', 'c1'), true);
+  });
+});
+
+describe('canLinkQuoteToJob', () => {
+  it('blocks jobs without a customer from linking any quote', () => {
+    const result = canLinkQuoteToJob(null, 'c1');
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.message, jobCustomerRequiredErrorMessage());
+  });
+
+  it('blocks quotes without a customer even when the job has one', () => {
+    const result = canLinkQuoteToJob('c1', null);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.message, quoteCustomerRequiredErrorMessage());
+  });
+
+  it('blocks cross-customer links and allows matching customers', () => {
+    const bad = canLinkQuoteToJob('c1', 'c2');
+    assert.equal(bad.ok, false);
+    if (!bad.ok) assert.equal(bad.message, crossCustomerErrorMessage());
+    assert.deepEqual(canLinkQuoteToJob('c1', 'c1'), { ok: true });
+  });
+});
+
+describe('unlink confirmation and atomic result interpretation', () => {
+  it('explains unlink vs delete and primary clearance', () => {
+    const normal = unlinkQuoteConfirmMessage({ quoteNumber: 'EEQ-000001', isPrimary: false });
+    assert.match(normal, /Unlink EEQ-000001/);
+    assert.match(normal, /quote and its history stay/i);
+    assert.doesNotMatch(normal, /no primary quote/);
+
+    const primary = unlinkQuoteConfirmMessage({ quoteNumber: 'EEQ-000002', isPrimary: true });
+    assert.match(primary, /no primary quote until you select another/i);
+    assert.match(primary, /association/i);
+  });
+
+  it('interprets atomic RPC payloads and concurrent conflict copy', () => {
+    assert.deepEqual(interpretJobQuoteAtomicResult({ ok: true, message: 'Quote linked.', isPrimary: true }, 'fail'), {
+      ok: true,
+      message: 'Quote linked.',
+      isPrimary: true,
+      clearedPrimary: false,
+    });
+    assert.equal(
+      interpretJobQuoteAtomicResult(null, 'Unable to link quote.').message,
+      'Unable to link quote.',
+    );
+    assert.equal(
+      interpretJobQuoteAtomicResult(
+        { ok: false, message: concurrentPrimaryChangeErrorMessage() },
+        'fail',
+      ).message,
+      concurrentPrimaryChangeErrorMessage(),
+    );
   });
 });
 
@@ -213,7 +270,7 @@ describe('quote totals and labels', () => {
 describe('concurrent association changes', () => {
   it('treats a second primary request as a demote-then-promote plan', () => {
     // Two overlapping "make primary" actions should both compute demotions from the
-    // same snapshot; the unique primary index remains the database safety net.
+    // same snapshot; the unique primary index + job row lock remain the database safety net.
     const first = resolvePrimaryOnLink({
       makePrimary: true,
       existing: [{ quoteId: 'q1', isPrimary: true }, { quoteId: 'q2', isPrimary: false }],
@@ -228,6 +285,17 @@ describe('concurrent association changes', () => {
     assert.deepEqual(second.demoteQuoteIds, ['q1']);
     assert.equal(first.quoteIsPrimary, true);
     assert.equal(second.quoteIsPrimary, true);
+  });
+
+  it('treats failed atomic RPC payloads as full rollback (no partial primary sync)', () => {
+    const failed = interpretJobQuoteAtomicResult(
+      { ok: false, message: concurrentPrimaryChangeErrorMessage() },
+      'Unable to set primary quote.',
+    );
+    assert.equal(failed.ok, false);
+    assert.equal(failed.isPrimary, false);
+    assert.equal(failed.clearedPrimary, false);
+    assert.match(failed.message || '', /same time/i);
   });
 });
 

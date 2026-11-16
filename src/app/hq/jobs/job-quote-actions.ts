@@ -4,11 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { assertOfficeOps, dbAdmin, requireHqUser } from '@/lib/hq-auth';
 import {
-  crossCustomerErrorMessage,
-  duplicateAssociationErrorMessage,
+  canLinkQuoteToJob,
+  interpretJobQuoteAtomicResult,
   isJobQuoteKind,
-  quoteCustomersCompatible,
-  resolvePrimaryOnLink,
   type JobQuoteKind,
 } from '@/lib/job-quotes';
 import { isMissingJobQuotesRelation } from '@/lib/job-quotes-store';
@@ -31,6 +29,10 @@ function revalidateJobQuotes(jobId: string) {
   revalidatePath('/hq/quotes');
 }
 
+function isRedirectError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'digest' in error;
+}
+
 async function requireJobQuotesTable() {
   const db = dbAdmin();
   const { error } = await db.from('job_quotes').select('id').limit(1);
@@ -41,6 +43,18 @@ async function requireJobQuotesTable() {
   }
   if (error) throw new Error('Unable to access quote associations.');
   return db;
+}
+
+function missingAtomicRpc(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false;
+  const message = error.message || '';
+  return (
+    error.code === 'PGRST202' ||
+    /job_quote_link_atomic|job_quote_unlink_atomic|job_quote_set_primary_atomic|job_quote_sync_primary_after_create_atomic/i.test(
+      message,
+    ) ||
+    /could not find the function/i.test(message)
+  );
 }
 
 export async function linkQuoteToJob(formData: FormData): Promise<void> {
@@ -61,88 +75,41 @@ export async function linkQuoteToJob(formData: FormData): Promise<void> {
     const db = await requireJobQuotesTable();
     const { data: job } = await db
       .from('jobs')
-      .select('id,customer_id,quote_id')
+      .select('id,customer_id')
       .eq('id', jobId)
       .maybeSingle();
     if (!job) throw new Error('Job not found.');
 
     const { data: quote } = await db
       .from('quotes')
-      .select('id,customer_id,title')
+      .select('id,customer_id')
       .eq('id', quoteId)
       .maybeSingle();
     if (!quote) throw new Error('Quote not found.');
 
-    if (!quoteCustomersCompatible(job.customer_id, quote.customer_id)) {
-      throw new Error(crossCustomerErrorMessage());
-    }
+    const compatibility = canLinkQuoteToJob(job.customer_id, quote.customer_id);
+    if (!compatibility.ok) throw new Error(compatibility.message);
 
-    const { data: existingRows, error: existingError } = await db
-      .from('job_quotes')
-      .select('quote_id,is_primary')
-      .eq('job_id', jobId);
-    if (existingError) throw new Error('Unable to read existing quote links.');
-
-    const existing = (existingRows ?? []).map((row) => ({
-      quoteId: String(row.quote_id),
-      isPrimary: Boolean(row.is_primary),
-    }));
-
-    if (existing.some((row) => row.quoteId === quoteId)) {
-      throw new Error(duplicateAssociationErrorMessage());
-    }
-
-    // Include legacy primary for first-link decisions before backfill catches up.
-    if (job.quote_id && !existing.some((row) => row.quoteId === job.quote_id)) {
-      existing.push({ quoteId: String(job.quote_id), isPrimary: true });
-    }
-
-    const primaryPlan = resolvePrimaryOnLink({ makePrimary, existing, quoteId });
-
-    if (primaryPlan.demoteQuoteIds.length) {
-      const { error: demoteError } = await db
-        .from('job_quotes')
-        .update({ is_primary: false })
-        .eq('job_id', jobId)
-        .in('quote_id', primaryPlan.demoteQuoteIds);
-      if (demoteError) throw new Error('Unable to update the primary quote.');
-    }
-
-    const { error: insertError } = await db.from('job_quotes').insert({
-      job_id: jobId,
-      quote_id: quoteId,
-      is_primary: primaryPlan.quoteIsPrimary,
-      association_kind: kindRaw as JobQuoteKind,
-      label: labelRaw || null,
-      linked_by: user.id,
+    const { data, error } = await db.rpc('job_quote_link_atomic', {
+      p_job_id: jobId,
+      p_quote_id: quoteId,
+      p_actor: user.id,
+      p_association_kind: kindRaw as JobQuoteKind,
+      p_label: labelRaw || null,
+      p_make_primary: makePrimary,
     });
-
-    if (insertError) {
-      if (String(insertError.code) === '23505' || /duplicate|unique/i.test(insertError.message || '')) {
-        throw new Error(duplicateAssociationErrorMessage());
-      }
-      throw new Error('Unable to link quote.');
+    if (missingAtomicRpc(error)) {
+      throw new Error(
+        'Quote linking needs the job_quotes atomic migration. Refresh after it is applied.',
+      );
     }
-
-    if (primaryPlan.quoteIsPrimary) {
-      const { error: jobError } = await db
-        .from('jobs')
-        .update({ quote_id: quoteId, updated_at: new Date().toISOString() })
-        .eq('id', jobId);
-      if (jobError) throw new Error('Quote linked, but the primary pointer could not be updated.');
-    }
-
-    await db.from('job_activity').insert({
-      job_id: jobId,
-      actor_id: user.id,
-      action: 'quote_linked',
-      note: `${quote.title || quoteId}${primaryPlan.quoteIsPrimary ? ' (primary)' : ''}`,
-    });
+    const result = interpretJobQuoteAtomicResult(data, 'Unable to link quote.');
+    if (error || !result.ok) throw new Error(result.message || error?.message || 'Unable to link quote.');
 
     revalidateJobQuotes(jobId);
-    redirect(quotesTab(jobId, 'Quote linked.'));
+    redirect(quotesTab(jobId, result.message || 'Quote linked.'));
   } catch (error) {
-    if (typeof error === 'object' && error && 'digest' in error) throw error;
+    if (isRedirectError(error)) throw error;
     const message = error instanceof Error ? error.message : 'Unable to link quote.';
     if (!uuid.test(jobId)) throw new Error(message);
     redirect(quotesTab(jobId, undefined, message));
@@ -155,49 +122,32 @@ export async function unlinkQuoteFromJob(formData: FormData): Promise<void> {
 
   const jobId = String(formData.get('job_id') || '').trim();
   const quoteId = String(formData.get('quote_id') || '').trim();
+  const confirmed = String(formData.get('confirm_unlink') || '') === 'yes';
 
   try {
     if (!uuid.test(jobId) || !uuid.test(quoteId)) throw new Error('Invalid job or quote reference.');
+    if (!confirmed) throw new Error('Unlink cancelled. Confirm to remove the association only.');
+
     const db = await requireJobQuotesTable();
-
-    const { data: job } = await db.from('jobs').select('id,quote_id').eq('id', jobId).maybeSingle();
-    if (!job) throw new Error('Job not found.');
-
-    const { data: association } = await db
-      .from('job_quotes')
-      .select('id,is_primary')
-      .eq('job_id', jobId)
-      .eq('quote_id', quoteId)
-      .maybeSingle();
-
-    if (association) {
-      const { error } = await db.from('job_quotes').delete().eq('id', association.id);
-      if (error) throw new Error('Unable to unlink quote.');
-    } else if (job.quote_id === quoteId) {
-      // Legacy-only link: clear pointer without requiring a join row.
-    } else {
-      throw new Error('That quote is not linked to this job.');
-    }
-
-    if (job.quote_id === quoteId || association?.is_primary) {
-      const { error: jobError } = await db
-        .from('jobs')
-        .update({ quote_id: null, updated_at: new Date().toISOString() })
-        .eq('id', jobId);
-      if (jobError) throw new Error('Association removed, but the primary pointer could not be cleared.');
-    }
-
-    await db.from('job_activity').insert({
-      job_id: jobId,
-      actor_id: user.id,
-      action: 'quote_unlinked',
-      note: quoteId,
+    const { data, error } = await db.rpc('job_quote_unlink_atomic', {
+      p_job_id: jobId,
+      p_quote_id: quoteId,
+      p_actor: user.id,
     });
+    if (missingAtomicRpc(error)) {
+      throw new Error(
+        'Quote unlinking needs the job_quotes atomic migration. Refresh after it is applied.',
+      );
+    }
+    const result = interpretJobQuoteAtomicResult(data, 'Unable to unlink quote.');
+    if (error || !result.ok) {
+      throw new Error(result.message || error?.message || 'Unable to unlink quote.');
+    }
 
     revalidateJobQuotes(jobId);
-    redirect(quotesTab(jobId, 'Quote unlinked. The quote record was kept.'));
+    redirect(quotesTab(jobId, result.message || 'Quote unlinked. The quote record was kept.'));
   } catch (error) {
-    if (typeof error === 'object' && error && 'digest' in error) throw error;
+    if (isRedirectError(error)) throw error;
     const message = error instanceof Error ? error.message : 'Unable to unlink quote.';
     if (!uuid.test(jobId)) throw new Error(message);
     redirect(quotesTab(jobId, undefined, message));
@@ -215,45 +165,25 @@ export async function setPrimaryJobQuote(formData: FormData): Promise<void> {
     if (!uuid.test(jobId) || !uuid.test(quoteId)) throw new Error('Invalid job or quote reference.');
     const db = await requireJobQuotesTable();
 
-    const { data: association } = await db
-      .from('job_quotes')
-      .select('id')
-      .eq('job_id', jobId)
-      .eq('quote_id', quoteId)
-      .maybeSingle();
-    if (!association) throw new Error('Link the quote to this job before making it primary.');
-
-    const { error: demoteError } = await db
-      .from('job_quotes')
-      .update({ is_primary: false })
-      .eq('job_id', jobId)
-      .neq('quote_id', quoteId);
-    if (demoteError) throw new Error('Unable to update primary quote.');
-
-    const { error: promoteError } = await db
-      .from('job_quotes')
-      .update({ is_primary: true })
-      .eq('job_id', jobId)
-      .eq('quote_id', quoteId);
-    if (promoteError) throw new Error('Unable to set primary quote.');
-
-    const { error: jobError } = await db
-      .from('jobs')
-      .update({ quote_id: quoteId, updated_at: new Date().toISOString() })
-      .eq('id', jobId);
-    if (jobError) throw new Error('Primary association saved, but jobs.quote_id could not be updated.');
-
-    await db.from('job_activity').insert({
-      job_id: jobId,
-      actor_id: user.id,
-      action: 'quote_primary_set',
-      note: quoteId,
+    const { data, error } = await db.rpc('job_quote_set_primary_atomic', {
+      p_job_id: jobId,
+      p_quote_id: quoteId,
+      p_actor: user.id,
     });
+    if (missingAtomicRpc(error)) {
+      throw new Error(
+        'Setting a primary quote needs the job_quotes atomic migration. Refresh after it is applied.',
+      );
+    }
+    const result = interpretJobQuoteAtomicResult(data, 'Unable to set primary quote.');
+    if (error || !result.ok) {
+      throw new Error(result.message || error?.message || 'Unable to set primary quote.');
+    }
 
     revalidateJobQuotes(jobId);
-    redirect(quotesTab(jobId, 'Primary quote updated.'));
+    redirect(quotesTab(jobId, result.message || 'Primary quote updated.'));
   } catch (error) {
-    if (typeof error === 'object' && error && 'digest' in error) throw error;
+    if (isRedirectError(error)) throw error;
     const message = error instanceof Error ? error.message : 'Unable to set primary quote.';
     if (!uuid.test(jobId)) throw new Error(message);
     redirect(quotesTab(jobId, undefined, message));
@@ -276,11 +206,13 @@ export async function createLinkedQuoteFromJob(formData: FormData): Promise<void
     const db = await requireJobQuotesTable();
     const { data: job } = await db
       .from('jobs')
-      .select('id,title,description,customer_id,enquiry_id,site_address_text,quote_id')
+      .select('id,title,description,customer_id,enquiry_id,site_address_text')
       .eq('id', jobId)
       .maybeSingle();
     if (!job) throw new Error('Job not found.');
-    if (!job.customer_id) throw new Error('Add a customer to this job before creating a quote.');
+
+    const compatibility = canLinkQuoteToJob(job.customer_id, job.customer_id);
+    if (!compatibility.ok) throw new Error(compatibility.message);
 
     const { data: customer } = await db
       .from('customers')
@@ -323,39 +255,28 @@ export async function createLinkedQuoteFromJob(formData: FormData): Promise<void
     });
     if (createError || !quoteId) throw new Error('Unable to create draft quote.');
 
-    const { data: existingRows } = await db
-      .from('job_quotes')
-      .select('quote_id,is_primary')
-      .eq('job_id', jobId);
-    const existing = (existingRows ?? []).map((row) => ({
-      quoteId: String(row.quote_id),
-      isPrimary: Boolean(row.is_primary),
-    }));
-    if (job.quote_id && !existing.some((row) => row.quoteId === job.quote_id)) {
-      existing.push({ quoteId: String(job.quote_id), isPrimary: true });
+    const { data, error } = await db.rpc('job_quote_link_atomic', {
+      p_job_id: jobId,
+      p_quote_id: quoteId,
+      p_actor: user.id,
+      p_association_kind: kind,
+      p_label: labelRaw || (kind === 'quote' ? null : associationDefaultLabel(kind)),
+      p_make_primary: false,
+    });
+    if (missingAtomicRpc(error)) {
+      throw new Error(
+        'Draft created, but linking needs the job_quotes atomic migration. Open Quotes to link it after apply.',
+      );
     }
-
-    const primaryPlan = resolvePrimaryOnLink({
-      makePrimary: existing.length === 0,
-      existing,
-      quoteId: String(quoteId),
-    });
-
-    const { error: linkError } = await db.from('job_quotes').insert({
-      job_id: jobId,
-      quote_id: quoteId,
-      is_primary: primaryPlan.quoteIsPrimary,
-      association_kind: kind,
-      label: labelRaw || (kind === 'quote' ? null : associationDefaultLabel(kind)),
-      linked_by: user.id,
-    });
-    if (linkError) throw new Error('Draft created, but linking to the job failed. Open Quotes to link it.');
-
-    if (primaryPlan.quoteIsPrimary) {
-      await db
-        .from('jobs')
-        .update({ quote_id: quoteId, updated_at: new Date().toISOString() })
-        .eq('id', jobId);
+    const result = interpretJobQuoteAtomicResult(
+      data,
+      'Draft created, but linking to the job failed. Open Quotes to link it.',
+    );
+    if (error || !result.ok) {
+      throw new Error(
+        result.message ||
+          'Draft created, but linking to the job failed. Open Quotes to link it.',
+      );
     }
 
     await db.from('job_activity').insert({
@@ -369,7 +290,7 @@ export async function createLinkedQuoteFromJob(formData: FormData): Promise<void
     revalidatePath(`/hq/quotes/${quoteId}`);
     redirect(`/hq/quotes/${quoteId}`);
   } catch (error) {
-    if (typeof error === 'object' && error && 'digest' in error) throw error;
+    if (isRedirectError(error)) throw error;
     const message = error instanceof Error ? error.message : 'Unable to create quote.';
     if (!uuid.test(jobId)) throw new Error(message);
     redirect(quotesTab(jobId, undefined, message));
@@ -382,25 +303,24 @@ function associationDefaultLabel(kind: JobQuoteKind): string {
   return 'Quote';
 }
 
-/** Best-effort primary association insert used by createJob. Never throws away the job. */
+/** Best-effort primary association sync used by createJob. Never throws away the job. */
 export async function syncPrimaryJobQuoteAfterCreate(args: {
   jobId: string;
   quoteId: string;
   actorId: string;
 }): Promise<void> {
   const db = dbAdmin();
-  const { error } = await db.from('job_quotes').upsert(
-    {
-      job_id: args.jobId,
-      quote_id: args.quoteId,
-      is_primary: true,
-      association_kind: 'quote',
-      linked_by: args.actorId,
-    },
-    { onConflict: 'job_id,quote_id', ignoreDuplicates: true },
-  );
-  if (error && !isMissingJobQuotesRelation(error)) {
+  const { data, error } = await db.rpc('job_quote_sync_primary_after_create_atomic', {
+    p_job_id: args.jobId,
+    p_quote_id: args.quoteId,
+    p_actor: args.actorId,
+  });
+  if (error && (isMissingJobQuotesRelation(error) || missingAtomicRpc(error))) {
     // Soft-fail: jobs.quote_id already stores the legacy link.
-    console.error('job_quotes sync after create failed', error.message);
+    return;
+  }
+  const result = interpretJobQuoteAtomicResult(data, 'Unable to sync primary quote association.');
+  if (error || !result.ok) {
+    console.error('job_quotes sync after create failed', result.message || error?.message);
   }
 }
