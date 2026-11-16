@@ -25,6 +25,7 @@ import {
   quoteBuilderHeading,
   quoteEditorReturnHref,
   quoteTypeFromParent,
+  reconcileLinkedJobsForCustomerChange,
   uniqueJobIds,
   type ParentQuoteOption,
   type QuoteSaveIntent,
@@ -206,9 +207,30 @@ export default function QuoteEditor({
  const parentGroups=groupParentQuotesByJob(filteredParents);
 
  function resetCustomerConflict(){setCustomerMatches([]);setCustomerConflict(null)}
+ function clearJobsForCustomerChange(){
+  setPendingJobIds([]);
+  setAssociatedJobs([]);
+  setJobSearchId('');
+ }
  function selectMatchedCustomer(match:CustomerMatchRecord){
   setCustomerList(x=>x.some(c=>c.id===match.id)?x:[...x,match]);
-  setDraft(d=>({...d,customerId:match.id,enquiryId:'',addressId:'',parentQuoteId:d.quoteType==='variation'?'':d.parentQuoteId}));
+  if(match.id!==draft.customerId){
+   clearJobsForCustomerChange();
+  }
+  setDraft(d=>({
+   ...d,
+   customerId:match.id,
+   enquiryId:'',
+   addressId:'',
+   address:'',
+   parentQuoteId:'',
+   linkedJobId:'',
+   linkedJobIds:reconcileLinkedJobsForCustomerChange({
+    previousCustomerId:d.customerId,
+    nextCustomerId:match.id,
+    linkedJobIds:d.linkedJobIds||[],
+   }),
+  }));
   setCustomerSearch(customerLabel(match));
   setNewCustomer(false);
   setCustomerForm({name:'',email:'',phone:''});
@@ -222,7 +244,17 @@ export default function QuoteEditor({
    setFeedback(result.message);
    if(result.ok&&result.customer){
     setCustomerList(x=>x.some(c=>c.id===result.customer!.id)?x:[...x,result.customer!]);
-    setDraft(d=>({...d,customerId:result.customer!.id,enquiryId:'',addressId:'',parentQuoteId:''}));
+    clearJobsForCustomerChange();
+    setDraft(d=>({
+     ...d,
+     customerId:result.customer!.id,
+     enquiryId:'',
+     addressId:'',
+     address:'',
+     parentQuoteId:'',
+     linkedJobId:'',
+     linkedJobIds:[],
+    }));
     setNewCustomer(false);
     setCustomerForm({name:'',email:'',phone:''});
     resetCustomerConflict();
@@ -278,9 +310,13 @@ export default function QuoteEditor({
   }
   setBusyAction('prefill');
   try{
-   const result=await getParentQuotePrefill(parentId);
+   const result=await getParentQuotePrefill(parentId,draft.customerId||undefined);
    if(!result.ok||!result.prefill){
     setFeedback(result.message||'Unable to load parent quote.');
+    return;
+   }
+   if(draft.customerId&&result.prefill.customerId&&result.prefill.customerId!==draft.customerId){
+    setFeedback('Variation parent must belong to the same customer.');
     return;
    }
    const built=buildVariationPrefillFromParent(result.prefill);
@@ -293,21 +329,32 @@ export default function QuoteEditor({
   }
  }
 
+
  function handleCustomerChange(nextCustomerId:string):boolean{
-  const parent=parents.find(p=>p.id===draft.parentQuoteId);
-  if(draft.quoteType==='variation'&&draft.parentQuoteId&&parent&&nextCustomerId&&nextCustomerId!==draft.customerId){
-   // Parent options are customer-scoped; changing customer invalidates parent.
-   if(!window.confirm('Changing the customer clears the selected variation parent. Continue?'))return false;
-   setDraft(d=>({...d,customerId:nextCustomerId,enquiryId:'',addressId:'',address:'',parentQuoteId:''}));
-   return true;
+  if(!nextCustomerId||nextCustomerId===draft.customerId)return true;
+  const hasJobs=associatedJobs.length>0||pendingJobIds.length>0||(draft.linkedJobIds||[]).length>0;
+  const hasParent=draft.quoteType==='variation'&&Boolean(draft.parentQuoteId);
+  if(hasParent||hasJobs){
+   const parts=[
+    hasParent?'clears the selected variation parent':'',
+    hasJobs?'clears linked jobs from the previous customer':'',
+   ].filter(Boolean).join(' and ');
+   if(!window.confirm(`Changing the customer ${parts}. Continue?`))return false;
   }
+  clearJobsForCustomerChange();
   setDraft(d=>({
    ...d,
    customerId:nextCustomerId,
-   enquiryId:nextCustomerId===d.customerId?d.enquiryId:'',
-   addressId:nextCustomerId===d.customerId?d.addressId:'',
-   address:nextCustomerId===d.customerId?d.address:'',
-   parentQuoteId:nextCustomerId===d.customerId?d.parentQuoteId:'',
+   enquiryId:'',
+   addressId:'',
+   address:'',
+   parentQuoteId:'',
+   linkedJobId:'',
+   linkedJobIds:reconcileLinkedJobsForCustomerChange({
+    previousCustomerId:d.customerId,
+    nextCustomerId,
+    linkedJobIds:d.linkedJobIds||[],
+   }),
   }));
   return true;
  }
@@ -391,6 +438,12 @@ export default function QuoteEditor({
     };
     const result=approve?await saveAndApproveQuote(payload):await saveQuoteDraft(payload);
     setFeedback(result.message);
+    // Partial link failure preserves the quote id but must not look like full success.
+    if(!result.ok){
+     if(result.id&&!draft.id)router.replace('/hq/quotes/'+result.id);
+     else if(result.id)router.refresh();
+     return;
+    }
     if(result.ok&&result.id){
      const returnHref=quoteEditorReturnHref({
       jobId:primaryJobId||jobIds[0]||null,

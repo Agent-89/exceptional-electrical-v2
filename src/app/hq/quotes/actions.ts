@@ -3,9 +3,17 @@ import {revalidatePath} from 'next/cache';
 import {requireHqUser,dbAdmin} from '@/lib/hq-auth';
 import {canManageAdminOps,canManageOfficeOps} from '@/lib/hq-roles';
 import {
+  canProceedToApproveAfterSave,
   commercialSchemaMissingMessage,
   interpretMakeCurrentResult,
+  interpretSaveDraftAndLinkResult,
+  isDuplicateAssociationMessage,
+  isEligibleVariationParentStatus,
   isMissingCommercialSchemaError,
+  isMissingSaveAndLinkJobsRpcError,
+  isValidVariationParentCandidate,
+  parentChainIntroducesCycle,
+  partialJobLinkFailureMessage,
   uniqueJobIds,
   validateVariationParentSelection,
 } from '@/lib/quote-commercial';
@@ -37,6 +45,15 @@ export type QuoteDraft={
   linkedJobIds?:string[];
 };
 
+export type QuoteSaveResult={
+  ok:boolean;
+  message:string;
+  id?:string;
+  linkStatus?:'none'|'complete'|'partial'|'failed'|'rolled_back';
+  linkedJobIds?:string[];
+  failedJobIds?:string[];
+};
+
 const validId=(s:string)=>/^[0-9a-f-]{36}$/i.test(s);
 
 function missingJobQuoteRpc(error:{message?:string;code?:string}|null):boolean{
@@ -55,7 +72,7 @@ async function linkQuoteAfterSave(args:{
   quoteId:string;
   actorId:string;
   associationKind:'quote'|'variation';
-}):Promise<{ok:boolean;message?:string}>{
+}):Promise<{ok:boolean;message?:string;duplicate?:boolean}>{
   const {data:job}=await args.db.from('jobs').select('id,customer_id').eq('id',args.jobId).maybeSingle();
   if(!job)return{ok:false,message:'Linked job not found.'};
   const {data:quote}=await args.db.from('quotes').select('id,customer_id').eq('id',args.quoteId).maybeSingle();
@@ -72,13 +89,46 @@ async function linkQuoteAfterSave(args:{
     p_make_primary:false,
   });
   if(error&&(isMissingJobQuotesRelation(error)||missingJobQuoteRpc(error))){
-    return{ok:false,message:'Quote saved, but job linking needs the job_quotes migration.'};
+    return{ok:false,message:'Job linking needs the job_quotes migration.'};
   }
-  const result=interpretJobQuoteAtomicResult(data,'Quote saved, but linking to the job failed.');
+  const result=interpretJobQuoteAtomicResult(data,'Linking to the job failed.');
+  if(result.ok)return{ok:true};
+  if(isDuplicateAssociationMessage(result.message||error?.message)){
+    return{ok:true,duplicate:true,message:result.message};
+  }
   if(error||!result.ok){
-    return{ok:false,message:result.message||error?.message||'Quote saved, but linking to the job failed.'};
+    return{ok:false,message:result.message||error?.message||'Linking to the job failed.'};
   }
   return{ok:true};
+}
+
+async function loadParentAncestorIds(args:{
+  db:ReturnType<typeof dbAdmin>;
+  parentId:string;
+  maxDepth?:number;
+}):Promise<{ok:true;ancestorIds:string[]}|{ok:false;message:string}>{
+  const maxDepth=args.maxDepth??20;
+  const ancestorIds:string[]=[];
+  const seen=new Set<string>([args.parentId]);
+  let currentId:string|null=args.parentId;
+  for(let i=0;i<maxDepth&&currentId;i++){
+    const lookupId:string=currentId;
+    const {data,error}:{data:{parent_quote_id?:string|null}|null;error:{message?:string}|null}=await args.db
+      .from('quotes')
+      .select('parent_quote_id')
+      .eq('id',lookupId)
+      .maybeSingle();
+    if(error)return{ok:false,message:'Unable to validate parent revision chain.'};
+    const nextId:string|null=data?.parent_quote_id?String(data.parent_quote_id):null;
+    if(!nextId)break;
+    if(seen.has(nextId)){
+      return{ok:false,message:'That parent has a circular revision chain and cannot be used.'};
+    }
+    seen.add(nextId);
+    ancestorIds.push(nextId);
+    currentId=nextId;
+  }
+  return{ok:true,ancestorIds};
 }
 
 async function assertVariationParent(args:{
@@ -86,6 +136,7 @@ async function assertVariationParent(args:{
   quoteType:'standard'|'variation';
   parentQuoteId:string;
   customerId:string;
+  editingQuoteId?:string;
 }):Promise<{ok:true;parent:{id:string;customer_id:string|null;revision_number:number}}|{ok:false;message:string}>{
   if(args.quoteType!=='variation'){
     return{ok:true,parent:{id:'',customer_id:null,revision_number:0}};
@@ -93,23 +144,44 @@ async function assertVariationParent(args:{
   if(!validId(args.parentQuoteId)){
     return{ok:false,message:'Select the quote this variation revises.'};
   }
+  if(args.editingQuoteId&&args.parentQuoteId===args.editingQuoteId){
+    return{ok:false,message:'A quote cannot revise itself.'};
+  }
   const {data:parent,error}=await args.db
     .from('quotes')
     .select('id,customer_id,revision_number,status')
     .eq('id',args.parentQuoteId)
     .maybeSingle();
   if(error||!parent)return{ok:false,message:'Parent quote not found.'};
-  if(['cancelled','expired','superseded','declined'].includes(String(parent.status||''))){
+
+  if(!isValidVariationParentCandidate({
+    candidateId:parent.id,
+    candidateStatus:String(parent.status||''),
+    candidateCustomerId:parent.customer_id,
+    quoteCustomerId:args.customerId,
+    editingQuoteId:args.editingQuoteId||null,
+  })){
+    if(!isEligibleVariationParentStatus(String(parent.status||''))){
+      return{ok:false,message:'That quote cannot be used as a variation parent.'};
+    }
+    const customerCheck=validateVariationParentSelection({
+      quoteType:'variation',
+      parentQuoteId:parent.id,
+      customerId:args.customerId,
+      parentCustomerId:parent.customer_id,
+    });
+    if(!customerCheck.ok)return customerCheck;
     return{ok:false,message:'That quote cannot be used as a variation parent.'};
   }
 
-  const customerCheck=validateVariationParentSelection({
-    quoteType:'variation',
-    parentQuoteId:parent.id,
-    customerId:args.customerId,
-    parentCustomerId:parent.customer_id,
+  const chain=await loadParentAncestorIds({db:args.db,parentId:parent.id});
+  if(!chain.ok)return chain;
+  const cycle=parentChainIntroducesCycle({
+    parentId:parent.id,
+    editingQuoteId:args.editingQuoteId||null,
+    parentAncestorIds:chain.ancestorIds,
   });
-  if(!customerCheck.ok)return customerCheck;
+  if(!cycle.ok)return cycle;
 
   return{ok:true,parent:{id:parent.id,customer_id:parent.customer_id,revision_number:Number(parent.revision_number)||0}};
 }
@@ -118,7 +190,34 @@ function resolveLinkedJobIds(v:QuoteDraft):string[]{
   return uniqueJobIds([...(v.linkedJobIds||[]),v.linkedJobId||'']).filter(validId);
 }
 
-export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:string;id?:string}>{
+/** Fail closed before save: every requested job must exist and match the quote customer. */
+async function assertJobsCompatibleWithCustomer(args:{
+  db:ReturnType<typeof dbAdmin>;
+  customerId:string;
+  jobIds:string[];
+}):Promise<{ok:true}|{ok:false;message:string}>{
+  if(!args.jobIds.length)return{ok:true};
+  if(!args.customerId||!validId(args.customerId)){
+    return{ok:false,message:'Select a customer before linking jobs.'};
+  }
+  const {data:jobs,error}=await args.db
+    .from('jobs')
+    .select('id,customer_id,job_number')
+    .in('id',args.jobIds);
+  if(error)return{ok:false,message:'Unable to validate linked jobs.'};
+  const found=new Map((jobs||[]).map(j=>[String(j.id),j]));
+  for(const jobId of args.jobIds){
+    const job=found.get(jobId);
+    if(!job)return{ok:false,message:'Linked job not found.'};
+    const compatibility=canLinkQuoteToJob(job.customer_id,args.customerId);
+    if(!compatibility.ok){
+      return{ok:false,message:compatibility.message};
+    }
+  }
+  return{ok:true};
+}
+
+export async function saveQuoteDraft(v:QuoteDraft):Promise<QuoteSaveResult>{
  const user=await requireHqUser();
  if(!canManageOfficeOps(user.role))return {ok:false,message:'No permission to edit quotes'};
  if((v.id&&!validId(v.id))||(v.customerId&&!validId(v.customerId))||(v.enquiryId&&!validId(v.enquiryId))||(v.addressId&&!validId(v.addressId)))return {ok:false,message:'Invalid record reference'};
@@ -141,7 +240,33 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
     customerId:v.customerId,
   });
   if(!parentCheck.ok)return parentCheck;
+ }else{
+  // Parent/family immutable after save — ignore client parent and validate stored parent vs customer.
+  const {data:existing}=await db
+    .from('quotes')
+    .select('parent_quote_id')
+    .eq('id',v.id)
+    .maybeSingle();
+  const storedParent=existing?.parent_quote_id?String(existing.parent_quote_id):'';
+  if(storedParent){
+   const parentCheck=await assertVariationParent({
+    db,
+    quoteType:'variation',
+    parentQuoteId:storedParent,
+    customerId:v.customerId,
+    editingQuoteId:v.id,
+   });
+   if(!parentCheck.ok)return parentCheck;
+  }
+  // Existing quotes cannot gain/change parent_quote_id here (immutable in save_quote_draft_atomic).
  }
+
+ const jobsCheck=await assertJobsCompatibleWithCustomer({
+  db,
+  customerId:v.customerId,
+  jobIds:linkedJobIds,
+ });
+ if(!jobsCheck.ok)return jobsCheck;
 
  let customerSnapshot={};
  if(v.customerId){const {data:c}=await db.from('customers').select('name,email,phone').eq('id',v.customerId).maybeSingle();if(!c)return {ok:false,message:'Customer not found'};customerSnapshot=c}
@@ -170,38 +295,113 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<{ok:boolean;message:s
  }
 
  const lines=v.lines.map((l,i)=>({position:i,description:l.description.trim(),category:l.category,quantity:l.quantity,unit:l.unit||'each',unit_price_cents:l.price,internal_unit_cost_cents:l.cost,gst_applicable:l.gst}));
+ const associationKind=quoteType==='variation'?'variation':'quote';
+
+ // Prefer single-transaction save + multi-job link when associations are requested.
+ if(linkedJobIds.length){
+  const {data,error}=await db.rpc('save_quote_draft_and_link_jobs_atomic',{
+   p_quote_id:v.id||null,
+   p_values:values,
+   p_lines:lines,
+   p_actor:user.id,
+   p_job_ids:linkedJobIds,
+   p_association_kind:associationKind,
+  });
+
+  if(!error){
+   const parsed=interpretSaveDraftAndLinkResult(data);
+   if(parsed.ok&&parsed.quoteId){
+    for(const jobId of parsed.linkedJobIds)revalidatePath(`/hq/jobs/${jobId}`);
+    revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+parsed.quoteId);
+    return{
+     ok:true,
+     message:parsed.message,
+     id:parsed.quoteId,
+     linkStatus:'complete',
+     linkedJobIds:parsed.linkedJobIds,
+    };
+   }
+   // Function returned ok:false without raising (should not happen for raise path).
+   return{
+    ok:false,
+    message:parsed.message,
+    linkStatus:'rolled_back',
+   };
+  }
+
+  if(!isMissingSaveAndLinkJobsRpcError(error)){
+   if(isMissingCommercialSchemaError(error)&&quoteType==='variation'){
+    return{ok:false,message:commercialSchemaMissingMessage(),linkStatus:'failed'};
+   }
+   // Raised link/customer failure rolled back the save.
+   return{
+    ok:false,
+    message:error.message||'Unable to save and link. No partial changes were made.',
+    linkStatus:'rolled_back',
+   };
+  }
+  // Fall through to legacy path when multi-job RPC is not installed yet.
+ }
+
+ // Legacy / no-jobs path: save first, then link individually (no unsafe delete rollback).
  const {data:id,error}=await db.rpc('save_quote_draft_atomic',{p_quote_id:v.id||null,p_values:values,p_lines:lines,p_actor:user.id});
  if(error||!id){
   if(isMissingCommercialSchemaError(error)&&quoteType==='variation'){
-   return{ok:false,message:commercialSchemaMissingMessage()};
+   return{ok:false,message:commercialSchemaMissingMessage(),linkStatus:'failed'};
   }
-  return {ok:false,message:error?.message||'Unable to save draft. No partial changes were made.'};
+  return {ok:false,message:error?.message||'Unable to save draft. No partial changes were made.',linkStatus:'failed'};
  }
 
- let message='Draft saved';
- const linkMessages:string[]=[];
+ if(!linkedJobIds.length){
+  revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);
+  return{ok:true,message:'Draft saved',id:String(id),linkStatus:'none',linkedJobIds:[]};
+ }
+
+ const linked:string[]=[];
+ const failed:string[]=[];
+ const failMessages:string[]=[];
  for(const jobId of linkedJobIds){
   const link=await linkQuoteAfterSave({
    db,
    jobId,
    quoteId:String(id),
    actorId:user.id,
-   associationKind:quoteType==='variation'?'variation':'quote',
+   associationKind,
   });
-  if(!link.ok){
-   linkMessages.push(link.message||'Job link needs review.');
-  }else{
+  if(link.ok){
+   linked.push(jobId);
    revalidatePath(`/hq/jobs/${jobId}`);
+  }else{
+   failed.push(jobId);
+   failMessages.push(link.message||'Job link needs review.');
   }
- }
- if(linkedJobIds.length&&!linkMessages.length){
-  message=linkedJobIds.length>1?'Draft saved and linked to jobs.':'Draft saved and linked to job.';
- }else if(linkMessages.length){
-  message=`Draft saved. ${linkMessages[0]}`;
  }
 
  revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);
- return {ok:true,message,id:String(id)};
+
+ if(failed.length){
+  return{
+   ok:false,
+   id:String(id),
+   linkStatus:linked.length?'partial':'failed',
+   linkedJobIds:linked,
+   failedJobIds:failed,
+   message:partialJobLinkFailureMessage({
+    savedQuoteId:String(id),
+    failedMessages:failMessages,
+    linkedCount:linked.length,
+    requestedCount:linkedJobIds.length,
+   }),
+  };
+ }
+
+ return{
+  ok:true,
+  message:linkedJobIds.length>1?'Draft saved and linked to jobs.':'Draft saved and linked to job.',
+  id:String(id),
+  linkStatus:'complete',
+  linkedJobIds:linked,
+ };
 }
 
 export async function associateQuoteWithJob(args:{
@@ -214,6 +414,12 @@ export async function associateQuoteWithJob(args:{
  const db=dbAdmin();
  const {data:quote}=await db.from('quotes').select('id,customer_id,parent_quote_id').eq('id',args.quoteId).maybeSingle();
  if(!quote)return{ok:false,message:'Quote not found.'};
+ const jobsCheck=await assertJobsCompatibleWithCustomer({
+  db,
+  customerId:String(quote.customer_id||''),
+  jobIds:[args.jobId],
+ });
+ if(!jobsCheck.ok)return jobsCheck;
  const link=await linkQuoteAfterSave({
   db,
   jobId:args.jobId,
@@ -224,7 +430,7 @@ export async function associateQuoteWithJob(args:{
  if(!link.ok)return{ok:false,message:link.message||'Unable to link job.'};
  revalidatePath(`/hq/quotes/${args.quoteId}`);
  revalidatePath(`/hq/jobs/${args.jobId}`);
- return{ok:true,message:'Job linked to quote.'};
+ return{ok:true,message:link.duplicate?'Job already linked to quote.':'Job linked to quote.'};
 }
 
 export async function unlinkQuoteFromJob(args:{
@@ -266,13 +472,29 @@ export async function approveQuote(id:string):Promise<{ok:boolean;message:string
  revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);revalidatePath('/hq/quotes/'+id+'/preview');
  return {ok:true,message:logError?'Quote approved, but the activity log needs review.':'Quote approved and ready for PDF export.'};
 }
-export async function saveAndApproveQuote(v:QuoteDraft):Promise<{ok:boolean;message:string;id?:string}>{
+
+export async function saveAndApproveQuote(v:QuoteDraft):Promise<QuoteSaveResult>{
  const user=await requireHqUser();
  if(!canManageAdminOps(user.role))return {ok:false,message:'Only an owner or admin can approve quotes.'};
  const saved=await saveQuoteDraft(v);
- if(!saved.ok||!saved.id)return saved;
- const approved=await approveQuote(saved.id);
- return {...approved,id:saved.id,message:approved.ok?'Quote saved and approved.':approved.message+' Draft was saved.'};
+ if(!canProceedToApproveAfterSave({
+  saveOk:saved.ok,
+  linkStatus:saved.linkStatus||(saved.ok?'none':'failed'),
+ })){
+  if(saved.id&&(saved.linkStatus==='partial'||saved.linkStatus==='failed')){
+   return{
+    ...saved,
+    ok:false,
+    message:`${saved.message} Approval was not applied.`,
+   };
+  }
+  return saved;
+ }
+ const approved=await approveQuote(saved.id!);
+ if(!approved.ok){
+  return{ok:false,id:saved.id,linkStatus:saved.linkStatus,message:approved.message+' Draft was saved.'};
+ }
+ return{ok:true,id:saved.id,linkStatus:saved.linkStatus,linkedJobIds:saved.linkedJobIds,message:'Quote saved and approved.'};
 }
 
 type QuoteLifecycleStatus='sent'|'accepted'|'declined';
@@ -377,7 +599,7 @@ export async function markQuoteSent(id:string){return advanceQuoteStatus(id,'sen
 export async function markQuoteDeclined(id:string){return advanceQuoteStatus(id,'declined')}
 
 /** Immediate-parent commercial snapshot for variation prefill (deep-copied lines; no ids/status). */
-export async function getParentQuotePrefill(parentId:string):Promise<{
+export async function getParentQuotePrefill(parentId:string,expectedCustomerId?:string):Promise<{
   ok:boolean;
   message?:string;
   prefill?:{
@@ -398,6 +620,7 @@ export async function getParentQuotePrefill(parentId:string):Promise<{
   const user=await requireHqUser();
   if(!canManageOfficeOps(user.role))return{ok:false,message:'No permission'};
   if(!validId(parentId))return{ok:false,message:'Invalid parent quote'};
+  if(expectedCustomerId&&!validId(expectedCustomerId))return{ok:false,message:'Invalid customer reference'};
   const db=dbAdmin();
   const {data:parent}=await db
     .from('quotes')
@@ -405,8 +628,11 @@ export async function getParentQuotePrefill(parentId:string):Promise<{
     .eq('id',parentId)
     .maybeSingle();
   if(!parent)return{ok:false,message:'Parent quote not found'};
-  if(['cancelled','expired','superseded','declined'].includes(String(parent.status||''))){
+  if(!isEligibleVariationParentStatus(String(parent.status||''))){
     return{ok:false,message:'That quote cannot be used as a variation parent.'};
+  }
+  if(expectedCustomerId&&parent.customer_id!==expectedCustomerId){
+    return{ok:false,message:'Variation parent must belong to the same customer.'};
   }
   const {data:items}=await db
     .from('quote_items')

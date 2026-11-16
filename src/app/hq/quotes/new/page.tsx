@@ -1,6 +1,6 @@
 import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 import {canManageOfficeOps} from '@/lib/hq-roles';
-import {isMissingCommercialSchemaError} from '@/lib/quote-commercial';
+import {isEligibleVariationParentStatus,isMissingCommercialSchemaError} from '@/lib/quote-commercial';
 import {isMissingJobQuotesRelation} from '@/lib/job-quotes-store';
 import {loadCustomerJobs,loadParentQuoteOptions,type ParentOptionsDb} from '@/lib/quote-parent-options';
 import QuoteEditor from '../quote-editor';
@@ -121,9 +121,12 @@ export default async function NewQuote({
           const primary=links?.find(l=>l.is_primary);
           defaultParentId=primary?String(primary.quote_id):quoteIds[0];
         }else{
-          const current=(linkedQuotes||[]).find(q=>q.is_commercial_current&&q.status!=='superseded');
+          const eligible=(linkedQuotes||[]).filter(q=>isEligibleVariationParentStatus(String(q.status||'')));
+          const current=eligible.find(q=>q.is_commercial_current);
           const primary=links?.find(l=>l.is_primary);
-          defaultParentId=current?.id||(primary?String(primary.quote_id):quoteIds[0]);
+          const primaryId=primary?String(primary.quote_id):'';
+          const primaryEligible=eligible.find(q=>q.id===primaryId);
+          defaultParentId=current?.id||primaryEligible?.id||eligible[0]?.id||'';
         }
       }
     }

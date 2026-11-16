@@ -379,3 +379,106 @@ export function quoteBuilderHeading(args: {
   if (args.savedNumber) return args.savedNumber;
   return args.quoteType === 'variation' ? 'New Variation' : 'New Quote';
 }
+
+export function isDuplicateAssociationMessage(message: string | null | undefined): boolean {
+  return /already linked/i.test(message || '');
+}
+
+export function partialJobLinkFailureMessage(args: {
+  savedQuoteId: string;
+  failedMessages: string[];
+  linkedCount: number;
+  requestedCount: number;
+}): string {
+  const detail = args.failedMessages[0] || 'One or more job associations failed.';
+  return (
+    `Quote saved (${args.savedQuoteId.slice(0, 8)}…), but job linking was incomplete ` +
+    `(${args.linkedCount}/${args.requestedCount}). ${detail} Review Linked jobs before approving.`
+  );
+}
+
+export function atomicSaveLinkUnavailableMessage(): string {
+  return 'Quote save-and-link needs the multi-job atomic migration. Apply it locally before relying on multi-job saves.';
+}
+
+/** True only when save succeeded and every requested association succeeded (or none requested). */
+export function canProceedToApproveAfterSave(args: {
+  saveOk: boolean;
+  linkStatus: 'none' | 'complete' | 'partial' | 'failed' | 'rolled_back';
+}): boolean {
+  if (!args.saveOk) return false;
+  return args.linkStatus === 'none' || args.linkStatus === 'complete';
+}
+
+export function interpretSaveDraftAndLinkResult(
+  data: unknown,
+  fallback = 'Unable to save quote and link jobs.',
+): {
+  ok: boolean;
+  message: string;
+  quoteId?: string;
+  linkedJobIds: string[];
+  duplicateCount: number;
+} {
+  if (!data || typeof data !== 'object') {
+    return { ok: false, message: fallback, linkedJobIds: [], duplicateCount: 0 };
+  }
+  const row = data as Record<string, unknown>;
+  const ok = row.ok === true;
+  const message = typeof row.message === 'string' && row.message ? row.message : fallback;
+  const quoteId = typeof row.quoteId === 'string' ? row.quoteId : undefined;
+  const linkedRaw = row.linkedJobIds;
+  const linkedJobIds = Array.isArray(linkedRaw)
+    ? linkedRaw.map((id) => String(id)).filter(Boolean)
+    : [];
+  const duplicateCount = Number(row.duplicateCount) || 0;
+  return { ok, message, quoteId, linkedJobIds, duplicateCount };
+}
+
+export function isMissingSaveAndLinkJobsRpcError(error: {
+  message?: string;
+  code?: string;
+} | null): boolean {
+  if (!error) return false;
+  const message = error.message || '';
+  return (
+    error.code === 'PGRST202' ||
+    /save_quote_draft_and_link_jobs_atomic/i.test(message) ||
+    /could not find the function/i.test(message)
+  );
+}
+
+/** Detect cycles or self-reference in a parent → root chain (max depth). */
+export function parentChainIntroducesCycle(args: {
+  parentId: string;
+  editingQuoteId?: string | null;
+  /** Ordered ancestor ids of the selected parent (parent, grandparent, …). */
+  parentAncestorIds: string[];
+}): { ok: true } | { ok: false; message: string } {
+  if (args.editingQuoteId && args.parentId === args.editingQuoteId) {
+    return { ok: false, message: 'A quote cannot revise itself.' };
+  }
+  if (args.editingQuoteId && args.parentAncestorIds.includes(args.editingQuoteId)) {
+    return { ok: false, message: 'That parent would create a circular revision relationship.' };
+  }
+  const seen = new Set<string>([args.parentId]);
+  for (const id of args.parentAncestorIds) {
+    if (seen.has(id)) {
+      return { ok: false, message: 'That parent has a circular revision chain and cannot be used.' };
+    }
+    seen.add(id);
+  }
+  return { ok: true };
+}
+
+/** Clear pending/local job ids when the draft customer changes. */
+export function reconcileLinkedJobsForCustomerChange(args: {
+  previousCustomerId: string;
+  nextCustomerId: string;
+  linkedJobIds: string[];
+}): string[] {
+  if (!args.nextCustomerId || args.previousCustomerId === args.nextCustomerId) {
+    return uniqueJobIds(args.linkedJobIds);
+  }
+  return [];
+}

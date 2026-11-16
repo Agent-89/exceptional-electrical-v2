@@ -4,20 +4,26 @@ import {
   billingBlocksSupersessionMessage,
   billingReconciliationDeferredMessage,
   buildVariationPrefillFromParent,
+  canProceedToApproveAfterSave,
   commercialCurrentLabel,
   draftHasUnsavedCommercialContent,
   groupParentQuotesByJob,
+  interpretSaveDraftAndLinkResult,
+  isDuplicateAssociationMessage,
   isEligibleCommercialCurrentStatus,
   isValidVariationParentCandidate,
   interpretMakeCurrentResult,
   nextRevisionNumber,
   onlyAcceptedCanBeCurrentMessage,
+  parentChainIntroducesCycle,
   parentSwitchConfirmMessage,
+  partialJobLinkFailureMessage,
   pickCommercialCurrentBackfillId,
   quoteBuilderHeading,
   quoteBuilderNewHref,
   quoteEditorReturnHref,
   quoteTypeFromParent,
+  reconcileLinkedJobsForCustomerChange,
   resolveCommercialCurrentQuoteId,
   resolveCommercialCurrentTotalCents,
   shouldAutoMakeCurrentOnAccept,
@@ -424,5 +430,87 @@ describe('quote-commercial helpers', () => {
     assert.notEqual(resolveCommercialCurrentQuoteId(familyA), resolveCommercialCurrentQuoteId(familyB));
     // Job primary is not derived from commercial current helpers.
     assert.equal(commercialCurrentLabel(true), 'Current commercial');
+  });
+
+  it('treats duplicate job links as idempotent and blocks approve on partial link failure', () => {
+    assert.equal(isDuplicateAssociationMessage('That quote is already linked to this job.'), true);
+    assert.equal(isDuplicateAssociationMessage('Quotes must belong to the same customer as the job.'), false);
+
+    assert.equal(canProceedToApproveAfterSave({ saveOk: true, linkStatus: 'complete' }), true);
+    assert.equal(canProceedToApproveAfterSave({ saveOk: true, linkStatus: 'none' }), true);
+    assert.equal(canProceedToApproveAfterSave({ saveOk: true, linkStatus: 'partial' }), false);
+    assert.equal(canProceedToApproveAfterSave({ saveOk: false, linkStatus: 'rolled_back' }), false);
+
+    const partial = partialJobLinkFailureMessage({
+      savedQuoteId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      failedMessages: ['Quotes must belong to the same customer as the job.'],
+      linkedCount: 1,
+      requestedCount: 2,
+    });
+    assert.match(partial, /incomplete/);
+    assert.match(partial, /Approval|approving|Linked jobs/i);
+
+    const parsed = interpretSaveDraftAndLinkResult({
+      ok: true,
+      quoteId: 'q1',
+      linkedJobIds: ['j1', 'j2'],
+      duplicateCount: 1,
+      message: 'Draft saved and linked to jobs.',
+    });
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.linkedJobIds, ['j1', 'j2']);
+    assert.equal(parsed.duplicateCount, 1);
+  });
+
+  it('rejects circular parent chains and clears jobs when customer changes', () => {
+    assert.equal(
+      parentChainIntroducesCycle({
+        parentId: 'p1',
+        editingQuoteId: 'p1',
+        parentAncestorIds: [],
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parentChainIntroducesCycle({
+        parentId: 'p1',
+        editingQuoteId: 'child',
+        parentAncestorIds: ['child'],
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parentChainIntroducesCycle({
+        parentId: 'p1',
+        editingQuoteId: 'child',
+        parentAncestorIds: ['p1', 'root'],
+      }).ok,
+      false,
+    );
+    assert.equal(
+      parentChainIntroducesCycle({
+        parentId: 'p1',
+        editingQuoteId: 'child',
+        parentAncestorIds: ['root'],
+      }).ok,
+      true,
+    );
+
+    assert.deepEqual(
+      reconcileLinkedJobsForCustomerChange({
+        previousCustomerId: 'c1',
+        nextCustomerId: 'c2',
+        linkedJobIds: ['j1', 'j2'],
+      }),
+      [],
+    );
+    assert.deepEqual(
+      reconcileLinkedJobsForCustomerChange({
+        previousCustomerId: 'c1',
+        nextCustomerId: 'c1',
+        linkedJobIds: ['j1', 'j1'],
+      }),
+      ['j1'],
+    );
   });
 });
