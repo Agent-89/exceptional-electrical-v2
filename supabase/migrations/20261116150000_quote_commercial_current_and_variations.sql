@@ -84,6 +84,28 @@ create unique index if not exists quotes_one_commercial_current_per_family
 create index if not exists quotes_commercial_family_idx
   on public.quotes (commercial_family_id, created_at desc);
 
+-- Transaction-scoped family serialization lock (defined early so draft create can use it).
+-- Always acquire BEFORE any quote-row FOR UPDATE in accept / make-current paths.
+create or replace function public._lock_quote_commercial_family(p_family_id uuid)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if p_family_id is null then
+    raise exception 'Commercial family id is required for locking';
+  end if;
+  perform pg_advisory_xact_lock(
+    hashtext(p_family_id::text),
+    hashtext('ee_quote_commercial_family')
+  );
+end;
+$$;
+
+revoke all on function public._lock_quote_commercial_family(uuid) from public, anon, authenticated;
+grant execute on function public._lock_quote_commercial_family(uuid) to service_role;
+
 -- Variation / family integrity at the database layer.
 create or replace function public.quotes_enforce_variation_invariants()
 returns trigger
@@ -167,6 +189,8 @@ begin
     end if;
 
     v_id := gen_random_uuid();
+    -- Serialize family membership changes with accept/make-current.
+    perform public._lock_quote_commercial_family(coalesce(v_family, v_id));
 
     insert into public.quotes(
       id, customer_id, enquiry_id, site_address_id, site_address_snapshot, customer_snapshot,
@@ -263,25 +287,6 @@ $$;
 
 revoke all on function public.save_quote_draft_atomic(uuid, jsonb, jsonb, uuid) from public, anon, authenticated;
 grant execute on function public.save_quote_draft_atomic(uuid, jsonb, jsonb, uuid) to service_role;
-
--- Lock every row in a commercial family in id order (deadlock-safe) for accept/make-current.
-create or replace function public._lock_quote_commercial_family(p_family_id uuid)
-returns void
-language plpgsql
-security invoker
-set search_path = ''
-as $$
-begin
-  perform 1
-  from public.quotes q
-  where q.commercial_family_id = p_family_id
-  order by q.id
-  for update;
-end;
-$$;
-
-revoke all on function public._lock_quote_commercial_family(uuid) from public, anon, authenticated;
-grant execute on function public._lock_quote_commercial_family(uuid) to service_role;
 
 -- Set accepted quote as commercial current.
 -- Supersedes ONLY the previous accepted commercial current — not pending approved/sent revisions.
@@ -420,8 +425,19 @@ security invoker
 set search_path = ''
 as $$
 declare
+  v_family uuid;
   v_quote public.quotes%rowtype;
 begin
+  -- Identify family without taking a row lock (avoids lock-order deadlocks).
+  select commercial_family_id into v_family
+  from public.quotes
+  where id = p_quote_id;
+  if v_family is null then
+    return pg_catalog.jsonb_build_object('ok', false, 'message', 'Quote not found.');
+  end if;
+
+  perform public._lock_quote_commercial_family(v_family);
+
   select * into v_quote from public.quotes where id = p_quote_id for update;
   if not found then
     return pg_catalog.jsonb_build_object('ok', false, 'message', 'Quote not found.');
@@ -462,23 +478,21 @@ declare
   v_current jsonb;
   v_family uuid;
 begin
+  -- Identify family without taking a row lock (avoids lock-order deadlocks).
+  select commercial_family_id into v_family
+  from public.quotes
+  where id = p_quote_id;
+  if v_family is null then
+    return pg_catalog.jsonb_build_object('ok', false, 'message', 'Quote not found.');
+  end if;
+
+  perform public._lock_quote_commercial_family(v_family);
+
   select * into v_quote from public.quotes where id = p_quote_id for update;
   if not found then
     return pg_catalog.jsonb_build_object('ok', false, 'message', 'Quote not found.');
   end if;
 
-  if v_quote.status not in ('approved', 'sent') then
-    return pg_catalog.jsonb_build_object(
-      'ok', false,
-      'message', 'Cannot mark as accepted from status "' || v_quote.status || '".'
-    );
-  end if;
-
-  v_family := v_quote.commercial_family_id;
-  perform public._lock_quote_commercial_family(v_family);
-
-  -- Re-read under family lock.
-  select * into v_quote from public.quotes where id = p_quote_id for update;
   if v_quote.status not in ('approved', 'sent') then
     return pg_catalog.jsonb_build_object(
       'ok', false,

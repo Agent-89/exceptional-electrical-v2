@@ -214,7 +214,8 @@ Variation:       parent_quote_id = <prior quote>, revision_number = parent.revis
 4. `is_commercial_current` means the **accepted** commercial version only. Draft / approved / sent never backfill as current. Families may have no current. Backfill clears all flags then sets the deterministic accepted winner (latest `accepted_at`).  
 5. Variations require `parent_quote_id`. Parent / family / revision are immutable; customer must stay compatible with parent (DB trigger + RPC).  
 6. Automatic supersession targets **only** the previous accepted commercial current. Pending approved/sent revisions remain available.  
-7. Legacy association-kind-only create path redirects to the builder.
+7. Accept / make-current / variation create take a transaction-scoped family advisory lock **before** any quote-row `FOR UPDATE` (avoids cross-member deadlocks).  
+8. Legacy association-kind-only create path redirects to the builder.
 
 ## Billing safety (C1.1 → C2)
 
