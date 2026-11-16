@@ -5,7 +5,7 @@ alwaysApply: true
 
 # HQ development standards
 
-- Repository of record: `Agent-89/exceptional-electrical-v2`. After release, treat `main` as the single source of truth.
+- Repository of record: `Agent-89/exceptional-electrical-v2`. Production baseline is `main` at merge SHA `ffd7e09f863c0690d847b8fd8de5658fd60f1bdc` (PR #15); treat `main` as the single source of truth.
 - Never merge PRs, delete branches, deploy to Vercel, apply hosted Supabase migrations, or mutate hosted data without explicit owner approval.
 - Preview and Production share hosted Supabase project `udwdurnknweavmksotii`. Use fictional records only on Preview. Do not trigger Xero, Tradify, Vapi, or real customer communications.
 - Do not reapply migrations already present under different hosted timestamps (especially commercial `job_quotes_*` / quote variation migrations). Verify with `supabase migration list --linked` and read-only SQL before proposing anything.
@@ -13,8 +13,9 @@ alwaysApply: true
 - Keep secrets out of Git. Document env **names** only (see `.env.example`, `docs/CURSOR_HANDOVER.md`).
 - Authorization belongs in server actions/route handlers via `hq-auth` / `hq-roles`. Do not conflate `staff_profiles.user_id` with `scheduling_staff.id`.
 - Scheduling: preserve conflict detection. Appointment create and schedule edit paths hard-block HQ electrician overlaps; Neil Google Calendar remains a separate override path for owner/admin.
-- Do not merge obsolete Draft PR #4 wholesale; reimplement any missing behaviour on the current baseline.
+- Do not merge obsolete Draft PR #4 wholesale; reimplement any missing behaviour on the current baseline. Historical branches are preserved.
 - Before claiming ready: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
-- Follow stacked PR order for dependent commercial work. Avoid squash/cherry-pick that drops required behaviour.
+- Prefer stacked PRs for dependent work. Avoid squash/cherry-pick that drops required behaviour. Do not start the next milestone until the owner approves scope in `docs/RELEASE_CANDIDATE.md`.
 - Prefer focused diffs; no unrelated UI redesigns during release fixes.
-- Read `docs/CURSOR_HANDOVER.md` and `docs/RELEASE_CANDIDATE.md` for architecture, rollback, and release procedure.
+- Read `docs/CURSOR_HANDOVER.md` and `docs/RELEASE_CANDIDATE.md` for architecture, rollback, Production baseline, and next-milestone procedure.
+- Known-good prior Production rollback deployment: `dpl_BSfHgU3aG7B3N541rzEs1YpN8EvG`.
