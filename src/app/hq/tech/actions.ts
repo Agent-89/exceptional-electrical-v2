@@ -33,6 +33,15 @@ import {
   getTimeEntry,
   syncAppointmentFieldStatusFromLiveTimers,
 } from '@/lib/tech-time';
+import {
+  isDuplicateCorrection,
+  parseBreakMinutes,
+  readReviewTimeEntryFields,
+  resolveBillableMinutes,
+  statusesForReviewDecision,
+  validateReviewTimeEntryRequest,
+  type ReviewTimeEntryResult,
+} from '@/lib/review-time-entry';
 import { upsertOwnTechWorkReport } from '@/lib/tech-work-reports';
 
 /** Soft result for tech field actions — avoid throwing expected UX errors (they become 500 digests). */
@@ -810,29 +819,45 @@ export async function uploadJobPhotoAction(formData: FormData) {
   revalidateVisit(visit.id, visit.job_id);
 }
 
-/** Office timesheet approval / rejection / audited correction. */
-export async function reviewTimeEntryAction(formData: FormData) {
+export type { ReviewTimeEntryResult };
+
+/** Office timesheet approval / rejection / audited correction.
+ * Returns soft results for expected validation failures — throwing becomes a Next.js digest. */
+export async function reviewTimeEntryAction(formData: FormData): Promise<ReviewTimeEntryResult> {
   const user = await requireOfficeUser();
   assertOfficeOps(user);
-  const entryId = String(formData.get('entry_id') || '');
-  const decision = String(formData.get('decision') || '');
-  if (!/^[0-9a-f-]{36}$/i.test(entryId)) throw new Error('Invalid time entry.');
-  if (!['approve', 'reject', 'correct'].includes(decision)) throw new Error('Invalid decision.');
 
-  const entry = await getTimeEntry(entryId);
-  if (!entry || entry.status === 'active' || entry.status === 'on_break' || entry.status === 'cancelled') {
-    throw new Error('Only submitted time entries can be reviewed.');
-  }
+  const fields = readReviewTimeEntryFields(formData);
+  const entry = /^[0-9a-f-]{36}$/i.test(fields.entryId) ? await getTimeEntry(fields.entryId) : null;
+  const validated = validateReviewTimeEntryRequest(
+    fields,
+    entry
+      ? {
+          status: entry.status,
+          startedAt: entry.startedAt,
+          endedAt: entry.endedAt,
+          breakMinutes: entry.breakMinutes,
+          workedMinutes: entry.workedMinutes,
+          billableMinutes: entry.billableMinutes,
+          originalStartedAt: entry.originalStartedAt,
+          originalEndedAt: entry.originalEndedAt,
+          originalBreakMinutes: entry.originalBreakMinutes,
+          originalWorkedMinutes: entry.originalWorkedMinutes,
+        }
+      : null,
+  );
+  if (!validated.ok) return validated;
+  if (!entry) return { ok: false, error: 'Only submitted time entries can be reviewed.', code: 'validation' };
 
+  const decision = validated.decision;
   const db = dbAdmin();
   const now = new Date().toISOString();
-  const rejectionReason = textField(formData, 'rejection_reason', 2000);
-  const correctionNote = textField(formData, 'correction_note', 2000);
-  const billableRaw = String(formData.get('billable_minutes') || '').trim();
+  const entryId = fields.entryId;
+  const statusGate = statusesForReviewDecision(decision);
 
   if (decision === 'approve') {
-    const billable = billableRaw === '' ? entry.workedMinutes : Math.max(0, Number(billableRaw) || 0);
-    const { error } = await db
+    const billable = resolveBillableMinutes(fields.billableRaw, entry.workedMinutes ?? 0);
+    const { data, error } = await db
       .from('job_time_entries')
       .update({
         status: 'approved',
@@ -842,47 +867,79 @@ export async function reviewTimeEntryAction(formData: FormData) {
         updated_at: now,
       })
       .eq('id', entryId)
-      .in('status', ['submitted', 'rejected', 'corrected']);
-    if (error) throw new Error('Unable to approve time entry.');
+      .in('status', statusGate)
+      .select('id');
+    if (error) return { ok: false, error: 'Unable to approve time entry.', code: 'unknown' };
+    if (!data?.length) {
+      return {
+        ok: false,
+        error: 'This time entry was already reviewed. Refresh and try again.',
+        code: 'conflict',
+      };
+    }
   } else if (decision === 'reject') {
-    if (!rejectionReason) throw new Error('Rejection reason is required.');
-    const { error } = await db
+    const { data, error } = await db
       .from('job_time_entries')
       .update({
         status: 'rejected',
-        rejection_reason: rejectionReason,
+        rejection_reason: fields.rejectionReason,
         approved_by: user.id,
         approved_at: now,
         billable_minutes: null,
         updated_at: now,
       })
       .eq('id', entryId)
-      .in('status', ['submitted', 'approved', 'corrected']);
-    if (error) throw new Error('Unable to reject time entry.');
-  } else {
-    const startLocal = String(formData.get('started_at') || '');
-    const endLocal = String(formData.get('ended_at') || '');
-    const breakMinutes = Math.max(0, Math.min(24 * 60, Number(formData.get('break_minutes') || 0) || 0));
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(startLocal) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(endLocal)) {
-      throw new Error('Enter valid corrected times.');
+      .in('status', statusGate)
+      .select('id');
+    if (error) return { ok: false, error: 'Unable to reject time entry.', code: 'unknown' };
+    if (!data?.length) {
+      return {
+        ok: false,
+        error: 'This time entry was already reviewed. Refresh and try again.',
+        code: 'conflict',
+      };
     }
-    if (!correctionNote) throw new Error('Correction note is required for the audit trail.');
-    const startedAt = new Date(startLocal + '+08:00');
-    const endedAt = new Date(endLocal + '+08:00');
-    if (endedAt <= startedAt) throw new Error('Corrected end must be after start.');
+  } else {
+    const breakMinutes = parseBreakMinutes(fields.breakMinutesRaw);
+    const startedAt = new Date(fields.startLocal + '+08:00');
+    const endedAt = new Date(fields.endLocal + '+08:00');
     const worked = computeWorkedMinutes(startedAt.toISOString(), endedAt.toISOString(), breakMinutes);
-    const billable =
-      billableRaw === '' ? worked : Math.max(0, Number(billableRaw) || 0);
-    const { error } = await db
+    const billable = resolveBillableMinutes(fields.billableRaw, worked);
+    const next = {
+      startedAt: startedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
+      breakMinutes,
+      workedMinutes: worked,
+      billableMinutes: billable,
+    };
+    if (isDuplicateCorrection({
+      status: entry.status,
+      startedAt: entry.startedAt,
+      endedAt: entry.endedAt,
+      breakMinutes: entry.breakMinutes,
+      workedMinutes: entry.workedMinutes,
+      billableMinutes: entry.billableMinutes,
+      originalStartedAt: entry.originalStartedAt,
+      originalEndedAt: entry.originalEndedAt,
+      originalBreakMinutes: entry.originalBreakMinutes,
+      originalWorkedMinutes: entry.originalWorkedMinutes,
+    }, next)) {
+      revalidatePath('/hq/jobs/' + entry.jobId);
+      revalidatePath('/hq/timesheets');
+      if (entry.appointmentId) revalidateVisit(entry.appointmentId, entry.jobId);
+      return { ok: true, noop: true, message: 'Correction already saved.' };
+    }
+
+    const { data, error } = await db
       .from('job_time_entries')
       .update({
         status: 'corrected',
-        started_at: startedAt.toISOString(),
-        ended_at: endedAt.toISOString(),
+        started_at: next.startedAt,
+        ended_at: next.endedAt,
         break_minutes: breakMinutes,
         worked_minutes: worked,
         billable_minutes: billable,
-        correction_note: correctionNote,
+        correction_note: fields.correctionNote,
         corrected_by: user.id,
         corrected_at: now,
         original_started_at: entry.originalStartedAt ?? entry.startedAt,
@@ -891,8 +948,17 @@ export async function reviewTimeEntryAction(formData: FormData) {
         original_worked_minutes: entry.originalWorkedMinutes ?? entry.workedMinutes,
         updated_at: now,
       })
-      .eq('id', entryId);
-    if (error) throw new Error('Unable to correct time entry.');
+      .eq('id', entryId)
+      .in('status', statusGate)
+      .select('id');
+    if (error) return { ok: false, error: 'Unable to correct time entry.', code: 'unknown' };
+    if (!data?.length) {
+      return {
+        ok: false,
+        error: 'This time entry was already reviewed. Refresh and try again.',
+        code: 'conflict',
+      };
+    }
   }
 
   await db.from('job_activity').insert({
@@ -907,6 +973,7 @@ export async function reviewTimeEntryAction(formData: FormData) {
     revalidatePath('/hq/jobs/' + entry.jobId);
     revalidatePath('/hq/timesheets');
   }
+  return { ok: true, message: decision === 'correct' ? 'Correction saved.' : `Time entry ${decision}d.` };
 }
 
 export async function addOfficeNoteAction(formData: FormData) {

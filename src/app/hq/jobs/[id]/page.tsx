@@ -694,7 +694,10 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-edit-form button{justify-self:start}
 .ee-review-actions{display:flex;flex-wrap:wrap;gap:8px}
 .ee-review-actions button{border:1px solid #d4e1ed;border-radius:10px;background:#fff;color:#17669e;padding:10px 12px;min-height:44px;font:inherit;font-weight:800;cursor:pointer}
+.ee-review-actions button:disabled{opacity:.6;cursor:wait}
 .ee-review-actions button[value=approve]{background:#1688e9;border-color:#1688e9;color:#fff}
+.ee-form-error{margin:0;color:#b42318;font-size:13px;font-weight:700}
+.ee-form-success{margin:0;color:#0875c9;font-size:13px;font-weight:700}
 .ee-team-list{display:grid;gap:10px}
 .ee-team-list>div{display:flex;align-items:center;gap:12px}
 .ee-team-list form{margin-left:auto}
