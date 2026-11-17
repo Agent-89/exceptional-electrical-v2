@@ -258,6 +258,7 @@ export type PrefillCommercialContent = {
   internalNotes: string;
   display: string;
   mode: string;
+  customerReference: string;
   address: string;
   addressId: string;
   lines: PrefillLine[];
@@ -279,6 +280,7 @@ export function buildVariationPrefillFromParent(parent: {
   internalNotes?: string | null;
   display?: string | null;
   mode?: string | null;
+  customerReference?: string | null;
   address?: string | null;
   addressId?: string | null;
   lines?: PrefillLine[] | null;
@@ -302,6 +304,7 @@ export function buildVariationPrefillFromParent(parent: {
     internalNotes: String(parent.internalNotes || ''),
     display: parent.display === 'total_only' ? 'total_only' : 'itemised',
     mode: ['fixed', 'detailed', 'mixed'].includes(mode) ? mode : 'detailed',
+    customerReference: String(parent.customerReference || '').trim(),
     address: String(parent.address || ''),
     addressId: String(parent.addressId || ''),
     lines,

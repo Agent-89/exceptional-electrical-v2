@@ -173,6 +173,7 @@ export default async function QuoteDetail({
         internalNotes:q.internal_notes||'',
         display:q.customer_display,
         mode:q.pricing_mode,
+        customerReference:(q as {customer_reference?:string|null}).customer_reference||'',
         quoteType:quoteTypeFromParent(parentQuoteId),
         parentQuoteId:parentQuoteId||'',
         linkedJobId:jobContext?.jobId||linkedJobs[0]?.id||'',
