@@ -47,6 +47,10 @@ export default function RecordDangerActions({
 
   if (!actions.length) return null;
 
+  const blockedHints = actions
+    .filter((action) => action.disabled && action.title)
+    .map((action) => action.title as string);
+
   return (
     <details
       className="hq-record-actions-menu"
@@ -65,6 +69,7 @@ export default function RecordDangerActions({
             className="hq-record-actions-danger"
             disabled={busy !== null || Boolean(action.disabled)}
             title={action.title}
+            aria-disabled={Boolean(action.disabled)}
             onClick={async () => {
               if (action.disabled) {
                 setError(action.title || 'This record cannot be deleted.');
@@ -94,6 +99,11 @@ export default function RecordDangerActions({
             {busy === action.id ? 'Working…' : action.label}
           </button>
         ))}
+        {!error && blockedHints.length > 0 ? (
+          <p className="hq-record-actions-hint" role="note">
+            {blockedHints.join(' ')}
+          </p>
+        ) : null}
         {error ? (
           <p className="hq-record-actions-error" role="alert">
             {error}

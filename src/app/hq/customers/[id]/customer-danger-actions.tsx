@@ -1,5 +1,6 @@
 'use client';
 
+import { formatEmptyDeleteBlockers } from '@/lib/hq-empty-delete';
 import { deleteEmptyCustomer } from '../../customer-actions';
 import RecordDangerActions from '../../record-danger-actions';
 
@@ -26,7 +27,7 @@ export default function CustomerDangerActions({
           disabled: !deleteEligible,
           title: deleteEligible
             ? 'Permanently delete this empty customer'
-            : deleteBlockers.join('; ') || 'Not eligible for delete',
+            : formatEmptyDeleteBlockers(deleteBlockers),
           redirectTo: '/hq/customers',
           run: () => deleteEmptyCustomer(customerId),
         },

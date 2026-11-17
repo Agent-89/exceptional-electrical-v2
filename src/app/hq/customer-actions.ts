@@ -180,9 +180,12 @@ export async function deleteEmptyCustomer(customerId:string):Promise<Result>{
   if(!customer)return {ok:false,message:'Customer not found'};
   const verdict=await assessCustomerEmptyDelete(db,customerId);
   if(!verdict.eligible)return {ok:false,message:formatEmptyDeleteBlockers(verdict.blockers)};
+  // Keep Vapi intake audit rows; unlink so NO ACTION FK does not block hard-delete.
+  const {error:unlinkError}=await db.from('vapi_call_intake').update({customer_id:null}).eq('customer_id',customerId);
+  if(unlinkError)return {ok:false,message:unlinkError.message||'Unable to unlink call intake'};
   await db.from('customer_addresses').delete().eq('customer_id',customerId);
   const {error}=await db.from('customers').delete().eq('id',customerId);
-  if(error)return {ok:false,message:'Unable to delete customer'};
+  if(error)return {ok:false,message:error.message||'Unable to delete customer'};
   revalidatePath('/hq/customers');
   return {ok:true,message:`Customer “${customer.name}” deleted.`};
  }catch(error){
