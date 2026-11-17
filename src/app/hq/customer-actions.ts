@@ -47,11 +47,19 @@ function conflictResult(matches:CustomerMatchRecord[],action:'create'|'update'):
  };
 }
 
+function parseCompany(form:FormData){
+ const company=text(form.get('company_name'));
+ if(company.length>150)return {ok:false as const,message:'Company name is too long'};
+ return {ok:true as const,company:company||null};
+}
+
 export async function createCustomer(form:FormData):Promise<Result>{
  if(!await staff())return {ok:false,message:'Insufficient permissions'};
  const name=text(form.get('name'));
  const email=normalizeCustomerEmail(text(form.get('email')));
  const phone=text(form.get('phone'));
+ const companyParsed=parseCompany(form);
+ if(!companyParsed.ok)return {ok:false,message:companyParsed.message};
  const allowDuplicate=form.get('allow_duplicate')==='yes';
  if(name.length<2||name.length>150||email.length>254||phone.length>40||(!email&&!phone))return {ok:false,message:'Enter a name and at least one contact method'};
  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return {ok:false,message:'Invalid email address'};
@@ -61,7 +69,12 @@ export async function createCustomer(form:FormData):Promise<Result>{
   const matches=findCustomerMatches(customers,email,phone);
   if(matches.length)return conflictResult(matches,'create');
  }
- const {data,error}=await dbAdmin().from('customers').insert({name,email:email||null,phone:phone||null}).select('id,name,email,phone').single();
+ const {data,error}=await dbAdmin().from('customers').insert({
+  name,
+  email:email||null,
+  phone:phone||null,
+  company_name:companyParsed.company,
+ }).select('id,name,email,phone,company_name').single();
  if(error||!data)return {ok:false,message:'Unable to create customer'};
  revalidatePath('/hq/customers');
  return {ok:true,message:allowDuplicate?'Separate customer created':'Customer created',id:data.id,customer:data as CustomerMatchRecord};
@@ -73,6 +86,8 @@ export async function updateCustomer(id:string,form:FormData):Promise<Result>{
  const name=text(form.get('name'));
  const email=normalizeCustomerEmail(text(form.get('email')));
  const phone=text(form.get('phone'));
+ const companyParsed=parseCompany(form);
+ if(!companyParsed.ok)return {ok:false,message:companyParsed.message};
  const allowDuplicate=form.get('allow_duplicate')==='yes';
  if(name.length<2||name.length>150||email.length>254||phone.length>40||(!email&&!phone))return {ok:false,message:'Enter a name and contact method'};
  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return {ok:false,message:'Invalid email address'};
@@ -82,7 +97,13 @@ export async function updateCustomer(id:string,form:FormData):Promise<Result>{
   const matches=findCustomerMatches(customers,email,phone,id);
   if(matches.length)return conflictResult(matches,'update');
  }
- const {error}=await dbAdmin().from('customers').update({name,email:email||null,phone:phone||null,updated_at:new Date().toISOString()}).eq('id',id);
+ const {error}=await dbAdmin().from('customers').update({
+  name,
+  email:email||null,
+  phone:phone||null,
+  company_name:companyParsed.company,
+  updated_at:new Date().toISOString(),
+ }).eq('id',id);
  if(error)return {ok:false,message:'Could not save customer'};
  revalidatePath('/hq/customers');revalidatePath('/hq/customers/'+id);
  return {ok:true,message:allowDuplicate?'Customer details saved with shared contact details':'Customer details saved'};
@@ -93,9 +114,47 @@ export async function addCustomerAddress(id:string,form:FormData):Promise<Result
  if(!uuid(id))return {ok:false,message:'Invalid customer'};
  const label=text(form.get('label'))||'Service address',address_line1=text(form.get('address_line1')),address_line2=text(form.get('address_line2')),suburb=text(form.get('suburb')),state=text(form.get('state'))||'WA',postcode=text(form.get('postcode')),notes=text(form.get('notes'));
  if(!address_line1||!suburb||!/^[0-9]{4}$/.test(postcode)||[label,address_line1,address_line2,suburb,state].some(x=>x.length>160)||notes.length>1000)return {ok:false,message:'Enter a valid street address, suburb and four-digit postcode'};
- const {error}=await dbAdmin().from('customer_addresses').insert({customer_id:id,label,address_line1,address_line2:address_line2||null,suburb,state,postcode,notes:notes||null});
+ const db=dbAdmin();
+ const {count}=await db.from('customer_addresses').select('id',{count:'exact',head:true}).eq('customer_id',id);
+ const {error}=await db.from('customer_addresses').insert({
+  customer_id:id,
+  label,
+  address_line1,
+  address_line2:address_line2||null,
+  suburb,
+  state,
+  postcode,
+  notes:notes||null,
+  is_primary:(count??0)===0,
+ });
  if(error)return {ok:false,message:'Unable to add address'};
  revalidatePath('/hq/customers/'+id);return {ok:true,message:'Service address added'};
+}
+
+export async function updateCustomerAddress(customerId:string,addressId:string,form:FormData):Promise<Result>{
+ if(!await staff())return {ok:false,message:'Insufficient permissions'};
+ if(!uuid(customerId)||!uuid(addressId))return {ok:false,message:'Invalid address'};
+ const label=text(form.get('label'))||'Service address',address_line1=text(form.get('address_line1')),address_line2=text(form.get('address_line2')),suburb=text(form.get('suburb')),state=text(form.get('state'))||'WA',postcode=text(form.get('postcode')),notes=text(form.get('notes'));
+ const makePrimary=form.get('is_primary')==='yes'||form.get('is_primary')==='on'||form.get('is_primary')==='true';
+ if(!address_line1||!suburb||!/^[0-9]{4}$/.test(postcode)||[label,address_line1,address_line2,suburb,state].some(x=>x.length>160)||notes.length>1000)return {ok:false,message:'Enter a valid street address, suburb and four-digit postcode'};
+ const db=dbAdmin();
+ const {data:existing,error:lookupError}=await db.from('customer_addresses').select('id').eq('id',addressId).eq('customer_id',customerId).maybeSingle();
+ if(lookupError||!existing)return {ok:false,message:'Address not found'};
+ if(makePrimary){
+  await db.from('customer_addresses').update({is_primary:false}).eq('customer_id',customerId).neq('id',addressId);
+ }
+ const {error}=await db.from('customer_addresses').update({
+  label,
+  address_line1,
+  address_line2:address_line2||null,
+  suburb,
+  state,
+  postcode,
+  notes:notes||null,
+  is_primary:makePrimary,
+ }).eq('id',addressId).eq('customer_id',customerId);
+ if(error)return {ok:false,message:'Could not save address'};
+ revalidatePath('/hq/customers/'+customerId);return {ok:true,message:'Service address updated'};
 }
 
 export async function addCustomerNote(id:string,note:string):Promise<Result>{

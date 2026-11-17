@@ -3,6 +3,7 @@ import {canManageOfficeOps} from '@/lib/hq-roles';
 import {isEligibleVariationParentStatus,isMissingCommercialSchemaError} from '@/lib/quote-commercial';
 import {isMissingJobQuotesRelation} from '@/lib/job-quotes-store';
 import {loadCustomerJobs,loadParentQuoteOptions,type ParentOptionsDb} from '@/lib/quote-parent-options';
+import {stripEnquiryMetaForQuoteScope} from '@/lib/quote-prefill';
 import QuoteEditor from '../quote-editor';
 import '../../hq.css';
 
@@ -24,7 +25,7 @@ export default async function NewQuote({
 
   const [{data:customers},{data:enquiries},{data:addresses}]=await Promise.all([
     db.from('customers').select('id,name,email,phone').order('name').limit(1000),
-    db.from('enquiries').select('id,name,customer_id,message,service_category').order('created_at',{ascending:false}).limit(200),
+    db.from('enquiries').select('id,name,customer_id,message,service_category,suburb').order('created_at',{ascending:false}).limit(200),
     db.from('customer_addresses').select('id,customer_id,label,address_line1,suburb,state,postcode').limit(1000),
   ]);
 
@@ -36,7 +37,6 @@ export default async function NewQuote({
 
   let jobContext: {jobId:string;jobNumber?:string|null;jobTitle?:string|null}|null=null;
   let jobCustomerId:string|null=null;
-  let jobTitleSeed='';
   let jobScopeSeed='';
   let jobAddressSeed='';
   let jobEnquiryId='';
@@ -50,7 +50,6 @@ export default async function NewQuote({
     if(job){
       jobContext={jobId:job.id,jobNumber:job.job_number,jobTitle:job.title};
       jobCustomerId=job.customer_id;
-      jobTitleSeed=String(job.title||'').trim();
       jobScopeSeed=String(job.description||'').trim();
       jobAddressSeed=String(job.site_address_text||'').trim();
       jobEnquiryId=job.enquiry_id||'';
@@ -171,11 +170,12 @@ export default async function NewQuote({
     ?[{id:jobContext.jobId,jobNumber:jobContext.jobNumber||null,title:jobContext.jobTitle||null}]
     :[];
 
-  const titleSeed=asVariation&&parentQuote
-    ?(`Variation — ${parentQuote.title||jobTitleSeed||'Electrical work'}`).slice(0,200)
-    :asVariation
-      ?`Variation — ${(jobTitleSeed||e?.service_category?.replaceAll('_',' ')||'Electrical work')}`.slice(0,200)
-      :(jobTitleSeed||e?.service_category?.replaceAll('_',' ')||'Electrical work');
+  const enquiryScope=stripEnquiryMetaForQuoteScope(e?.message||'');
+  const customerNameSeed=String((customers||[]).find(c=>c.id===customerId)?.name||e?.name||'').trim();
+  const titleSeed=customerNameSeed.slice(0,200);
+  const scopeSeed=asVariation&&parentQuote
+    ?String(parentQuote.scope_of_work||jobScopeSeed||enquiryScope||'')
+    :jobScopeSeed||enquiryScope||'';
 
   const useParentPrefill=asVariation&&Boolean(parentQuote)&&parentLines.length>=0&&Boolean(defaultParentId);
 
@@ -204,8 +204,8 @@ export default async function NewQuote({
         address:useParentPrefill
           ?String(parentQuote?.site_address_snapshot?.address||jobAddressSeed||'')
           :jobAddressSeed,
-        title:useParentPrefill?titleSeed:titleSeed,
-        scope:useParentPrefill?String(parentQuote?.scope_of_work||jobScopeSeed||e?.message||''):jobScopeSeed||e?.message||'',
+        title:titleSeed,
+        scope:useParentPrefill?String(parentQuote?.scope_of_work||jobScopeSeed||enquiryScope||''):scopeSeed,
         inclusions:useParentPrefill?String(parentQuote?.inclusions||''):'',
         exclusions:useParentPrefill?String(parentQuote?.exclusions||''):'',
         notes:useParentPrefill?String(parentQuote?.customer_notes||''):'',

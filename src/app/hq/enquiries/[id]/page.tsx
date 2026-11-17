@@ -58,7 +58,21 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
  return <main className="hq-detail"><div className="hq-detail-inner">
   <Link href="/hq/enquiries" className="hq-back">← Back to enquiries</Link>
   <div className="hq-detail-head"><div><div className="hq-kicker">CUSTOMER ENQUIRY · {'ENQ-'+String(e.reference_number).padStart(4,'0')}</div><div className="hq-detail-labels"><span className="hq-detail-type">{requestLabel}</span>{hasSecondaryConcern&&<span className="hq-detail-type hq-detail-type-warning">Customer concern</span>}</div><h1>{e.name||'Unknown caller'}</h1><p>{serviceDisplay}{e.suburb?' · '+e.suburb:''} · Received {received}</p></div><span className={'hq-status hq-status-'+status}>{enquiryStatusLabel(status)}</span></div>
-  <div className="hq-detail-actions hq-detail-actions-compact"><Link className="hq-detail-action-secondary" href={"/hq/quotes/new?enquiry="+e.id}>+ Create quote</Link>{phone&&<a className="hq-detail-action-primary" href={'tel:'+phone}>Call customer</a>}{email&&<a className="hq-detail-action-secondary" href={'mailto:'+email}>Send email</a>}<div className="hq-detail-convert"><ConvertCustomer enquiryId={e.id} initialCustomerId={e.customer_id??null}/></div></div>
+  <div className="hq-detail-actions hq-detail-actions-compact">
+   <Link className="hq-detail-action-secondary" href={"/hq/quotes/new?enquiry="+e.id}>+ Create quote</Link>
+   {phone&&<a className="hq-detail-action-primary" href={'tel:'+phone}>Call customer</a>}
+   {email&&!phone&&<a className="hq-detail-action-secondary" href={'mailto:'+email}>Send email</a>}
+   <ConvertCustomer
+    enquiryId={e.id}
+    initialCustomerId={e.customer_id??null}
+    prefill={{
+     name:String(e.name||''),
+     email,
+     phone,
+     suburb:String(e.suburb||''),
+    }}
+   />
+  </div>
   <div className="hq-detail-grid hq-detail-grid-action-first"><EnquiryWorkspace id={e.id} initialStatus={e.status} initialReceivedAt={e.created_at} initialHasConcern={hasSecondaryConcern} initialRequestedDate={e.requested_date||requestedDate||''} initialActivity={(activity??[]).map(item=>({...item,actor_name:item.actor_id?actorNames.get(item.actor_id)||'Staff member':'System'}))}/>
    <div className="hq-detail-main">
     {(complaintStructured||complaint)&&<div className="hq-detail-alert"><strong>Customer concern mentioned</strong><p>This enquiry includes feedback or a concern about previous work. Review the details and arrange follow-up where appropriate.</p></div>}

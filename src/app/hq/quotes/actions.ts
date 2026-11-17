@@ -272,7 +272,6 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<QuoteSaveResult>{
  if(v.parentQuoteId&&!validId(v.parentQuoteId))return {ok:false,message:'Invalid parent quote reference'};
  const linkedJobIds=resolveLinkedJobIds(v);
  if(linkedJobIds.some(id=>!validId(id)))return {ok:false,message:'Invalid linked job reference'};
- if(!v.title.trim())return {ok:false,message:'Enter a quote title'};
  if(v.title.length>200||v.scope.length>12000||v.address.length>1500||v.internalNotes.length>6000||v.lines.length>100)return {ok:false,message:'Quote exceeds field limits'};
  if(!['itemised','total_only'].includes(v.display)||!['fixed','detailed','mixed'].includes(v.mode))return {ok:false,message:'Invalid quote options'};
  for(const line of v.lines)if(!line.description.trim()||line.description.length>500||!['labour','material','equipment','subcontractor','other'].includes(line.category)||!Number.isFinite(line.quantity)||line.quantity<=0||line.quantity>100000||!Number.isInteger(line.price)||line.price<0||line.price>1000000000||(line.cost!==null&&(!Number.isInteger(line.cost)||line.cost<0||line.cost>1000000000)))return {ok:false,message:'Check line item values'};
@@ -329,11 +328,13 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<QuoteSaveResult>{
  });
  if(!jobsCheck.ok)return jobsCheck;
 
- let customerSnapshot={};
+ let customerSnapshot:{name?:string|null;email?:string|null;phone?:string|null}={};
  if(v.customerId){const {data:c}=await db.from('customers').select('name,email,phone').eq('id',v.customerId).maybeSingle();if(!c)return {ok:false,message:'Customer not found'};customerSnapshot=c}
  if(v.enquiryId){const {data:e}=await db.from('enquiries').select('customer_id').eq('id',v.enquiryId).maybeSingle();if(!e)return {ok:false,message:'Enquiry not found'};if(e.customer_id&&v.customerId&&e.customer_id!==v.customerId)return {ok:false,message:'Customer does not match enquiry'}}
  let addressSnapshot:{address:string}&Record<string,unknown>={address:v.address.trim()};
  if(v.addressId){const {data:a}=await db.from('customer_addresses').select('address_line1,address_line2,suburb,state,postcode').eq('id',v.addressId).eq('customer_id',v.customerId).maybeSingle();if(!a)return {ok:false,message:'Invalid customer address'};addressSnapshot={...a,address:v.address.trim()||[a.address_line1,a.address_line2,a.suburb,a.state,a.postcode].filter(Boolean).join(', ')}}
+
+ const resolvedTitle=(String(customerSnapshot.name||'').trim()||v.title.trim()||'Quote').slice(0,200);
 
  const values:Record<string,unknown>={
   customer_id:v.customerId||null,
@@ -341,7 +342,7 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<QuoteSaveResult>{
   site_address_id:v.addressId||null,
   site_address_snapshot:addressSnapshot,
   customer_snapshot:customerSnapshot,
-  title:v.title.trim(),
+  title:resolvedTitle,
   scope_of_work:v.scope.trim(),
   inclusions:v.inclusions,
   exclusions:v.exclusions,
