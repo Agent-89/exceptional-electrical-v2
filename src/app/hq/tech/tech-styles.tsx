@@ -48,6 +48,9 @@ export default function TechStyles() {
 .ee-tech-empty-compact{padding:16px 14px;margin:0 0 12px}
 .ee-tech-alert{padding:12px 14px;margin:0 0 14px;border-radius:10px;background:var(--ee-warn-bg);color:var(--ee-warn-text);font-size:13px}
 .ee-tech-alert-error{background:var(--ee-danger-bg);color:var(--ee-danger-text)}
+.ee-tech-offline-banner{position:sticky;top:0;z-index:40;margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#e8f1fa;color:#18577d;font-size:13px;line-height:1.4;border:1px solid #c5dbeb}
+.ee-tech-offline-banner.is-offline{background:var(--ee-warn-bg);color:var(--ee-warn-text);border-color:#f0d7a8}
+.ee-tech-offline-banner button{margin-left:8px;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;padding:0}
 .ee-tech-alert-success{background:var(--ee-success-bg);color:var(--ee-success-text);display:grid;gap:4px}
 .ee-tech-outcome{margin:0;padding:0;border:0;display:grid;gap:8px}
 .ee-tech-outcome legend{padding:0;margin:0 0 2px;font-size:13px;font-weight:700;color:var(--ee-text)}
