@@ -30,7 +30,7 @@ import { getCachedActiveSchedulingStaff } from '@/lib/hq-reference-cache';
 import '../../hq.css';
 
 const JOB_DETAIL_COLUMNS =
-  'id,job_number,title,status,priority,description,customer_id,site_address_text,quote_id,scheduled_start,next_action_at,source,updated_at,created_at';
+  'id,job_number,title,status,priority,description,customer_id,site_address_text,quote_id,enquiry_id,scheduled_start,next_action_at,source,updated_at,created_at';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,6 +87,7 @@ export default async function JobPage({
     appointmentsResult,
     { data: customerSeed },
     jobQuotesResult,
+    { data: linkedEnquiry },
   ] = await Promise.all([
     job.customer_id
       ? db.from('customers').select('id,name,email,phone').eq('id', job.customer_id).maybeSingle()
@@ -106,6 +107,9 @@ export default async function JobPage({
       .order('starts_at', { ascending: true }),
     db.from('customers').select('id,name').order('name').limit(80),
     loadJobQuotesForDisplay(db, id, job.quote_id as string | null),
+    job.enquiry_id
+      ? db.from('enquiries').select('id,reference_number').eq('id', job.enquiry_id as string).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   // Soft-fallback across schema vintages (base → field ops → follow-up resolution columns).
@@ -202,6 +206,14 @@ export default async function JobPage({
             <div className="hq-kicker">JOB JB{String(job.job_number).padStart(5, '0')}</div>
             <h1>{job.title}</h1>
             <p>{customer?.name ?? 'No customer selected'}</p>
+            {linkedEnquiry ? (
+              <p className="ee-muted" style={{ marginTop: 6 }}>
+                From enquiry ·{' '}
+                <Link href={`/hq/enquiries/${linkedEnquiry.id}`}>
+                  ENQ-{String(linkedEnquiry.reference_number).padStart(4, '0')}
+                </Link>
+              </p>
+            ) : null}
           </div>
           <span className="ee-workspace-status">{jobStatusLabel(job.status)}</span>
         </header>

@@ -44,10 +44,22 @@ import {
 } from '@/lib/quote-prefill';
 
 type Customer={id:string;name:string;email:string|null;phone:string|null};
-type Enquiry={id:string;name:string;customer_id:string|null;message:string;service_category:string|null;suburb?:string|null};
+type Enquiry={id:string;name:string;customer_id:string|null;message:string;service_category:string|null;suburb?:string|null;reference_number?:number|null};
 type Address={id:string;customer_id:string;label:string;address_line1:string;suburb:string;state:string;postcode:string};
 type JobOption={id:string;jobNumber:string|null;title:string|null};
 type JobContext={jobId:string;jobNumber?:string|null;jobTitle?:string|null};
+
+function formatJobRef(raw:string|number|null|undefined){
+ if(raw==null||raw==='')return 'Job';
+ const value=String(raw).trim();
+ if(/^JB\d+$/i.test(value))return value.toUpperCase();
+ if(/^\d+$/.test(value))return 'JB'+value.padStart(5,'0');
+ return value;
+}
+function formatEnquiryRef(referenceNumber:number|null|undefined){
+ if(referenceNumber==null||!Number.isFinite(referenceNumber))return 'Enquiry';
+ return 'ENQ-'+String(referenceNumber).padStart(4,'0');
+}
 type CommercialMeta={
   parentQuoteId?:string|null;
   parentQuoteNumber?:string|null;
@@ -184,7 +196,8 @@ export default function QuoteEditor({
  const customerLabel=(c:Customer)=>`${c.name} · ${c.phone||c.email||'No contact details'} (${c.id.slice(0,8)})`;
  const enquiryLabel=(e:Enquiry)=>{
   const service=prettyServiceCategory(e.service_category)||e.service_category||'Enquiry';
-  return `${e.name} · ${service}${e.suburb?` · ${e.suburb}`:''}`;
+  const ref=formatEnquiryRef(e.reference_number);
+  return `${ref} · ${e.name} · ${service}${e.suburb?` · ${e.suburb}`:''}`;
  };
  const linkedEnquiry=enquiries.find(e=>e.id===draft.enquiryId)||null;
  const addressLabel=(a:Address)=>[a.address_line1,a.suburb,a.state,a.postcode].filter(Boolean).join(', ');
@@ -205,6 +218,8 @@ export default function QuoteEditor({
  const [dirty,setDirty]=useState(false);
  const [parentQuery,setParentQuery]=useState('');
  const [jobSearchId,setJobSearchId]=useState('');
+ const [enquiryEditing,setEnquiryEditing]=useState(!initial?.enquiryId);
+ const [customerChangeWarn,setCustomerChangeWarn]=useState('');
  const [menuOpen,setMenuOpen]=useState(false);
  const [collapsedLines,setCollapsedLines]=useState<Record<number,boolean>>({});
  const [collapseEnabled,setCollapseEnabled]=useState(false);
@@ -280,7 +295,6 @@ export default function QuoteEditor({
   ...pendingJobIds,
   ...(draft.linkedJobIds||[]),
  ]).size;
- const customerChangeBlocked=Boolean(draft.id)&&associatedJobCount>0;
 
  const customerJobs:JobOption[]=(linkedJobOptions||[]).map(j=>({
   id:j.id,
@@ -303,6 +317,10 @@ export default function QuoteEditor({
   window.addEventListener('beforeunload',onBeforeUnload);
   return()=>window.removeEventListener('beforeunload',onBeforeUnload);
  },[dirty,locked]);
+
+ useEffect(()=>{
+  if(associatedJobCount===0&&customerChangeWarn)setCustomerChangeWarn('');
+ },[associatedJobCount,customerChangeWarn]);
 
  useEffect(()=>{
   if(!menuOpen)return;
@@ -348,11 +366,14 @@ export default function QuoteEditor({
     associatedJobCount,
    });
    if(!gate.ok){
-    setFeedback(gate.message||quoteCustomerChangeBlockedMessage());
+    const message=gate.message||quoteCustomerChangeBlockedMessage();
+    setCustomerChangeWarn(message);
+    setFeedback(message);
     return;
    }
    clearJobsForCustomerChange();
   }
+  setCustomerChangeWarn('');
   setCustomerList(x=>x.some(c=>c.id===match.id)?x:[...x,match]);
   setDraft(d=>({
    ...d,
@@ -368,6 +389,7 @@ export default function QuoteEditor({
     linkedJobIds:d.linkedJobIds||[],
    }),
   }));
+  setEnquiryEditing(true);
   setCustomerSearch(customerLabel(match));
   setNewCustomer(false);
   setCustomerForm({name:'',email:'',phone:''});
@@ -387,9 +409,12 @@ export default function QuoteEditor({
      associatedJobCount,
     });
     if(!gate.ok){
-     setFeedback(gate.message||quoteCustomerChangeBlockedMessage());
+     const message=gate.message||quoteCustomerChangeBlockedMessage();
+     setCustomerChangeWarn(message);
+     setFeedback(message);
      return;
     }
+    setCustomerChangeWarn('');
     setCustomerList(x=>x.some(c=>c.id===result.customer!.id)?x:[...x,result.customer!]);
     clearJobsForCustomerChange();
     setDraft(d=>({
@@ -402,6 +427,7 @@ export default function QuoteEditor({
      linkedJobId:'',
      linkedJobIds:[],
     }));
+    setEnquiryEditing(true);
     setNewCustomer(false);
     setCustomerForm({name:'',email:'',phone:''});
     resetCustomerConflict();
@@ -484,7 +510,9 @@ export default function QuoteEditor({
    associatedJobCount,
   });
   if(!persistedGate.ok){
-   setFeedback(persistedGate.message||quoteCustomerChangeBlockedMessage());
+   const message=persistedGate.message||quoteCustomerChangeBlockedMessage();
+   setCustomerChangeWarn(message);
+   setFeedback(message);
    return false;
   }
   const hasJobs=associatedJobCount>0;
@@ -496,6 +524,7 @@ export default function QuoteEditor({
    ].filter(Boolean).join(' and ');
    if(!window.confirm(`Changing the customer ${parts}. Continue?`))return false;
   }
+  setCustomerChangeWarn('');
   clearJobsForCustomerChange();
   setDraft(d=>({
    ...d,
@@ -511,6 +540,7 @@ export default function QuoteEditor({
     linkedJobIds:d.linkedJobIds||[],
    }),
   }));
+  setEnquiryEditing(true);
   return true;
  }
 
@@ -695,7 +725,7 @@ export default function QuoteEditor({
      <>
       <Link href="/hq/jobs">Jobs</Link>
       <span aria-hidden="true">/</span>
-      <Link href={`/hq/jobs/${jobContext.jobId}`}>{jobContext.jobNumber||'Job'}</Link>
+      <Link href={`/hq/jobs/${jobContext.jobId}`}>{formatJobRef(jobContext.jobNumber)}</Link>
       <span aria-hidden="true">/</span>
       <Link href={`/hq/jobs/${jobContext.jobId}?tab=quotes`}>Quotes</Link>
       <span aria-hidden="true">/</span>
@@ -866,8 +896,8 @@ export default function QuoteEditor({
          }}
         />
        </label>
-       {!locked&&!customerChangeBlocked?(
-        <button type="button" className="hq-qw-link-btn" onClick={()=>{setNewCustomer(true);resetCustomerConflict();setFeedback('')}}>
+       {!locked?(
+        <button type="button" className="hq-qw-link-btn" onClick={()=>{setNewCustomer(true);resetCustomerConflict();setFeedback('');setCustomerChangeWarn('')}}>
          + New customer
         </button>
        ):null}
@@ -886,8 +916,8 @@ export default function QuoteEditor({
        <datalist id="quote-addresses">{addressList.filter(a=>a.customer_id===draft.customerId).map(a=><option key={a.id} value={addressLabel(a)}/>)}</datalist>
       </label>
      </div>
-     {customerChangeBlocked?(
-      <p className="hq-quote-field-hint hq-qw-warn" role="status">{quoteCustomerChangeBlockedMessage()}</p>
+     {customerChangeWarn?(
+      <p className="hq-quote-field-hint hq-qw-warn" role="status">{customerChangeWarn}</p>
      ):null}
 
      <div className="hq-qw-optional-block">
@@ -933,24 +963,49 @@ export default function QuoteEditor({
       ):null}
 
       <div className="hq-qw-links-row">
-       <label className="hq-qw-enquiry">Linked enquiry
-        <SearchPicker
-         value={draft.enquiryId}
-         placeholder="Search customer or service"
-         optional
-         choices={enquiries.filter(e=>!draft.customerId||!e.customer_id||e.customer_id===draft.customerId).map(e=>({id:e.id,label:enquiryLabel(e),detail:prettyServiceCategory(e.service_category)||'Enquiry'}))}
-         onSelect={id=>{
-          const source=enquiries.find(e=>e.id===id);
-          const scope=source?stripEnquiryMetaForQuoteScope(source.message):'';
-          setDraft(d=>({
-           ...d,
-           enquiryId:id,
-           customerId:source?.customer_id||d.customerId,
-           scope:d.scope.trim()?d.scope:scope,
-          }));
-         }}
-        />
-       </label>
+       <div className="hq-qw-enquiry">
+        <div className="hq-qw-jobs-head">
+         <h3>Linked enquiry</h3>
+         <span className="hq-quote-optional">Optional</span>
+        </div>
+        {linkedEnquiry&&!enquiryEditing?(
+         <ul className="hq-linked-job-list hq-qw-job-chips">
+          <li>
+           <div>
+            <strong>{formatEnquiryRef(linkedEnquiry.reference_number)}</strong>
+            <span>{linkedEnquiry.name}{[prettyServiceCategory(linkedEnquiry.service_category)||linkedEnquiry.service_category,linkedEnquiry.suburb].filter(Boolean).map(part=>` · ${part}`).join('')}</span>
+           </div>
+           <div className="hq-linked-job-actions">
+            <Link href={`/hq/enquiries/${linkedEnquiry.id}`}>View</Link>
+            {!locked?(
+             <>
+              <button type="button" onClick={()=>setEnquiryEditing(true)}>Change</button>
+              <button type="button" onClick={()=>{setDraft(d=>({...d,enquiryId:''}));setEnquiryEditing(true)}}>Remove</button>
+             </>
+            ):null}
+           </div>
+          </li>
+         </ul>
+        ):!locked?(
+         <SearchPicker
+          value={draft.enquiryId}
+          placeholder="Search customer or service"
+          optional
+          choices={enquiries.filter(e=>!draft.customerId||!e.customer_id||e.customer_id===draft.customerId).map(e=>({id:e.id,label:enquiryLabel(e),detail:prettyServiceCategory(e.service_category)||'Enquiry'}))}
+          onSelect={id=>{
+           const source=enquiries.find(e=>e.id===id);
+           const scope=source?stripEnquiryMetaForQuoteScope(source.message):'';
+           setDraft(d=>({
+            ...d,
+            enquiryId:id,
+            customerId:source?.customer_id||d.customerId,
+            scope:d.scope.trim()?d.scope:scope,
+           }));
+           setEnquiryEditing(!id);
+          }}
+         />
+        ):<p className="hq-quote-field-hint">No enquiry linked.</p>}
+       </div>
 
        <div id="qw-jobs" className="hq-qw-jobs">
         <div className="hq-qw-jobs-head">
@@ -964,7 +1019,7 @@ export default function QuoteEditor({
            return (
             <li key={job.id}>
              <div>
-              <strong>{job.jobNumber||job.id.slice(0,8)}</strong>
+              <strong>{formatJobRef(job.jobNumber)}</strong>
               <span>{job.title||'Untitled job'}{pendingLink?' · pending':''}</span>
              </div>
              <div className="hq-linked-job-actions">
@@ -981,7 +1036,7 @@ export default function QuoteEditor({
           <SearchPicker
            value={jobSearchId}
            placeholder="Add a job for this customer"
-           choices={availableJobs.map(j=>({id:j.id,label:j.jobNumber||j.id.slice(0,8),detail:j.title||''}))}
+           choices={availableJobs.map(j=>({id:j.id,label:formatJobRef(j.jobNumber),detail:j.title||''}))}
            onSelect={id=>{setJobSearchId(id);if(id)addPendingJob(id)}}
           />
          </div>
@@ -1000,7 +1055,7 @@ export default function QuoteEditor({
      </div>
      <label>Description
       <textarea rows={3} value={draft.scope} onChange={e=>set('scope',e.target.value)} placeholder="What the customer is getting done"/>
-      {linkedEnquiry?<span className="hq-quote-field-hint">From enquiry · {enquiryLabel(linkedEnquiry)}. Intake metadata is stripped for customer-facing wording.</span>:null}
+      {linkedEnquiry?<span className="hq-quote-field-hint">From enquiry · {formatEnquiryRef(linkedEnquiry.reference_number)} · {linkedEnquiry.name}. Intake metadata is stripped for customer-facing wording.</span>:null}
      </label>
      <details className="hq-quote-optional-details" open={Boolean(initial?.inclusions||initial?.exclusions)}>
       <summary>Inclusions &amp; exclusions <span className="hq-quote-optional">(optional)</span></summary>
