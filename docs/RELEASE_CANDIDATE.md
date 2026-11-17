@@ -75,22 +75,28 @@ Some extended items may have been exercised earlier on Preview or prior releases
 
 ---
 
-## Next milestone proposal (awaiting approval)
+## Next milestone — owner-approved / in progress
 
-**Name:** Tradify import dry-run readiness + Production ops hardening
+**Name:** Tradify import dry-run readiness + lean Production ops hardening  
+**Owner approval:** 18 Nov 2026 (lean scope — soft-confirm override deferred)
 
 ### Goal
 
 Keep the Production commercial baseline stable while making HQ ready to **rehearse** Tradify cutover and harden public/ops edges — without live accounting, telephony, or data mutation of Production customer records.
 
-### In scope
+### In scope (lean)
 
-1. Tradify import **staging + dry-run report** from frozen exports (customers/sites/jobs): counts, unmatched keys, collisions, staff mapping to `scheduling_staff`, expected inserts/updates — **read-only / local or isolated** until owner approves any write.
-2. Documented import batch contract alignment with `docs/tradify-migration-and-google-calendar.md` (idempotent, reversible-by-batch design).
-3. Enquiry **rate limiting / bot protection** for marketing intake (Preview-safe configuration).
-4. Scheduling race posture decision: stay app-layer hard-block vs additive DB exclusion/advisory lock (design + optional migration **only after approval**).
-5. Optional soft-confirm double-book override UX design/spike on current `main` (do **not** merge obsolete PR #4).
-6. Doc/README hygiene so handover remains authoritative.
+1. Tradify import **in-memory staging + dry-run report** from frozen exports (customers/sites/jobs): counts, unmatched keys, collisions, staff mapping to `scheduling_staff`, expected inserts — **read-only / local or isolated**; **no DB writes**.
+2. Import batch contract remains aligned with `docs/tradify-migration-and-google-calendar.md` (idempotent, reversible-by-batch design for a future apply path).
+3. Enquiry **abuse controls** on `POST /api/enquiries`: keep honeypot; add DB-backed email/phone cooldown (no new vendor). Durable IP/edge rate limiting (e.g. Upstash) remains a follow-up before high-traffic marketing domain cutover.
+4. Scheduling race posture **written recommendation**: stay app-layer hard-block; defer DB exclusion/advisory locks — see `docs/scheduling-overlap-posture.md`.
+5. Doc/README hygiene so handover remains authoritative.
+
+### Explicitly deferred from the original proposal
+
+- Soft-confirm double-book override UX (do **not** merge obsolete PR #4; reimplement later only if owners request).
+- DB-level overlap exclusion / advisory-lock migration.
+- Upstash / Vercel edge rate-limit vendor wiring.
 
 ### Out of scope
 
@@ -102,6 +108,16 @@ Keep the Production commercial baseline stable while making HQ ready to **rehear
 - Inventory / purchasing / reports
 - Mutating Production data or external integrations without approval
 
+### How to run the dry-run
+
+```bash
+npm run tradify:dry-run
+# optional read-only local Supabase compare (127.0.0.1:54321 only):
+npm run tradify:dry-run -- --local-db
+```
+
+Writes `imports/tradify/<batch>/dry-run-report.json` and `.md` (gitignored). Pure helpers live under `src/lib/tradify-import/`.
+
 ### GitHub branch state (post-cleanup)
 
 - Origin keeps **`main` only**. Historical feature branches removed after owner approval.
@@ -109,18 +125,16 @@ Keep the Production commercial baseline stable while making HQ ready to **rehear
 
 ### Acceptance criteria
 
-- Dry-run produces a repeatable report artifact (JSON/Markdown) with insert/update/skip/collision counts and unmatched lists.
-- No Production row writes occur during dry-run validation.
-- Enquiry intake abuse controls are implemented and verified on Preview with fictional submissions.
-- Owner has a written recommendation on DB-level overlap enforcement (implement later vs defer).
+- Dry-run produces a repeatable report artifact (JSON/Markdown) with insert/skip/collision/unmatched counts and In Progress callout.
+- No Production row writes occur during dry-run validation; hosted Supabase URLs are refused for `--local-db`.
+- Enquiry intake cooldown + honeypot are implemented; fictional duplicate email/phone returns 429.
+- Owner has a written recommendation on DB-level overlap enforcement (`docs/scheduling-overlap-posture.md`).
 - `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` pass on the milestone tip.
 - Handover docs still list Production baseline SHA `ffd7e09…` unless a later approved release updates it.
 
 ### Testing requirements
 
-- Unit tests for import mapping/normalisation pure functions.
+- Unit tests for import mapping/normalisation pure functions and enquiry cooldown helpers.
 - Dry-run against frozen `imports/tradify/` CSVs (local-only; do not commit secrets or live credentials).
-- Preview smoke: login roles, enquiry submit under rate limit, schedule overlap hard-block still holds.
+- Preview smoke: login roles, enquiry submit under cooldown, schedule overlap hard-block still holds.
 - No Xero/Tradify/Vapi live calls; no hosted migration apply unless separately approved.
-
-**Do not start this milestone until the owner explicitly approves scope.**

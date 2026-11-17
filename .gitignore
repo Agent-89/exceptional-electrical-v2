@@ -13,4 +13,7 @@ supabase/seed.sql
 supabase/migrations_history/
 scripts/seed-local-admin.mjs
 scripts/use-local-supabase-env.mjs
+scripts/tradify-dry-run/__pycache__/
+imports/tradify/**/dry-run-report.json
+imports/tradify/**/dry-run-report.md
 .gitignore.tmp

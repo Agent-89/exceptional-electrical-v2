@@ -50,7 +50,7 @@ Treat `main` at the Production merge SHA as the single source of truth. Do not r
 | Google Calendar (Neil) | `src/lib/google-calendar.ts`, `src/app/api/integrations/google-calendar` | Partial — Neil-only read; see §7 |
 | Auth / session | `src/app/hq/login`, `src/app/hq/session`, `src/lib/hq-auth.ts` | Live |
 
-Related design notes: `docs/commercial-multi-quote-c1.md`, `docs/commercial-quote-variations-c11.md`, `docs/tradify-migration-and-google-calendar.md`, `docs/vapi-receptionist-v1.md`, `docs/DEPLOYMENT.md`, `docs/RELEASE_CANDIDATE.md`.
+Related design notes: `docs/commercial-multi-quote-c1.md`, `docs/commercial-quote-variations-c11.md`, `docs/tradify-migration-and-google-calendar.md`, `docs/scheduling-overlap-posture.md`, `docs/vapi-receptionist-v1.md`, `docs/DEPLOYMENT.md`, `docs/RELEASE_CANDIDATE.md`.
 
 ## 3. GitHub branching and PR conventions
 
@@ -125,7 +125,7 @@ Helpers: `src/lib/hq-roles.ts`. Prefer server-side gates; do not trust client-on
 | Google Calendar | Neil-only (see below) | Read-only; no write-back |
 | Xero | Not integrated | Job UI placeholder copy only |
 | Vapi receptionist | Draft / disconnected | `docs/vapi-receptionist-v1.md` |
-| Tradify import | Dry-run / planning | Frozen CSVs may exist locally under `imports/`; no live import without approval |
+| Tradify import | Dry-run tooling live | `npm run tradify:dry-run` against `imports/tradify/`; no live import without approval |
 
 ### Neil Google Calendar rules
 
@@ -164,8 +164,8 @@ npm run build
 - Local commercial migration filenames differ from hosted versions.
 - Client portal is not production-ready.
 - DEPLOYMENT.md may still contain some stale placeholder language; trust code + this handover for HQ auth state.
-- Enquiry marketing launch still needs rate limiting / bot protection before public domain cutover.
-- Race-safe DB exclusion constraints for electrician overlaps are not yet present; app-layer hard-blocks cover create + schedule edit paths.
+- Enquiry intake has honeypot + DB-backed email/phone cooldown (`src/lib/enquiry-abuse.ts`, `POST /api/enquiries`). Durable IP/edge rate limiting (e.g. Upstash) is still recommended before high-traffic marketing domain cutover.
+- Race-safe DB exclusion constraints for electrician overlaps are deferred; app-layer hard-blocks remain the posture — see `docs/scheduling-overlap-posture.md`.
 - Quotes can be marked sent but do not email customers yet.
 - Job detail **Invoices** tab is an empty placeholder pending Xero (C2). **More** holds stubs for Purchase orders, Bills, and Forms. Costs is not a top-level tab yet — it should graduate when materials tracking lands.
 - Quotes support optional `customer_reference` (“Your reference / PO”). When C2 billing lands, invoice create should be the **primary** place staff enter/confirm that reference, prefilled from the linked commercial-current quote when present, and mapped to Xero’s customer/reference field later.
@@ -175,13 +175,13 @@ npm run build
 
 ## 11. Remaining development roadmap (post-Production)
 
-Prioritised against fully replacing Tradify. Do **not** start implementation until the next milestone is explicitly approved.
+Prioritised against fully replacing Tradify.
 
 ### P0 — Safe day-to-day ops + cutover readiness
 
-1. **Tradify staged import dry-run** — staging tables/report (counts, unmatched customers/sites/staff, collisions); idempotent batch design; **no live write** without approval. Do not treat ~873 Tradify “In Progress” jobs as active without owner review.
-2. **Enquiry rate limiting / bot protection** before public marketing domain cutover.
-3. **Production ops hardening** — confirm Neil Google Calendar live path; optional DB-level overlap exclusion / advisory locks; optional soft-confirm double-book override (reimplement ideas from PR #4 on current `main`, do not merge #4).
+1. **Tradify staged import dry-run** — **in progress / tooling shipped**: `npm run tradify:dry-run` (optional `--local-db`). In-memory stage + JSON/MD report; **no live write** without approval. Do not treat ~873 Tradify “In Progress” jobs as active without owner review.
+2. **Enquiry abuse controls** — honeypot + email/phone cooldown shipped; edge/IP rate limit still open before heavy marketing cutover.
+3. **Production ops hardening** — scheduling race posture recorded (defer DB locks). Still open: confirm Neil Google Calendar live path; optional soft-confirm double-book override later (reimplement on current `main`, do not merge #4).
 4. Keep Production baseline stable; no hosted commercial migration reapply.
 
 ### P1 — Money and customer communications (close the Tradify gap)
@@ -199,11 +199,11 @@ Prioritised against fully replacing Tradify. Do **not** start implementation unt
 12. Technician offline / payroll export.
 13. Greenfield migration reconciliation so `supabase db reset` matches hosted.
 
-### Recommended next milestone (for approval)
+### Active milestone (owner-approved lean scope)
 
-See `docs/RELEASE_CANDIDATE.md` § “Next milestone proposal”. Summary:
+See `docs/RELEASE_CANDIDATE.md` § “Next milestone — owner-approved / in progress”. Summary:
 
-**Tradify import dry-run readiness + Production ops hardening** — staging/dry-run tooling and reports, enquiry abuse protection design/implementation on Preview with fictional traffic patterns, scheduling race posture decision — **out of scope:** Xero, live Tradify import, Vapi cutover, portal, inventory.
+**Tradify import dry-run readiness + lean ops hardening** — CSV dry-run tooling/reports, enquiry cooldown + honeypot, scheduling overlap posture memo — **out of scope:** Xero, live Tradify import, Vapi cutover, portal, inventory, soft-confirm override, hosted migrations.
 
 ## 12. Release history notes (Nov 2026)
 
