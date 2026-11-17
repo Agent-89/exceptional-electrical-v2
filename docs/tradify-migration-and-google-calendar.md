@@ -49,8 +49,23 @@ Customer addresses have no Tradify source key. Staff profiles are keyed to auth.
 - Overlaps with Neil's HQ visits hard-block scheduling when Neil is on the visit crew; there is no override path.
 - Sync with bounded refresh, pagination, retry, and a stale-data indicator. No write-back to Google in v1.
 
+## Dry-run tooling (shipped)
+
+```bash
+npm run tradify:dry-run
+npm run tradify:dry-run -- --local-db   # read-only local Supabase only
+```
+
+- Pure helpers: `src/lib/tradify-import/`
+- CLI: `scripts/tradify-dry-run.ts`
+- Frozen batch example: `imports/tradify/2026-11-12/` (`MANIFEST.json` + CSVs)
+- Report outputs (`dry-run-report.json` / `.md`) are gitignored local artefacts
+- Never writes to any database; `--local-db` refuses hosted Supabase URLs
+
+Scheduling overlap enforcement posture (app-layer vs deferred DB locks): `docs/scheduling-overlap-posture.md`.
+
 ## Implementation order
-1. Source-mapping/staging and dry-run validation.
+1. ~~Source-mapping/staging and dry-run validation.~~ (dry-run tooling live; apply path not built)
 2. Sites and staff directory schema plus controlled RLS.
 3. Jobs workspace integration and reviewed operational statuses.
 4. Google OAuth and event ingestion; Neil-only conflict integration.
