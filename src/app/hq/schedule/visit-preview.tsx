@@ -3,8 +3,9 @@ import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import Link from 'next/link';
 import VisitEditor from './visit-editor';
+import {staffColor as resolveStaffColor} from '@/lib/staff-color';
 
-type Props={appointmentId?:string;startIso?:string;endIso?:string;canEdit?:boolean;staff?:{id:string;name:string}[];title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds?:string[];address?:string|null;notes?:string|null;status?:string|null;conflict?:string|null;compact?:boolean;onOpenChange?:(open:boolean)=>void};
+type Props={appointmentId?:string;startIso?:string;endIso?:string;canEdit?:boolean;staff?:{id:string;name:string;avatar_color?:string|null}[];title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds?:string[];address?:string|null;notes?:string|null;status?:string|null;conflict?:string|null;compact?:boolean;onOpenChange?:(open:boolean)=>void};
 
 export default function VisitPreview({appointmentId,startIso,endIso,canEdit=false,staff=[],title,jobNumber,jobHref,time,customer,electricians,staffIds=[],address,notes,status,conflict,compact=false,onOpenChange}:Props){
  const [editing,setEditing]=useState(false);
@@ -23,14 +24,13 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
   window.addEventListener('keydown',onKey);
   return ()=>window.removeEventListener('keydown',onKey);
  },[open]);
- const palette=['#1676c4','#a34ecb','#0e9875','#d16a21','#d34876','#6b65c8','#138d9b','#7a8533'];
- const staffColors:Record<string,string>={'Aaron Rachman':'#F5A54C','Billy Hicks':'#6842C9','Cooper Peberdy':'#15936A','Emma Payne':'#05BFC5','Evelyn Rosa':'#9962DC','Kaleb Dierden':'#67A4F3','Melanie':'#EC347B','Neil Peberdy':'#FA6268'};
- const staffColor=(i:number)=>staffColors[electricians[i]]??palette[i%palette.length];
+ const staffColor=(i:number)=>{const id=staffIds[i]??electricians[i]??String(i);return resolveStaffColor(id,staff.find(m=>m.id===staffIds[i])?.avatar_color);};
  const initials=(name:string)=>name.trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('').toUpperCase();
  return <div className={"ee-visit-preview-root"+(compact?" ee-visit-preview-compact":"")} onMouseEnter={()=>{positionHover();setHover(true)}} onMouseLeave={()=>setHover(false)}>
   <button ref={trigger} type="button" className="ee-visit-preview-trigger" aria-label={`View visit details: ${customer}, ${title}, ${time}`} onClick={()=>{setHover(false);setDetailsOpen(true)}}>
    <span className="ee-dispatch-time">{time}</span>
    <span className="ee-visit-preview-number">{jobNumber}</span>
+   {conflict&&<span className="ee-visit-preview-conflict" title={conflict}><span aria-hidden="true">⚠</span><span className="ee-visit-preview-conflict-text"> Conflict</span><span className="ee-visit-preview-sr"> — scheduling conflict</span></span>}
    <span className="ee-visit-preview-avatars">{electricians.length?electricians.map((name,i)=><span className="ee-visit-preview-avatar" style={{backgroundColor:staffColor(i),color:"#fff"}} title={name} key={i}>{initials(name)}</span>):<span className="ee-visit-preview-empty">Unassigned</span>}</span>
    <strong className="ee-visit-preview-customer">{customer}</strong>
    <span className="ee-visit-preview-title">{title}</span>
@@ -54,6 +54,10 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
    .ee-visit-preview-avatars{display:flex;align-items:center;gap:3px;margin-top:3px}
    .ee-visit-preview-avatar{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#e4f0fc;color:#185d90;border:1px solid #fff;font-size:10px;font-weight:800}
    .ee-visit-preview-empty{font-size:11px;color:#64798a}
+   .ee-visit-preview-conflict{display:inline-flex;align-items:center;width:max-content;max-width:100%;font-size:11px;line-height:1.2;font-weight:800;color:#97571c;background:#fff4e4;border:1px solid #e4b16d;border-radius:6px;padding:1px 5px;white-space:nowrap}
+   .ee-visit-preview-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+   .ee-visit-preview-compact .ee-visit-preview-conflict{order:0;font-size:10px;padding:0 4px}
+   @container (max-width:95px){.ee-visit-preview-compact .ee-visit-preview-conflict-text{display:none}}
    .ee-visit-hover{position:fixed;z-index:2147482000;width:min(290px,calc(100vw - 24px));background:white;border:1px solid #d0dfe9;border-radius:12px;box-shadow:0 14px 36px #153c5b30;padding:13px;display:grid;gap:7px;font-size:12px;color:#4d6477;pointer-events:none}
    .ee-visit-hover::before{content:'';position:absolute;top:var(--ee-hover-arrow-top);width:11px;height:11px;background:white;transform:translateY(-50%) rotate(45deg);border:1px solid #d0dfe9}.ee-visit-hover-right::before{left:-7px;border-right:0;border-top:0}.ee-visit-hover-left::before{right:-7px;border-left:0;border-bottom:0}
    .ee-visit-hover strong{font-size:14px;color:#17364b}.ee-visit-hover-hint{color:#0875c9;font-weight:700}

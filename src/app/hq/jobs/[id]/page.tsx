@@ -3,9 +3,6 @@ import { notFound } from 'next/navigation';
 import { dbAdmin, requireOfficeUser } from '@/lib/hq-auth';
 import { parseJobDetailTab } from '@/lib/job-detail-tabs';
 import { JOB_STATUSES, JOB_STATUS_LABELS } from '@/lib/job-statuses';
-import { listJobAttachments, listJobNotes, signAttachmentUrls } from '@/lib/tech-field';
-import { listTimeEntriesForJob } from '@/lib/tech-time';
-import { listTechWorkReportsForJob } from '@/lib/tech-work-reports';
 import {
   updateJob,
   updateJobDetails,
@@ -24,7 +21,16 @@ import {
   listLinkableQuotesForJob,
   loadJobQuotesForDisplay,
 } from '@/lib/job-quotes-store';
+import {
+  SuspendedJobAttention,
+  SuspendedJobFiles,
+  SuspendedJobTime,
+} from './job-field-sections';
+import { getCachedActiveSchedulingStaff } from '@/lib/hq-reference-cache';
 import '../../hq.css';
+
+const JOB_DETAIL_COLUMNS =
+  'id,job_number,title,status,priority,description,customer_id,site_address_text,quote_id,scheduled_start,next_action_at,source,updated_at,created_at';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,7 +70,7 @@ export default async function JobPage({
   const actionError = Array.isArray(query.error) ? query.error[0] : query.error;
   const db = dbAdmin();
 
-  const { data: job } = await db.from('jobs').select('*').eq('id', id).maybeSingle();
+  const { data: job } = await db.from('jobs').select(JOB_DETAIL_COLUMNS).eq('id', id).maybeSingle();
   if (!job) notFound();
 
   const appointmentSelectWithResolution =
@@ -76,14 +82,14 @@ export default async function JobPage({
   const [
     { data: customer },
     { data: activity },
-    { data: staff },
+    staff,
     { data: assignments },
     appointmentsResult,
-    { data: customers },
+    { data: customerSeed },
     jobQuotesResult,
   ] = await Promise.all([
     job.customer_id
-      ? db.from('customers').select('name,email,phone').eq('id', job.customer_id).maybeSingle()
+      ? db.from('customers').select('id,name,email,phone').eq('id', job.customer_id).maybeSingle()
       : Promise.resolve({ data: null }),
     db
       .from('job_activity')
@@ -91,21 +97,16 @@ export default async function JobPage({
       .eq('job_id', id)
       .order('created_at', { ascending: false })
       .limit(80),
-    db.from('scheduling_staff').select('id,full_name').eq('active', true).order('full_name'),
+    getCachedActiveSchedulingStaff(),
     db.from('job_assignments').select('staff_id').eq('job_id', id),
     db
       .from('job_appointments')
       .select(appointmentSelectWithResolution)
       .eq('job_id', id)
       .order('starts_at', { ascending: true }),
-    db.from('customers').select('id,name').order('name').limit(1000),
+    db.from('customers').select('id,name').order('name').limit(80),
     loadJobQuotesForDisplay(db, id, job.quote_id as string | null),
   ]);
-
-  const linkableQuotes = await listLinkableQuotesForJob(db, {
-    customerId: (job.customer_id as string | null) ?? null,
-    excludeQuoteIds: jobQuotesResult.quotes.map((quote) => quote.id),
-  });
 
   // Soft-fallback across schema vintages (base → field ops → follow-up resolution columns).
   let appointments: Array<Record<string, unknown>> | null =
@@ -131,32 +132,22 @@ export default async function JobPage({
   }
 
   const appointmentIds = (appointments ?? []).map((a) => String(a.id));
-  const { data: appointmentStaffRows } = appointmentIds.length
-    ? await db
-        .from('job_appointment_staff')
-        .select('appointment_id,staff_id')
-        .in('appointment_id', appointmentIds)
-    : { data: [] as { appointment_id: string; staff_id: string }[] };
+  const [{ data: appointmentStaffRows }, linkableQuotes] = await Promise.all([
+    appointmentIds.length
+      ? db
+          .from('job_appointment_staff')
+          .select('appointment_id,staff_id')
+          .in('appointment_id', appointmentIds)
+      : Promise.resolve({ data: [] as { appointment_id: string; staff_id: string }[] }),
+    listLinkableQuotesForJob(db, {
+      customerId: (job.customer_id as string | null) ?? null,
+      excludeQuoteIds: jobQuotesResult.quotes.map((quote) => quote.id),
+    }),
+  ]);
 
-  let timeEntries: Awaited<ReturnType<typeof listTimeEntriesForJob>> = [];
-  let notes: Awaited<ReturnType<typeof listJobNotes>> = [];
-  let photos: Awaited<ReturnType<typeof signAttachmentUrls>> = [];
-  try {
-    const [times, noteRows, attachmentRows] = await Promise.all([
-      listTimeEntriesForJob(id),
-      listJobNotes({ jobId: id, includeOfficeOnly: true }),
-      listJobAttachments({ jobId: id }),
-    ]);
-    timeEntries = times;
-    notes = noteRows;
-    photos = await signAttachmentUrls(attachmentRows, 600);
-  } catch {
-    // Milestone 2 tables may not be applied on hosted yet.
-  }
-
-  const techReports = await listTechWorkReportsForJob(id);
   const canEdit = true;
-  const staffNameById = new Map((staff ?? []).map((s) => [s.id as string, s.full_name as string]));
+  const staffNameById = new Map(staff.map((s) => [s.id, s.full_name]));
+  const staffNames = Object.fromEntries(staffNameById.entries());
   const assignedNames = (assignments ?? []).map((a) => ({
     id: a.staff_id as string,
     name: staffNameById.get(a.staff_id as string) ?? 'Team member',
@@ -195,50 +186,9 @@ export default async function JobPage({
     scheduleNotes: (a.notes as string | null | undefined) ?? null,
   }));
 
-  const field = {
-    jobId: id,
-    appointments: appointmentViews,
-    techReports: techReports.map((report) => ({
-      id: report.id,
-      appointmentId: report.appointmentId,
-      technicianName: report.technicianName,
-      workSummary: report.workSummary,
-      outstandingWork: report.outstandingWork,
-      issues: report.issues,
-      followUpRequired: report.followUpRequired,
-      progressStatus: report.progressStatus,
-      updatedAt: report.updatedAt,
-    })),
-    timeEntries: timeEntries.map((entry) => ({
-      id: entry.id,
-      staffName: staffNameById.get(entry.staffId) ?? 'Technician',
-      technicianUserId: entry.technicianUserId,
-      appointmentId: entry.appointmentId,
-      startedAt: entry.startedAt,
-      endedAt: entry.endedAt,
-      breakMinutes: entry.breakMinutes,
-      workedMinutes: entry.workedMinutes,
-      billableMinutes: entry.billableMinutes,
-      status: entry.status,
-      note: entry.note,
-    })),
-    notes: notes.map((note) => ({
-      id: note.id,
-      body: note.body,
-      authorName: note.authorName,
-      visibility: note.visibility,
-      createdAt: note.createdAt,
-    })),
-    photos: photos.map((photo) => ({
-      id: photo.id,
-      signedUrl: photo.signedUrl ?? null,
-      caption: photo.caption,
-      uploadedByName: photo.uploadedByName,
-      contentType: photo.contentType,
-      createdAt: photo.createdAt,
-      jobNoteId: photo.jobNoteId ?? null,
-    })),
-  };
+  const customersById = new Map((customerSeed ?? []).map((row) => [row.id as string, row]));
+  if (customer?.id) customersById.set(customer.id as string, { id: customer.id, name: customer.name });
+  const customers = [...customersById.values()];
 
   return (
     <main className="hq-detail">
@@ -367,18 +317,22 @@ export default async function JobPage({
                   ) : null}
                 </section>
 
-                <JobFieldActivity {...field} section="attention" />
+                <SuspendedJobAttention jobId={id} appointments={appointmentViews} staffNames={staffNames} />
               </>
             ),
             visits: (
               <JobFieldActivity
-                {...field}
+                jobId={id}
+                appointments={appointmentViews}
+                techReports={[]}
+                timeEntries={[]}
+                notes={[]}
+                photos={[]}
                 section="visits"
                 scheduleForm={canEdit ? <ScheduleAppointmentForm jobId={id} /> : null}
               />
             ),
-            time: <JobFieldActivity {...field} section="time" />,
-            costs: <JobFieldActivity {...field} section="costs" />,
+            time: <SuspendedJobTime jobId={id} appointments={appointmentViews} staffNames={staffNames} />,
             quotes: (
               <JobQuotesPanel
                 jobId={id}
@@ -392,23 +346,9 @@ export default async function JobPage({
                 canEdit={canEdit}
               />
             ),
-            invoices: (
-              <section className="hq-panel ee-compact-panel">
-                <div className="ee-section-title">
-                  <div>
-                    <span className="ee-eyebrow">INVOICES</span>
-                    <h2>Invoices</h2>
-                  </div>
-                </div>
-                <p className="ee-muted" style={{ marginBottom: 0 }}>
-                  Invoices will appear here in a later update. Xero stays the accounting record.
-                  This screen does not create or change invoices.
-                </p>
-              </section>
-            ),
             more: (
               <>
-                <JobFieldActivity {...field} section="files" />
+                <SuspendedJobFiles jobId={id} appointments={appointmentViews} staffNames={staffNames} />
 
                 <section id="team" className="hq-panel ee-compact-panel">
                   <div className="ee-section-title">
@@ -442,7 +382,7 @@ export default async function JobPage({
                   ) : (
                     <p className="ee-muted">No electricians assigned.</p>
                   )}
-                  {canEdit && (staff ?? []).some((person) => !assignedNames.some((a) => a.id === person.id)) ? (
+                  {canEdit && staff.some((person) => !assignedNames.some((a) => a.id === person.id)) ? (
                     <details className="ee-expand">
                       <summary>
                         + Assign electrician
@@ -456,7 +396,7 @@ export default async function JobPage({
                           <option value="" disabled>
                             Choose staff member
                           </option>
-                          {(staff ?? [])
+                          {staff
                             .filter((person) => !assignedNames.some((a) => a.id === person.id))
                             .map((person) => (
                               <option key={person.id} value={person.id}>
@@ -468,7 +408,7 @@ export default async function JobPage({
                       </form>
                     </details>
                   ) : null}
-                  {canEdit && !(staff ?? []).length ? (
+                  {canEdit && !staff.length ? (
                     <p className="ee-muted">No active scheduling staff available to assign.</p>
                   ) : null}
                 </section>

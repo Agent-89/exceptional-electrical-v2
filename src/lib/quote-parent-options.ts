@@ -149,21 +149,27 @@ export async function loadLinkedJobsForQuote(args: {
     .order('linked_at', { ascending: true });
 
   if (!(error && isMissingJobQuotesRelation(error))) {
-    for (const link of links || []) {
-      const jobId = String(link.job_id);
-      if (seen.has(jobId)) continue;
-      seen.add(jobId);
-      const { data: job } = await args.db
+    const jobIds = [...new Set((links || []).map((link) => String(link.job_id)).filter(Boolean))];
+    if (jobIds.length) {
+      const { data: jobs } = await args.db
         .from('jobs')
         .select('id,job_number,title')
-        .eq('id', jobId)
-        .maybeSingle();
-      if (job) {
-        out.push({
-          id: String(job.id),
-          jobNumber: (job.job_number as string | null) || null,
-          title: (job.title as string | null) || null,
-        });
+        .in('id', jobIds);
+      const byId = new Map(
+        (jobs || []).map((job) => [
+          String(job.id),
+          {
+            id: String(job.id),
+            jobNumber: (job.job_number as string | null) || null,
+            title: (job.title as string | null) || null,
+          },
+        ]),
+      );
+      for (const jobId of jobIds) {
+        const job = byId.get(jobId);
+        if (!job || seen.has(job.id)) continue;
+        seen.add(job.id);
+        out.push(job);
       }
     }
   }

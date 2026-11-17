@@ -46,6 +46,8 @@ export type QuoteDraft={
   linkedJobId?:string;
   /** Jobs to associate after save (same customer; duplicates ignored). */
   linkedJobIds?:string[];
+  /** Valid-for days used when approving (14 | 30 | 60). Defaults to 30. */
+  validityDays?:number;
 };
 
 export type QuoteSaveResult={
@@ -515,21 +517,37 @@ export async function unlinkQuoteFromJob(args:{
  return{ok:true,message:result.message||'Job unlinked from quote.'};
 }
 
-export async function approveQuote(id:string):Promise<{ok:boolean;message:string}>{
+function addDaysPerthIso(days:number):string{
+  const issue=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Perth'});
+  const [y,m,d]=issue.split('-').map(Number);
+  const next=new Date(Date.UTC(y,m-1,d+days));
+  return next.toISOString().slice(0,10);
+}
+
+export async function approveQuote(id:string,validityDays:number=30):Promise<{ok:boolean;message:string}>{
  const user=await requireHqUser();
  if(!canManageAdminOps(user.role))return {ok:false,message:'Only an owner or admin can approve quotes.'};
  if(!validId(id))return {ok:false,message:'Invalid quote reference'};
+ const days=[14,30,60].includes(Number(validityDays))?Number(validityDays):30;
  const db=dbAdmin();
  const {data:q}=await db.from('quotes').select('id,status,customer_id,title,scope_of_work,site_address_snapshot').eq('id',id).maybeSingle();
  if(!q||!['draft','changes_requested','pending_approval'].includes(q.status))return {ok:false,message:'Quote cannot be approved in its current status.'};
  if(!q.customer_id||!q.title?.trim())return {ok:false,message:'Select a customer and enter a title before approval.'};
  const {data:items,error:itemsError}=await db.from('quote_items').select('quantity,unit_price_cents,description').eq('quote_id',id);
  if(itemsError||!items?.length||items.some(l=>!l.description?.trim()||Number(l.quantity)<=0||Number(l.unit_price_cents)<0))return {ok:false,message:'Add at least one valid priced item before approval.'};
- const {data:approved,error}=await db.from('quotes').update({status:'approved',approved_by:user.id,approved_at:new Date().toISOString(),issue_date:new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Perth'})}).eq('id',id).eq('status',q.status).select('id').maybeSingle();
+ const issueDate=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Perth'});
+ const expiryDate=addDaysPerthIso(days);
+ const {data:approved,error}=await db.from('quotes').update({
+  status:'approved',
+  approved_by:user.id,
+  approved_at:new Date().toISOString(),
+  issue_date:issueDate,
+  expiry_date:expiryDate,
+ }).eq('id',id).eq('status',q.status).select('id').maybeSingle();
  if(error||!approved)return {ok:false,message:'Approval failed or quote was changed. Refresh and try again.'};
  const {error:logError}=await db.from('quote_activity').insert({quote_id:id,actor_id:user.id,action:'approved'});
  revalidatePath('/hq/quotes');revalidatePath('/hq/quotes/'+id);revalidatePath('/hq/quotes/'+id+'/preview');
- return {ok:true,message:logError?'Quote approved, but the activity log needs review.':'Quote approved and ready for PDF export.'};
+ return {ok:true,message:logError?'Quote approved, but the activity log needs review.':`Quote approved (valid until ${expiryDate}). Ready for PDF export.`};
 }
 
 export async function saveAndApproveQuote(v:QuoteDraft):Promise<QuoteSaveResult>{
@@ -549,11 +567,11 @@ export async function saveAndApproveQuote(v:QuoteDraft):Promise<QuoteSaveResult>
   }
   return saved;
  }
- const approved=await approveQuote(saved.id!);
+ const approved=await approveQuote(saved.id!,v.validityDays??30);
  if(!approved.ok){
   return{ok:false,id:saved.id,linkStatus:saved.linkStatus,message:approved.message+' Draft was saved.'};
  }
- return{ok:true,id:saved.id,linkStatus:saved.linkStatus,linkedJobIds:saved.linkedJobIds,message:'Quote saved and approved.'};
+ return{ok:true,id:saved.id,linkStatus:saved.linkStatus,linkedJobIds:saved.linkedJobIds,message:approved.message};
 }
 
 type QuoteLifecycleStatus='sent'|'accepted'|'declined';
@@ -724,4 +742,35 @@ export async function getParentQuotePrefill(parentId:string,expectedCustomerId?:
       })),
     },
   };
+}
+
+/** On-demand customer search for quote pickers (avoids shipping 1000 customers in RSC). */
+export async function searchQuoteCustomers(query:string):Promise<{id:string;name:string;email:string|null;phone:string|null}[]>{
+  await requireHqUser();
+  const q=query.trim().replace(/[%_,()"]/g,'').slice(0,80);
+  const db=dbAdmin();
+  if(!q){
+    const {data}=await db.from('customers').select('id,name,email,phone').order('name').limit(40);
+    return (data||[]) as {id:string;name:string;email:string|null;phone:string|null}[];
+  }
+  const pattern=`%${q}%`;
+  const {data}=await db
+    .from('customers')
+    .select('id,name,email,phone')
+    .or(`name.ilike."${pattern}",email.ilike."${pattern}",phone.ilike."${pattern}"`)
+    .order('name')
+    .limit(40);
+  return (data||[]) as {id:string;name:string;email:string|null;phone:string|null}[];
+}
+
+/** Addresses for a selected customer (loaded when the customer changes). */
+export async function loadCustomerAddressesForQuote(customerId:string):Promise<{id:string;customer_id:string;label:string|null;address_line1:string;suburb:string|null;state:string|null;postcode:string|null}[]>{
+  await requireHqUser();
+  if(!customerId||!/^[0-9a-f-]{36}$/i.test(customerId))return [];
+  const {data}=await dbAdmin()
+    .from('customer_addresses')
+    .select('id,customer_id,label,address_line1,suburb,state,postcode')
+    .eq('customer_id',customerId)
+    .limit(100);
+  return (data||[]) as {id:string;customer_id:string;label:string|null;address_line1:string;suburb:string|null;state:string|null;postcode:string|null}[];
 }

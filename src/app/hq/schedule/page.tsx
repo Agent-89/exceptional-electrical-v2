@@ -1,4 +1,3 @@
-import {calendarEvents} from '@/lib/google-calendar';
 import AppointmentRange from '../appointment-range';
 import JobPicker from './job-picker';
 import ElectricianDay from './electrician-day';
@@ -7,6 +6,7 @@ import NeilGoogleEvents from './neil-google-events';
 import Link from 'next/link';
 import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
 import {canManageAdminOps} from '@/lib/hq-roles';
+import {getCachedActiveSchedulingStaff} from '@/lib/hq-reference-cache';
 import {isSchedulableJobStatus} from '@/lib/job-statuses';
 import ScheduleCreateForm from './schedule-create-form';
 import DispatchViews from './view-switch';
@@ -17,10 +17,10 @@ import '../hq.css';
 export const dynamic='force-dynamic';
 type Visit={id:string;job_id:string;starts_at:string;ends_at:string;notes:string|null;status:string};
 type Job={id:string;job_number:number;title:string;customer_id:string|null;site_address_text:string|null;status:string};
+const SCHEDULABLE_STATUSES=['unassigned','assigned','scheduled','in_progress','on_hold'] as const;
 const zone='Australia/Perth';
 const dayLabel=(date:Date)=>new Intl.DateTimeFormat('en-AU',{timeZone:zone,weekday:'short',day:'numeric',month:'short'}).format(date);
 const timeLabel=(s:string)=>new Date(s).toLocaleTimeString('en-AU',{timeZone:zone,hour:'numeric',minute:'2-digit'});
-const inputDate=(s:string)=>new Date(s).toLocaleString('sv-SE',{timeZone:zone,hour12:false}).replace(' ','T').slice(0,16);
 const dayKey=(s:string|Date)=>(typeof s==='string'?new Date(s):s).toLocaleDateString('sv-SE',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'});
 const dateAt=(s:string)=>new Date(s+'T00:00:00+08:00');
 const addDays=(d:Date,n:number)=>new Date(d.getTime()+n*86400000);
@@ -38,59 +38,98 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  const view=params.view==='team'?'team':params.view==='week'?'week':'timeline';
  const viewQuery=(v:string,w=dayKey(monday))=>'/hq/schedule?week='+w+'&view='+v;
  const db=dbAdmin();
- const [{data:visits,error},{data:jobs},{data:assignments},{data:staff},{data:customers},{data:visitStaff}]=await Promise.all([
+ const [{data:visits,error},staff,{data:googleConnection},{data:pickerJobs}]=await Promise.all([
   db.from('job_appointments').select('id,job_id,starts_at,ends_at,notes,status').eq('status','scheduled').gte('starts_at',monday.toISOString()).lt('starts_at',next.toISOString()).order('starts_at',{ascending:true}).limit(500),
-  db.from('jobs').select('id,job_number,title,customer_id,site_address_text,status').limit(1000),
-  db.from('job_assignments').select('job_id,staff_id').limit(3000),
-  db.from('scheduling_staff').select('id,full_name,initials,avatar_color').eq('active',true).limit(300),
-  db.from('customers').select('id,name').limit(1000),
-  db.from('job_appointment_staff').select('appointment_id,staff_id').limit(5000)
+  getCachedActiveSchedulingStaff(),
+  db.from('google_calendar_connections').select('google_email').eq('id',1).maybeSingle(),
+  db.from('jobs').select('id,job_number,title,customer_id,site_address_text,status').in('status',[...SCHEDULABLE_STATUSES]).order('job_number',{ascending:false}).limit(400),
  ]);
  const all=(visits??[]) as Visit[];
- const jobMap=new Map(((jobs??[]) as Job[]).map(j=>[j.id,j]));
- const staffMap=new Map((staff??[]).map(s=>[s.id,s.full_name]));
- const customerMap=new Map((customers??[]).map(c=>[c.id,c.name]));
- const assigned=new Map<string,string[]>();
- for(const a of assignments??[])assigned.set(a.job_id,[...(assigned.get(a.job_id)??[]),a.staff_id]);
+ const visitIds=all.map(v=>v.id);
+ const visitJobIds=[...new Set(all.map(v=>v.job_id))];
+ const pickerJobRows=((pickerJobs??[]) as Job[]).filter(j=>isSchedulableJobStatus(j.status));
+ const [{data:visitStaff},{data:visitJobs}]=await Promise.all([
+  visitIds.length
+   ? db.from('job_appointment_staff').select('appointment_id,staff_id').in('appointment_id',visitIds)
+   : Promise.resolve({data:[] as {appointment_id:string;staff_id:string}[]}),
+  visitJobIds.length
+   ? db.from('jobs').select('id,job_number,title,customer_id,site_address_text,status').in('id',visitJobIds)
+   : Promise.resolve({data:[] as Job[]}),
+ ]);
+ const jobMap=new Map<string,Job>();
+ for(const j of (visitJobs??[]) as Job[])jobMap.set(j.id,j);
+ for(const j of pickerJobRows)if(!jobMap.has(j.id))jobMap.set(j.id,j);
+ const customerIds=[...new Set([...jobMap.values()].map(j=>j.customer_id).filter((id):id is string=>Boolean(id)))];
+ const {data:customers}=customerIds.length
+  ? await db.from('customers').select('id,name').in('id',customerIds)
+  : {data:[] as {id:string;name:string}[]};
+ const staffMap=new Map(staff.map(s=>[s.id,s.full_name]));
+ const staffList=staff.map(s=>({id:s.id,name:s.full_name,avatar_color:s.avatar_color??null}));
+ const customerMap=new Map((customers??[]).map(c=>[c.id as string,c.name as string]));
  const visitAssigned=new Map<string,string[]>();
  for(const a of visitStaff??[])visitAssigned.set(a.appointment_id,[...(visitAssigned.get(a.appointment_id)??[]),a.staff_id]);
  const clashes=new Set<string>();
  const conflictDetails=new Map<string,string[]>();
- for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
-  const a=all[i],b=all[j];
-  if(new Date(a.starts_at)<new Date(b.ends_at)&&new Date(b.starts_at)<new Date(a.ends_at)&&
-   (a.job_id===b.job_id||(visitAssigned.get(a.id)??[]).some(id=>(visitAssigned.get(b.id)??[]).includes(id))) ){clashes.add(a.id);clashes.add(b.id);
-   const describe=(v:Visit,other:Visit)=>{const common=(visitAssigned.get(v.id)??[]).filter(id=>(visitAssigned.get(other.id)??[]).includes(id)).map(id=>staffMap.get(id)??'Electrician');return `${v.job_id===other.job_id?'Duplicate/overlapping visit for same job: ':''}${jobMap.get(v.job_id)?.title??'Job'} (${dayLabel(new Date(v.starts_at))}, ${timeLabel(v.starts_at)}–${timeLabel(v.ends_at)}) · ${common.length?common.join(', ')+(common.length===1?' is':' are')+' assigned to both':'same job is booked more than once'}`;};
+ for(let i=0;i<all.length;i++){
+  const a=all[i];
+  const aStart=new Date(a.starts_at).getTime();
+  const aEnd=new Date(a.ends_at).getTime();
+  const aCrew=visitAssigned.get(a.id)??[];
+  for(let j=i+1;j<all.length;j++){
+   const b=all[j];
+   const bStart=new Date(b.starts_at).getTime();
+   const bEnd=new Date(b.ends_at).getTime();
+   if(aStart>=bEnd||bStart>=aEnd)continue;
+   const shareCrew=a.job_id===b.job_id||aCrew.some(id=>(visitAssigned.get(b.id)??[]).includes(id));
+   if(!shareCrew)continue;
+   clashes.add(a.id);clashes.add(b.id);
+   const describe=(v:Visit,other:Visit)=>{
+    const common=(visitAssigned.get(v.id)??[]).filter(id=>(visitAssigned.get(other.id)??[]).includes(id)).map(id=>staffMap.get(id)??'Electrician');
+    return `${v.job_id===other.job_id?'Duplicate/overlapping visit for same job: ':''}${jobMap.get(v.job_id)?.title??'Job'} (${dayLabel(new Date(v.starts_at))}, ${timeLabel(v.starts_at)}–${timeLabel(v.ends_at)}) · ${common.length?common.join(', ')+(common.length===1?' is':' are')+' assigned to both':'same job is booked more than once'}`;
+   };
    conflictDetails.set(a.id,[...(conflictDetails.get(a.id)??[]),describe(b,a)]);
    conflictDetails.set(b.id,[...(conflictDetails.get(b.id)??[]),describe(a,b)]);
   }
  }
- const timelineVisits=all.map(v=>{const job=jobMap.get(v.job_id);const start=new Date(v.starts_at).toLocaleTimeString('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).split(':').map(Number);const end=new Date(v.ends_at).toLocaleTimeString('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).split(':').map(Number);return {id:v.id,startIso:v.starts_at,endIso:v.ends_at,day:dayKey(v.starts_at),startMinutes:start[0]*60+start[1],endMinutes:dayKey(v.starts_at)===dayKey(v.ends_at)?end[0]*60+end[1]:1440,title:job?.title??'Job',jobNumber:'JB'+String(job?.job_number??0).padStart(5,'0'),jobHref:'/hq/jobs/'+v.job_id,time:timeLabel(v.starts_at)+' – '+timeLabel(v.ends_at),customer:job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer',electricians:(visitAssigned.get(v.id)??[]).map(id=>staffMap.get(id)??'Team member'),staffIds:visitAssigned.get(v.id)??[],address:job?.site_address_text,notes:v.notes,status:v.status,conflict:clashes.has(v.id)?'Overlaps with '+(conflictDetails.get(v.id)??[]).join('; '):null};});
+ const timelineVisits=all.map(v=>{
+  const job=jobMap.get(v.job_id);
+  const start=new Date(v.starts_at).toLocaleTimeString('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).split(':').map(Number);
+  const end=new Date(v.ends_at).toLocaleTimeString('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).split(':').map(Number);
+  return {id:v.id,startIso:v.starts_at,endIso:v.ends_at,day:dayKey(v.starts_at),startMinutes:start[0]*60+start[1],endMinutes:dayKey(v.starts_at)===dayKey(v.ends_at)?end[0]*60+end[1]:1440,title:job?.title??'Job',jobNumber:'JB'+String(job?.job_number??0).padStart(5,'0'),jobHref:'/hq/jobs/'+v.job_id,time:timeLabel(v.starts_at)+' – '+timeLabel(v.ends_at),customer:job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer',electricians:(visitAssigned.get(v.id)??[]).map(id=>staffMap.get(id)??'Team member'),staffIds:visitAssigned.get(v.id)??[],address:job?.site_address_text,notes:v.notes,status:v.status,conflict:clashes.has(v.id)?'Overlaps with '+(conflictDetails.get(v.id)??[]).join('; '):null};
+ });
  const focus=params.focus==='conflicts'||params.focus==='unassigned'?params.focus:'all';
  const displayedVisits=all.filter(v=>focus==='all'||(focus==='conflicts'?clashes.has(v.id):(visitAssigned.get(v.id)??[]).length===0));
  const displayedIds=new Set(displayedVisits.map(v=>v.id));
  const displayedTimelineVisits=timelineVisits.filter(v=>displayedIds.has(v.id));
  const metricHref=(target:string)=>viewQuery(view)+(target==='all'||target===focus?'':'&focus='+target);
- const {data:googleConnection}=await db.from('google_calendar_connections').select('google_email').eq('id',1).maybeSingle();
- let externalEvents:Awaited<ReturnType<typeof calendarEvents>>=[];
- let googleError=false;
- if(googleConnection){try{externalEvents=await calendarEvents(monday.toISOString(),next.toISOString());}catch{googleError=true;}}
+ // Google events load client-side via /api/.../events — do not block schedule RSC.
+ const externalEvents:[]=[];
+ const googleError=false;
+ const pickerOptions=pickerJobRows
+  .sort((a,b)=>b.job_number-a.job_number)
+  .map(j=>({
+   id:j.id,
+   label:'JB'+String(j.job_number).padStart(5,'0')+' — '+j.title+(j.customer_id?' · '+(customerMap.get(j.customer_id)??''):'')+(j.site_address_text?' · '+j.site_address_text:''),
+  }));
  const metrics=<div className="ee-dispatch-metrics ee-dispatch-metrics-compact ee-dispatch-metrics-actionable ee-dispatch-metrics-inline" aria-label="Schedule filters"><Link className={focus==='all'?'is-selected':''} aria-current={focus==='all'?'true':undefined} href={metricHref('all')}><small>Scheduled</small><strong>{all.length}</strong></Link><Link className={focus==='conflicts'?'is-selected':''} aria-current={focus==='conflicts'?'true':undefined} href={metricHref('conflicts')}><small>Conflicts</small><strong>{clashes.size}</strong></Link><Link className={focus==='unassigned'?'is-selected':''} aria-current={focus==='unassigned'?'true':undefined} href={metricHref('unassigned')}><small>Unassigned</small><strong>{all.filter(v=>(visitAssigned.get(v.id)??[]).length===0).length}</strong></Link></div>;
  const date=<div className="ee-schedule-date-nav"><Link aria-label="Previous week" href={viewQuery(view,dayKey(prev))}>‹</Link><strong>{dayLabel(monday)} – {dayLabel(addDays(monday,6))}</strong><Link aria-label="Next week" href={viewQuery(view,dayKey(next))}>›</Link><Link className="ee-schedule-today" href={viewQuery(view,today)}>This week</Link></div>;
  const renderVisit=(v:Visit)=>{
   const job=jobMap.get(v.job_id);const names=(visitAssigned.get(v.id)??[]).map(id=>staffMap.get(id)??'Team member');
   return <article key={v.id} className={'ee-dispatch-visit'+(clashes.has(v.id)?' has-conflict':'')}>
-   <VisitPreview appointmentId={v.id} startIso={v.starts_at} endIso={v.ends_at} canEdit={canEdit} staff={[...staffMap].map(([id,name])=>({id,name}))} title={job?.title??'Job'} jobNumber={'JB'+String(job?.job_number??0).padStart(5,'0')} jobHref={'/hq/jobs/'+v.job_id} time={timeLabel(v.starts_at)+' – '+(dayKey(v.starts_at)===dayKey(v.ends_at)?timeLabel(v.ends_at):dayLabel(new Date(v.ends_at))+', '+timeLabel(v.ends_at))} customer={job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'} electricians={names} staffIds={visitAssigned.get(v.id)??[]} address={job?.site_address_text} notes={v.notes} status={v.status} conflict={clashes.has(v.id)?'Overlaps with '+(conflictDetails.get(v.id)??[]).join('; '):null}/>
+   <VisitPreview appointmentId={v.id} startIso={v.starts_at} endIso={v.ends_at} canEdit={canEdit} staff={staffList} title={job?.title??'Job'} jobNumber={'JB'+String(job?.job_number??0).padStart(5,'0')} jobHref={'/hq/jobs/'+v.job_id} time={timeLabel(v.starts_at)+' – '+(dayKey(v.starts_at)===dayKey(v.ends_at)?timeLabel(v.ends_at):dayLabel(new Date(v.ends_at))+', '+timeLabel(v.ends_at))} customer={job?.customer_id?customerMap.get(job.customer_id)??'Customer':'No customer'} electricians={names} staffIds={visitAssigned.get(v.id)??[]} address={job?.site_address_text} notes={v.notes} status={v.status} conflict={clashes.has(v.id)?'Overlaps with '+(conflictDetails.get(v.id)??[]).join('; '):null}/>
 
   </article>;
  };
+ const dayBoard=<section className="ee-dispatch-board" aria-label="Weekly appointments">{days.map(d=>{const key=dayKey(d),entries=displayedVisits.filter(v=>dayKey(v.starts_at)===key);return <div key={key} className={'ee-dispatch-day'+(key===today?' is-today':'')+(entries.length?'':' is-empty')}><div className="ee-dispatch-day-head"><strong>{dayLabel(d)}</strong><span>{entries.length} {entries.length===1?'visit':'visits'}</span></div>{entries.length?entries.map(renderVisit):<p className="ee-dispatch-empty">No visits</p>}<NeilGoogleEvents day={key}/></div>})}</section>;
+ const teamBoard=<ElectricianDay canEdit={canEdit} visits={timelineVisits} days={days.map(d=>({key:dayKey(d),label:dayLabel(d)}))} staff={staffList} today={today} weekBoard={<section className="ee-dispatch-team-board" aria-label="Appointments by electrician">{[...staffMap.entries(),['unassigned','Unassigned'] as [string,string]].map(([id,name])=>{const entries=displayedVisits.filter(v=>{const crew=visitAssigned.get(v.id)??[];return id==='unassigned'?crew.length===0:crew.includes(id);});return <ElectricianWeekRow key={id} name={name} count={entries.length}>{days.map(d=>{const key=dayKey(d);const dayVisits=entries.filter(v=>dayKey(v.starts_at)===key);return <div className="ee-dispatch-team-day" key={key}><small>{dayLabel(d)}</small>{dayVisits.map(renderVisit)}{name.toLowerCase().includes('neil')&&<NeilGoogleEvents day={key} compact/>}</div>})}</ElectricianWeekRow>})}</section>}/>;
+ const timelineBoard=<DispatchTimeline googleSettings={{connected:!!googleConnection,email:googleConnection?.google_email??null,error:googleError,canManage:canManageAdminOps(user.role)}} canEdit={canEdit} canOverrideNeil={['owner','admin'].includes(user.role)} today={today} nowMinutes={Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now).split(':')[0])*60+Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now).split(':')[1])} days={days.map(d=>({key:dayKey(d),label:dayLabel(d)}))} staff={staffList} visits={displayedTimelineVisits}/>;
  return <main className="hq-detail"><div className="hq-detail-inner ee-dispatch">
  <div className="ee-schedule-header-group"><div className="ee-schedule-topline"><h1 className="ee-sr-only">Schedule</h1><div className="ee-schedule-date-nav"><Link aria-label="Previous week" href={viewQuery(view,dayKey(prev))}>‹</Link><strong>{dayLabel(monday)} – {dayLabel(addDays(monday,6))}</strong><Link aria-label="Next week" href={viewQuery(view,dayKey(next))}>›</Link><Link className="ee-schedule-today" href={viewQuery(view,today)}>This week</Link></div></div>
  <div className="ee-dispatch-metrics ee-dispatch-metrics-compact ee-dispatch-metrics-actionable ee-dispatch-metrics-inline" aria-label="Schedule filters"><Link className={focus==='all'?'is-selected':''} aria-current={focus==='all'?'true':undefined} href={metricHref('all')}><small>Scheduled</small><strong>{all.length}</strong></Link><Link className={focus==='conflicts'?'is-selected':''} aria-current={focus==='conflicts'?'true':undefined} href={metricHref('conflicts')}><small>Conflicts</small><strong>{clashes.size}</strong></Link><Link className={focus==='unassigned'?'is-selected':''} aria-current={focus==='unassigned'?'true':undefined} href={metricHref('unassigned')}><small>Unassigned</small><strong>{all.filter(v=>(visitAssigned.get(v.id)??[]).length===0).length}</strong></Link></div></div>
  {error&&<p role="alert">Unable to load appointments. Please try again.</p>}
 
  {displayedVisits.length===0&&<p className="ee-dispatch-zero">{all.length===0?'No visits scheduled for this week. Select Schedule visit to add one.':'No appointments match this filter for the selected week.'}</p>}
- <DispatchViews weekNavigation={date} metrics={metrics} google={{connected:!!googleConnection,email:googleConnection?.google_email??null,events:externalEvents,error:googleError,canManage:canManageAdminOps(user.role)}} createAction={canEdit?<ScheduleVisitModal><div className="ee-dispatch-create"><ScheduleCreateForm><JobPicker jobs={((jobs??[]) as Job[]).filter(j=>isSchedulableJobStatus(j.status)).sort((a,b)=>b.job_number-a.job_number).map(j=>({id:j.id,label:'JB'+String(j.job_number).padStart(5,'0')+' — '+j.title+(j.customer_id?' · '+(customerMap.get(j.customer_id)??''):'')+(j.site_address_text?' · '+j.site_address_text:'')}))}/><AppointmentRange/><fieldset className="ee-create-staff"><legend>Electricians for this visit</legend><p>Choose the crew for this appointment. Leave all unchecked to schedule as unassigned.</p><input type="hidden" name="explicit_visit_staff" value="yes"/><div className="ee-create-staff-list">{[...staffMap.entries()].map(([id,name])=><label key={id}><input type="checkbox" name="staff_id" value={id}/>{name}</label>)}{staffMap.size===0&&<span>No active electricians available.</span>}</div></fieldset><label className="ee-create-notes">Instructions (optional)<textarea name="notes" maxLength={2000} rows={2} placeholder="Access details or notes for the crew"/></label>{['owner','admin'].includes(user.role)&&<label className="ee-neil-override"><input type="checkbox" name="override_neil_calendar" value="yes"/> Override Neil’s Google Calendar conflict if one is detected (owner/admin only)</label>}<div className="ee-create-actions"><small>Perth time (AWST) · Choose electricians for this visit</small><button type="submit">Schedule visit</button></div></ScheduleCreateForm></div></ScheduleVisitModal>:null} initialView={view} week={dayKey(monday)} timelineBoard={<DispatchTimeline googleSettings={{connected:!!googleConnection,email:googleConnection?.google_email??null,error:googleError,canManage:canManageAdminOps(user.role)}} canEdit={canEdit} canOverrideNeil={['owner','admin'].includes(user.role)} today={today} nowMinutes={Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now).split(':')[0])*60+Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now).split(':')[1])} days={days.map(d=>({key:dayKey(d),label:dayLabel(d)}))} staff={[...staffMap].map(([id,name])=>({id,name}))} visits={displayedTimelineVisits}/>} dayBoard={<section className="ee-dispatch-board" aria-label="Weekly appointments">{days.map(d=>{const key=dayKey(d),entries=displayedVisits.filter(v=>dayKey(v.starts_at)===key);return <div key={key} className={'ee-dispatch-day'+(key===today?' is-today':'')+(entries.length?'':' is-empty')}><div className="ee-dispatch-day-head"><strong>{dayLabel(d)}</strong><span>{entries.length} {entries.length===1?'visit':'visits'}</span></div>{entries.length?entries.map(renderVisit):<p className="ee-dispatch-empty">No visits</p>}<NeilGoogleEvents day={key}/></div>})}</section>} teamBoard={<ElectricianDay canEdit={canEdit} visits={timelineVisits} days={days.map(d=>({key:dayKey(d),label:dayLabel(d)}))} staff={[...staffMap].map(([id,name])=>({id,name}))} today={today} weekBoard={<section className="ee-dispatch-team-board" aria-label="Appointments by electrician">{[...staffMap.entries(),['unassigned','Unassigned'] as [string,string]].map(([id,name])=>{const entries=displayedVisits.filter(v=>{const crew=visitAssigned.get(v.id)??[];return id==='unassigned'?crew.length===0:crew.includes(id);});return <ElectricianWeekRow key={id} name={name} count={entries.length}>{days.map(d=>{const key=dayKey(d);const dayVisits=entries.filter(v=>dayKey(v.starts_at)===key);return <div className="ee-dispatch-team-day" key={key}><small>{dayLabel(d)}</small>{dayVisits.map(renderVisit)}{name.toLowerCase().includes('neil')&&<NeilGoogleEvents day={key} compact/>}</div>})}</ElectricianWeekRow>})}</section>}/>} />
+ <DispatchViews weekNavigation={date} metrics={metrics} google={{connected:!!googleConnection,email:googleConnection?.google_email??null,events:externalEvents,error:googleError,canManage:canManageAdminOps(user.role)}} createAction={canEdit?<ScheduleVisitModal><div className="ee-dispatch-create"><ScheduleCreateForm><JobPicker jobs={pickerOptions}/><AppointmentRange/><fieldset className="ee-create-staff"><legend>Electricians for this visit</legend><p>Choose the crew for this appointment. Leave all unchecked to schedule as unassigned.</p><input type="hidden" name="explicit_visit_staff" value="yes"/><div className="ee-create-staff-list">{staffList.map(({id,name})=><label key={id}><input type="checkbox" name="staff_id" value={id}/>{name}</label>)}{staffList.length===0&&<span>No active electricians available.</span>}</div></fieldset><label className="ee-create-notes">Instructions (optional)<textarea name="notes" maxLength={2000} rows={2} placeholder="Access details or notes for the crew"/></label>{['owner','admin'].includes(user.role)&&<label className="ee-neil-override"><input type="checkbox" name="override_neil_calendar" value="yes"/> Override Neil’s Google Calendar conflict if one is detected (owner/admin only)</label>}<div className="ee-create-actions"><small>Perth time (AWST) · Choose electricians for this visit</small><button type="submit">Schedule visit</button></div></ScheduleCreateForm></div></ScheduleVisitModal>:null} initialView={view} week={dayKey(monday)} dayBoard={view==='week'?dayBoard:null} teamBoard={view==='team'?teamBoard:null} timelineBoard={view==='timeline'?timelineBoard:null} />
  
  </div><style>{`
 /* Spread primary schedule controls across the available desktop width */

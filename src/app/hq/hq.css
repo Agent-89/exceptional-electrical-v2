@@ -422,6 +422,12 @@ html{scroll-padding-top:calc(var(--hq-shell-header-height,76px) + 16px);scroll-p
 @media(prefers-reduced-motion:reduce){.hq-dashboard-skeleton{animation:none}}
 @media(max-width:480px){.hq-dashboard-heading{margin-bottom:19px}.hq-dashboard-heading p{font-size:14px}.hq-dashboard-section{margin-bottom:20px}.hq-dashboard-metrics a,.hq-dashboard-loading-card{min-height:108px;padding:12px}.hq-dashboard-metrics strong{margin:5px 0 2px}.hq-dashboard-actions a{gap:5px}.hq-dashboard-actions a>span{font-size:19px}.hq-dashboard-queue-item{min-height:67px}}
 
+/* Route-level loading shell (instant feedback while RSC resolves) */
+.hq-route-loading{padding:8px 0 24px}
+.hq-route-loading-bar{height:3px;width:100%;margin:0 0 18px;border-radius:999px;background:linear-gradient(90deg,#dbeaf5,#0878b9,#dbeaf5);background-size:200% 100%;animation:hq-quote-route-pulse 1s linear infinite}
+@keyframes hq-quote-route-pulse{0%{background-position:100% 0}100%{background-position:-100% 0}}
+@media(prefers-reduced-motion:reduce){.hq-route-loading-bar{animation:none;background:#0878b9}}
+
 /* Phase 2G.1 — focused mobile enquiry inbox */
 .hq-inbox-toolbar-compact{display:flex;align-items:stretch;gap:9px;margin-bottom:14px}
 .hq-inbox-toolbar-compact .hq-search-label{flex:1;min-width:0}
