@@ -53,10 +53,7 @@ export const TECH_NAV_ITEMS = [
   { href: '/hq/tech/account', label: 'Account' },
 ] as const;
 
-/** Office dual-surface switch into the field portal (shell adds this for office roles). */
-export const FIELD_NAV_ITEM = { href: '/hq/tech', label: 'Field' } as const;
-
-/** Field dual-surface switch back to office HQ (shell adds this for office roles on /hq/tech). */
+/** Field PWA switch back to office HQ (shell adds this for office roles on /hq/tech). */
 export const HQ_NAV_ITEM = { href: '/hq', label: 'HQ' } as const;
 
 export const OFFICE_NAV_ITEMS = [
@@ -65,7 +62,6 @@ export const OFFICE_NAV_ITEMS = [
   { href: '/hq/customers', label: 'Customers' },
   { href: '/hq/quotes', label: 'Quotes' },
   { href: '/hq/jobs', label: 'Jobs' },
-  FIELD_NAV_ITEM,
 ] as const;
 
 export const OFFICE_DRAWER_EXTRA = { href: '/hq/schedule', label: 'Schedule' } as const;

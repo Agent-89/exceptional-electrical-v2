@@ -12,20 +12,19 @@ const HQ_LOGO='/exceptional-electrical-logo-hq.webp';
 const officeItems=[{href:'/hq',label:'Home',icon:House},{href:'/hq/enquiries',label:'Enquiries',icon:Inbox},{href:'/hq/customers',label:'Customers',icon:UsersRound},{href:'/hq/quotes',label:'Quotes',icon:FileText},{href:'/hq/jobs',label:'Jobs',icon:BriefcaseBusiness}];
 const officeDrawer=[...officeItems,{href:'/hq/schedule',label:'Schedule',icon:CalendarDays},{href:'/hq/timesheets',label:'Timesheets',icon:CalendarCheck2}];
 const techItems=[{href:'/hq/tech',label:'Today',icon:CalendarCheck2},{href:'/hq/tech/jobs',label:'My Jobs',icon:Wrench},{href:'/hq/tech/account',label:'Account',icon:CircleUserRound}];
-const fieldNavItem={href:'/hq/tech',label:'Field',icon:Wrench};
 const hqNavItem={href:'/hq',label:'HQ',icon:House};
 
 export default function HqShell({children,role}:{children:React.ReactNode;role:HqRole|null}){
  const pathname=usePathname();
  const fieldSurface=pathname.startsWith('/hq/tech');
  const officeUser=role?isOfficeRole(role):false;
- // Path picks chrome so office dual-users get tech nav on /hq/tech; role picks switch links.
+ // Field is its own PWA — no Field entry in office HQ nav. Office crew on /hq/tech still get HQ back.
  const items=fieldSurface
   ?(officeUser?[hqNavItem,...techItems]:techItems)
-  :[...officeItems,fieldNavItem];
+  :officeItems;
  const drawerItems=fieldSurface
   ?(officeUser?[hqNavItem,...techItems]:techItems)
-  :[...officeDrawer,fieldNavItem];
+  :officeDrawer;
  const homeHref=fieldSurface?'/hq/tech':'/hq';
  const [menu,setMenu]=useState(false);
  const [compactSidebar,setCompactSidebar]=useState(false);

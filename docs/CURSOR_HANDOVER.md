@@ -115,7 +115,7 @@ Repository: `Agent-89/exceptional-electrical-v2`
 | office | Enquiries, customers, quotes (draft), jobs, schedule, time review; optional field portal when crew-linked |
 | technician | `/hq/tech` Today / jobs / visits / account; no office schedule mutations |
 
-**Dual surface (office + field):** Office roles (`owner` / `admin` / `office`) keep `/hq` as login home and may open `/hq/tech` (shell **Field** / **HQ** switch) when their Auth user is linked to exactly one active `scheduling_staff` row via `scheduling_staff.auth_user_id`. Visit time-stamping still requires assignment on `job_appointment_staff`. Pure technicians remain blocked from office HQ. Do not conflate `staff_profiles.user_id` with `scheduling_staff.id`.
+**Dual surface (office + field):** Office roles (`owner` / `admin` / `office`) keep `/hq` as login home. Field is a **separate PWA** (`/hq/tech`) — there is no Field nav item in office HQ. Crew-linked office users may still open Field via the Field home-screen app (or a direct `/hq/tech` URL) using the same login; Field chrome shows **HQ** to return to office. Visit time-stamping still requires `scheduling_staff.auth_user_id` link + `job_appointment_staff` assignment. Pure technicians remain blocked from office HQ. Do not conflate `staff_profiles.user_id` with `scheduling_staff.id`.
 
 Crew-link check (read-only; hosted project `udwdurnknweavmksotii`) before expecting Neil/Billy field stamps:
 
