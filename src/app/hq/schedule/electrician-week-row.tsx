@@ -1,9 +1,10 @@
 'use client';
 import {useState} from 'react';
+import {ChevronDown,ChevronUp} from 'lucide-react';
 export default function ElectricianWeekRow({name,count,children}:{name:string;count:number;children:React.ReactNode}){
  const [expanded,setExpanded]=useState(true);
  return <div className={'ee-dispatch-team-row'+(expanded?'':' ee-team-collapsed')}>
-  <header><div className="ee-team-row-label"><strong>{name}</strong><span>{count} {count===1?'visit':'visits'}</span></div><button type="button" className="ee-team-collapse-toggle" aria-expanded={expanded} aria-label={(expanded?'Collapse ':'Expand ')+name+' appointments'} onClick={()=>setExpanded(v=>!v)}><span>{expanded?'Collapse':'Expand'}</span><span aria-hidden="true">{expanded?'⌃':'⌄'}</span></button></header>
+  <header><div className="ee-team-row-label"><strong>{name}</strong><span>{count} {count===1?'visit':'visits'}</span></div><button type="button" className="ee-team-collapse-toggle" aria-expanded={expanded} aria-label={(expanded?'Collapse ':'Expand ')+name+' appointments'} onClick={()=>setExpanded(v=>!v)}><span>{expanded?'Collapse':'Expand'}</span>{expanded?<ChevronUp size={16} strokeWidth={2.2} aria-hidden="true"/>:<ChevronDown size={16} strokeWidth={2.2} aria-hidden="true"/>}</button></header>
   <div className="ee-dispatch-team-days">{children}</div>
   <style jsx global>{`
 .ee-team-row-label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
