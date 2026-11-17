@@ -41,7 +41,7 @@ export default function CustomerCreate(){
  return <>
   <button className="hq-crm-button" onClick={()=>{setMessage('');resetConflict();setOpen(true)}} type="button">+ Add customer</button>
   {open&&<div className="hq-crm-modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!pending)setOpen(false)}}>
-   <section role="dialog" aria-modal="true" aria-labelledby="hq-new-customer" className="hq-crm-modal">
+   <section role="dialog" aria-modal="true" aria-labelledby="hq-new-customer" className="hq-crm-modal hq-crm-modal-wide">
     <header className="hq-crm-modal-header">
      <div><div className="hq-kicker">CUSTOMERS</div><h2 id="hq-new-customer">Add customer</h2><p>Create a customer profile without an enquiry.</p></div>
      <button type="button" aria-label="Close" className="hq-crm-close" onClick={()=>setOpen(false)} disabled={pending}>×</button>
@@ -57,13 +57,14 @@ export default function CustomerCreate(){
      });
     }}>
      <label className="hq-crm-full">Full name<input name="name" required minLength={2} maxLength={150} autoFocus onChange={resetConflict}/></label>
-     <label className="hq-crm-full">Email<input name="email" type="email" maxLength={254} onChange={resetConflict}/></label>
-     <label className="hq-crm-full">Phone<input name="phone" type="tel" maxLength={40} onChange={resetConflict}/></label>
+     <label className="hq-crm-full">Company name<input name="company_name" maxLength={150} placeholder="Optional — for commercial customers" onChange={resetConflict}/></label>
+     <label>Email<input name="email" type="email" maxLength={254} onChange={resetConflict}/></label>
+     <label>Phone<input name="phone" type="tel" maxLength={40} onChange={resetConflict}/></label>
      <p className="hq-crm-hint hq-crm-full">Provide at least an email or phone number.</p>
      {conflict&&matches.length>0&&<div className="hq-crm-full hq-customer-match-panel" role="status">
       <p><strong>{conflict==='single'?'Existing customer found':'Multiple matching customers'}</strong></p>
       <p>{message}</p>
-      <ul className="hq-customer-match-list">{matches.map(m=><li key={m.id}><strong>{m.name}</strong><span>{[m.phone,m.email].filter(Boolean).join(' · ')||'No contact details'}</span><Link href={'/hq/customers/'+m.id}>Open profile →</Link></li>)}</ul>
+      <ul className="hq-customer-match-list">{matches.map(m=><li key={m.id}><strong>{m.name}</strong>{m.company_name?<span>{m.company_name}</span>:null}<span>{[m.phone,m.email].filter(Boolean).join(' · ')||'No contact details'}</span><Link href={'/hq/customers/'+m.id}>Open profile →</Link></li>)}</ul>
       {conflict==='single'&&matches[0]&&<Link className="hq-crm-button" href={'/hq/customers/'+matches[0].id}>Use existing customer</Link>}
       <button type="submit" name="allow_duplicate" value="yes" className="hq-crm-button hq-crm-secondary" disabled={pending}>{pending?'Creating…':'Create separate customer anyway'}</button>
      </div>}

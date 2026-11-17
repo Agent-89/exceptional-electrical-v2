@@ -3,6 +3,7 @@ export type CustomerMatchRecord = {
   name: string;
   email: string | null;
   phone: string | null;
+  company_name?: string | null;
 };
 
 /** Trim and lowercase for consistent email matching and storage. */

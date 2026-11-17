@@ -56,7 +56,8 @@ export async function createQuoteCustomer(
   name:trimmedName,
   email:normalizedEmail||null,
   phone:trimmedPhone||null,
- }).select('id,name,email,phone').single();
+  company_name:null,
+ }).select('id,name,email,phone,company_name').single();
  if(error||!data)return {ok:false,message:'Could not create customer'};
  revalidatePath('/hq/customers');
  return {

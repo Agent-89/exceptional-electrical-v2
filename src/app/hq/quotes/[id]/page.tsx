@@ -52,8 +52,8 @@ export default async function QuoteDetail({
       ? db.from('customers').select('id,name,email,phone').eq('id',customerId).maybeSingle()
       : Promise.resolve({data:null}),
     customerId
-      ? db.from('enquiries').select('id,name,customer_id,message,service_category').or(`customer_id.eq.${customerId},customer_id.is.null`).order('created_at',{ascending:false}).limit(80)
-      : db.from('enquiries').select('id,name,customer_id,message,service_category').order('created_at',{ascending:false}).limit(80),
+      ? db.from('enquiries').select('id,name,customer_id,message,service_category,suburb').or(`customer_id.eq.${customerId},customer_id.is.null`).order('created_at',{ascending:false}).limit(80)
+      : db.from('enquiries').select('id,name,customer_id,message,service_category,suburb').order('created_at',{ascending:false}).limit(80),
     customerId
       ? db.from('customer_addresses').select('id,customer_id,label,address_line1,suburb,state,postcode').eq('customer_id',customerId).limit(100)
       : Promise.resolve({data:[] as {id:string;customer_id:string;label:string|null;address_line1:string;suburb:string|null;state:string|null;postcode:string|null}[]}),

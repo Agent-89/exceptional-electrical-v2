@@ -7,8 +7,11 @@ export async function loadCustomersForMatch():Promise<{customers:CustomerMatchRe
  const db=dbAdmin();
  const customers:CustomerMatchRecord[]=[];
  for(let offset=0;;offset+=500){
-  const {data,error}=await db.from('customers').select('id,name,email,phone').order('id').range(offset,offset+499);
-  if(error)return {customers:[],error:'Unable to check for duplicate customers'};
+  const {data,error}=await db.from('customers').select('id,name,email,phone,company_name').order('id').range(offset,offset+499);
+  if(error){
+   console.error('loadCustomersForMatch failed',{code:error.code,message:error.message,details:error.details,hint:error.hint});
+   return {customers:[],error:'Unable to check for duplicate customers'};
+  }
   if(!data?.length)break;
   customers.push(...(data as CustomerMatchRecord[]));
   if(data.length<500)break;

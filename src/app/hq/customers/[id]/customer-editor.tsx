@@ -5,7 +5,18 @@ import {useRouter} from 'next/navigation';
 import {updateCustomer,addCustomerAddress,addCustomerNote,type CustomerMutationResult} from '../../customer-actions';
 import type {CustomerMatchRecord} from '@/lib/customer-match';
 
-type Customer={id:string;name:string;email:string|null;phone:string|null};
+type Customer={id:string;name:string;email:string|null;phone:string|null;company_name?:string|null};
+export type CustomerAddress={
+ id:string;
+ label:string;
+ address_line1:string;
+ address_line2:string|null;
+ suburb:string;
+ state:string;
+ postcode:string;
+ notes:string|null;
+ is_primary?:boolean|null;
+};
 
 export default function CustomerEditor({customer}:{customer:Customer}){
  const [editing,setEditing]=useState(false);
@@ -67,12 +78,13 @@ export default function CustomerEditor({customer}:{customer:Customer}){
    submitCustomer(form);
   }}>
    <label>Name<input name="name" defaultValue={customer.name} required minLength={2} onChange={resetConflict}/></label>
+   <label>Company name<input name="company_name" defaultValue={customer.company_name??''} maxLength={150} onChange={resetConflict}/></label>
    <label>Email<input type="email" name="email" defaultValue={customer.email??''} onChange={resetConflict}/></label>
    <label>Phone<input type="tel" name="phone" defaultValue={customer.phone??''} onChange={resetConflict}/></label>
    {conflict&&matches.length>0&&<div className="hq-customer-match-panel" role="status">
     <p><strong>{conflict==='single'?'Another customer uses these details':'Multiple customers match these details'}</strong></p>
     <p>{feedback}</p>
-    <ul className="hq-customer-match-list">{matches.map(m=><li key={m.id}><strong>{m.name}</strong><span>{[m.phone,m.email].filter(Boolean).join(' · ')||'No contact details'}</span><Link href={'/hq/customers/'+m.id}>Open profile →</Link></li>)}</ul>
+    <ul className="hq-customer-match-list">{matches.map(m=><li key={m.id}><strong>{m.name}</strong>{m.company_name?<span>{m.company_name}</span>:null}<span>{[m.phone,m.email].filter(Boolean).join(' · ')||'No contact details'}</span><Link href={'/hq/customers/'+m.id}>Open profile →</Link></li>)}</ul>
     <button type="submit" name="allow_duplicate" value="yes" className="hq-crm-button hq-crm-secondary" disabled={pending}>{pending?'Saving…':'Save with shared contact details anyway'}</button>
    </div>}
    {!conflict&&<button disabled={pending} className="hq-crm-button">{pending?'Saving…':'Save changes'}</button>}
