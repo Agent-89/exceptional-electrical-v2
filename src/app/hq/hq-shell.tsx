@@ -6,19 +6,27 @@ import {usePathname} from 'next/navigation';
 import {useEffect,useRef,useState} from 'react';
 import {House,Inbox,UsersRound,FileText,BriefcaseBusiness,CalendarDays,Menu,X,LogOut,PanelLeftClose,PanelLeftOpen,CalendarCheck2,Wrench,CircleUserRound} from 'lucide-react';
 import type {HqRole} from '@/lib/hq-roles';
-import {isTechnicianRole} from '@/lib/hq-roles';
+import {isOfficeRole} from '@/lib/hq-roles';
 
 const HQ_LOGO='/exceptional-electrical-logo-hq.webp';
 const officeItems=[{href:'/hq',label:'Home',icon:House},{href:'/hq/enquiries',label:'Enquiries',icon:Inbox},{href:'/hq/customers',label:'Customers',icon:UsersRound},{href:'/hq/quotes',label:'Quotes',icon:FileText},{href:'/hq/jobs',label:'Jobs',icon:BriefcaseBusiness}];
 const officeDrawer=[...officeItems,{href:'/hq/schedule',label:'Schedule',icon:CalendarDays},{href:'/hq/timesheets',label:'Timesheets',icon:CalendarCheck2}];
 const techItems=[{href:'/hq/tech',label:'Today',icon:CalendarCheck2},{href:'/hq/tech/jobs',label:'My Jobs',icon:Wrench},{href:'/hq/tech/account',label:'Account',icon:CircleUserRound}];
+const fieldNavItem={href:'/hq/tech',label:'Field',icon:Wrench};
+const hqNavItem={href:'/hq',label:'HQ',icon:House};
 
 export default function HqShell({children,role}:{children:React.ReactNode;role:HqRole|null}){
  const pathname=usePathname();
- const technician=role?isTechnicianRole(role):pathname.startsWith('/hq/tech');
- const items=technician?techItems:officeItems;
- const drawerItems=technician?techItems:officeDrawer;
- const homeHref=technician?'/hq/tech':'/hq';
+ const fieldSurface=pathname.startsWith('/hq/tech');
+ const officeUser=role?isOfficeRole(role):false;
+ // Path picks chrome so office dual-users get tech nav on /hq/tech; role picks switch links.
+ const items=fieldSurface
+  ?(officeUser?[hqNavItem,...techItems]:techItems)
+  :[...officeItems,fieldNavItem];
+ const drawerItems=fieldSurface
+  ?(officeUser?[hqNavItem,...techItems]:techItems)
+  :[...officeDrawer,fieldNavItem];
+ const homeHref=fieldSurface?'/hq/tech':'/hq';
  const [menu,setMenu]=useState(false);
  const [compactSidebar,setCompactSidebar]=useState(false);
  const [showStartup,setShowStartup]=useState(true);
@@ -37,7 +45,7 @@ export default function HqShell({children,role}:{children:React.ReactNode;role:H
   if(href==='/hq/tech')return pathname==='/hq/tech';
   return pathname===href||pathname.startsWith(href+'/');
  };
- return <div className={'hq-shell'+(compactSidebar?' hq-sidebar-compact':'')+(technician?' hq-shell-tech':' hq-shell-office')}>
+ return <div className={'hq-shell'+(compactSidebar?' hq-sidebar-compact':'')+(fieldSurface?' hq-shell-tech':' hq-shell-office')}>
   {navigating&&<div className="hq-navigation-progress" role="progressbar" aria-label="Opening page"/>}
   {showStartup&&<div className="hq-startup" role="status" aria-label="Opening Exceptional Electrical HQ" onClick={()=>setShowStartup(false)}><div className="hq-startup-brand"><div className="hq-startup-mark"><Image className="hq-startup-outline" src={HQ_LOGO} alt="" width={240} height={80} priority/><div className="hq-startup-fill" aria-hidden="true"><Image src={HQ_LOGO} alt="" width={240} height={80} priority/></div></div><strong>EXCEPTIONAL ELECTRICAL</strong><span>HQ</span></div></div>}
   <header className="hq-shell-header">
@@ -48,7 +56,7 @@ export default function HqShell({children,role}:{children:React.ReactNode;role:H
   <><button className={`hq-shell-scrim${menu?' is-open':''}`} aria-label="Close navigation menu" tabIndex={menu?0:-1} aria-hidden={!menu} onClick={()=>setMenu(false)}/><aside className={`hq-shell-drawer${menu?' is-open':''}`} aria-label="HQ menu" aria-hidden={!menu} inert={!menu}>
    <div className="hq-shell-drawer-heading"><Link href={homeHref} className="hq-shell-drawer-brand" aria-label="Exceptional Electrical HQ home"><Image src={HQ_LOGO} alt="Exceptional Electrical" width={180} height={60}/><span>HQ</span></Link><button onClick={()=>setMenu(false)} aria-label="Close menu"><X size={20}/></button></div>
    <nav>{drawerItems.map(item=><Link key={item.href} href={item.href} aria-current={active(item.href)?'page':undefined}><item.icon size={19} strokeWidth={1.9} aria-hidden="true"/><span>{item.label}</span></Link>)}</nav>
-   <div className="hq-shell-drawer-future"><span>Coming later</span><p>{technician?'Payroll export · Offline mode':'Inventory · Purchasing · Reports'}</p></div><form action={logoutAction} className="hq-shell-logout-form"><button type="submit" className="hq-shell-logout"><LogOut size={19} strokeWidth={1.9} aria-hidden="true"/><span>Log out</span></button></form>
+   <div className="hq-shell-drawer-future"><span>Coming later</span><p>{fieldSurface?'Payroll export · Offline mode':'Inventory · Purchasing · Reports'}</p></div><form action={logoutAction} className="hq-shell-logout-form"><button type="submit" className="hq-shell-logout"><LogOut size={19} strokeWidth={1.9} aria-hidden="true"/><span>Log out</span></button></form>
   </aside></>
   <aside className="hq-shell-desktop-sidebar" aria-label="Desktop HQ navigation"><div className="hq-desktop-nav-heading"><Link href={homeHref} className="hq-desktop-sidebar-brand" aria-label="Exceptional Electrical HQ home"><Image src={HQ_LOGO} alt="Exceptional Electrical" width={130} height={43}/></Link><button type="button" onClick={toggleSidebar} aria-label={compactSidebar?'Expand sidebar':'Collapse sidebar'} title={compactSidebar?'Expand sidebar':'Collapse sidebar'}>{compactSidebar?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button></div><nav>{drawerItems.map(item=><Link key={item.href} href={item.href} prefetch aria-current={active(item.href)?'page':undefined}><item.icon size={19} strokeWidth={1.9}/><span>{item.label}</span></Link>)}</nav><div className="hq-desktop-sidebar-bottom"><span>Exceptional Electrical HQ</span><form action={logoutAction}><button type="submit"><LogOut size={18}/> Log out</button></form></div></aside>
   <div className="hq-shell-content" id="hq-main-content">{children}</div>

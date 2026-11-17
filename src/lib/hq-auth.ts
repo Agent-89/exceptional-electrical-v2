@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 import {
+  canAccessFieldPortal,
   canManageAdminOps,
   canManageOfficeOps,
   hqHomePath,
@@ -129,12 +130,13 @@ export async function resolveSchedulingStaff(authUserId: string): Promise<Schedu
 export type TechnicianCrew = HqUser & { staffId: string; crewName: string };
 
 /**
- * Technician pages require an active, uniquely mapped scheduling_staff row.
- * Fail closed with a dedicated setup screen when mapping is missing/invalid.
+ * Field portal pages require field-portal role access plus an active, uniquely
+ * mapped scheduling_staff row. Office roles may enter when crew-linked (dual
+ * surface). Fail closed with a dedicated setup screen when mapping is missing/invalid.
  */
 export async function requireTechnicianCrew(): Promise<TechnicianCrew> {
   const user = await requireHqUser();
-  if (!isTechnicianRole(user.role)) redirect(hqHomePath(user.role));
+  if (!canAccessFieldPortal(user.role)) redirect(hqHomePath(user.role));
   const link = await resolveSchedulingStaff(user.id);
   if (!link.ok) redirect('/hq/tech/account?setup=' + link.reason);
   return { ...user, staffId: link.staffId, crewName: link.fullName };

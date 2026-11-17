@@ -1,5 +1,5 @@
 import { requireHqUser, resolveSchedulingStaff } from '@/lib/hq-auth';
-import { isTechnicianRole } from '@/lib/hq-roles';
+import { canAccessFieldPortal, hqHomePath } from '@/lib/hq-roles';
 import { redirect } from 'next/navigation';
 import { logoutAction } from '../../actions';
 import TechStyles from '../tech-styles';
@@ -21,7 +21,7 @@ export default async function TechAccountPage({
   searchParams: Promise<{ setup?: string }>;
 }) {
   const user = await requireHqUser();
-  if (!isTechnicianRole(user.role)) redirect('/hq');
+  if (!canAccessFieldPortal(user.role)) redirect(hqHomePath(user.role));
   const { setup } = await searchParams;
   const link = await resolveSchedulingStaff(user.id);
 

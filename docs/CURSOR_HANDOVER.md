@@ -111,11 +111,26 @@ Repository: `Agent-89/exceptional-electrical-v2`
 
 | Role | Typical access |
 |------|----------------|
-| owner / admin | Full office ops + admin-only actions (e.g. quote approve; Google Calendar OAuth connect/disconnect) |
-| office | Enquiries, customers, quotes (draft), jobs, schedule, time review |
+| owner / admin | Full office ops + admin-only actions (e.g. quote approve; Google Calendar OAuth connect/disconnect); optional field portal when crew-linked |
+| office | Enquiries, customers, quotes (draft), jobs, schedule, time review; optional field portal when crew-linked |
 | technician | `/hq/tech` Today / jobs / visits / account; no office schedule mutations |
 
-Helpers: `src/lib/hq-roles.ts`. Prefer server-side gates; do not trust client-only checks.
+**Dual surface (office + field):** Office roles (`owner` / `admin` / `office`) keep `/hq` as login home and may open `/hq/tech` (shell **Field** / **HQ** switch) when their Auth user is linked to exactly one active `scheduling_staff` row via `scheduling_staff.auth_user_id`. Visit time-stamping still requires assignment on `job_appointment_staff`. Pure technicians remain blocked from office HQ. Do not conflate `staff_profiles.user_id` with `scheduling_staff.id`.
+
+Crew-link check (read-only; hosted project `udwdurnknweavmksotii`) before expecting Neil/Billy field stamps:
+
+```sql
+select sp.full_name, sp.role, sp.user_id,
+       ss.id as scheduling_staff_id, ss.full_name as crew_name, ss.active, ss.auth_user_id
+from staff_profiles sp
+left join scheduling_staff ss on ss.auth_user_id = sp.user_id
+where sp.role in ('owner', 'admin', 'office')
+order by sp.full_name;
+```
+
+If `auth_user_id` is null for the intended crew row, set it with **owner-approved** hosted data update (not a Git migration).
+
+Helpers: `src/lib/hq-roles.ts` (`canAccessFieldPortal`). Prefer server-side gates; do not trust client-only checks.
 
 ## 7. External integrations
 
@@ -149,6 +164,7 @@ npm run build
 - Unit/integration tests: `src/lib/*.test.ts` via Node test runner.
 - After substantive changes, re-run the four commands above on the release tip.
 - Hosted schema checks: `supabase migration list --linked` and read-only `supabase db query --linked`.
+- **Local HQ preview under OneDrive:** OneDrive can corrupt `.next` (missing CSS / black login). Prefer `powershell -File scripts/dev-hq.ps1`, which junctions `.next` to `%LOCALAPPDATA%\ee-hq-next` and starts a detached Next process so stdin close does not kill the server. Open `http://127.0.0.1:3000/hq/login`.
 
 ## 9. Incident response and rollback
 
