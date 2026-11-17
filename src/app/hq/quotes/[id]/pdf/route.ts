@@ -14,7 +14,7 @@ export async function GET(_request:NextRequest,{params}:{params:Promise<{id:stri
  const {id}=await params;
  if(!/^[0-9a-f-]{36}$/i.test(id))return new NextResponse('Invalid quote',{status:400});
  const db=dbAdmin();
- const {data:q}=await db.from('quotes').select('quote_number,status,title,scope_of_work,inclusions,exclusions,customer_notes,customer_display,pricing_mode,customer_snapshot,site_address_snapshot,issue_date,expiry_date,created_at').eq('id',id).maybeSingle();
+ const {data:q}=await db.from('quotes').select('quote_number,status,title,scope_of_work,inclusions,exclusions,customer_notes,customer_display,pricing_mode,customer_reference,customer_snapshot,site_address_snapshot,issue_date,expiry_date,created_at').eq('id',id).maybeSingle();
  if(!q)return new NextResponse('Quote not found',{status:404});
  const {data:raw,error}=await db.from('quote_items').select('description,category,quantity,unit,unit_price_cents,gst_applicable').eq('quote_id',id).order('position');
  if(error)return new NextResponse('Unable to load quote items',{status:500});
@@ -61,10 +61,13 @@ export async function GET(_request:NextRequest,{params}:{params:Promise<{id:stri
  if(customer?.phone){text(customer.phone,40,customerY,9);customerY-=17}
  if(site?.address){customerY-=14;blue();text('JOB SITE',40,customerY,9,true);dark();customerY-=20;for(const ln of wrap(site.address,48)){text(ln,40,customerY,9);customerY-=15}}
  const detail=(label:string,value:string,at:number)=>{text(label,326,at,9);right(value,555,at,10,true)};
+ const customerReference=String(q.customer_reference||'').trim();
  detail('Quote number',q.quote_number,metaY);
- detail('Quote date',displayDate(q.issue_date||q.created_at),metaY-24);
- detail('Valid until',displayDate(q.expiry_date),metaY-48);
- y=Math.min(customerY,metaY-67)-27;
+ let metaRightY=metaY-24;
+ if(customerReference){detail('Your reference',customerReference,metaRightY);metaRightY-=24}
+ detail('Quote date',displayDate(q.issue_date||q.created_at),metaRightY);
+ detail('Valid until',displayDate(q.expiry_date),metaRightY-24);
+ y=Math.min(customerY,metaRightY-43)-27;
  section('Scope of work',q.scope_of_work||q.title||'Electrical work');
  section('Inclusions',q.inclusions||'');
  section('Exclusions',q.exclusions||'');

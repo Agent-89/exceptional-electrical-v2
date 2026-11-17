@@ -12,7 +12,7 @@ export default async function QuotePreview({params}:{params:Promise<{id:string}>
  const {id}=await params;
  if(!/^[0-9a-f-]{36}$/i.test(id))notFound();
  const db=dbAdmin();
- const {data:q,error}=await db.from('quotes').select('id,quote_number,status,title,scope_of_work,inclusions,exclusions,customer_notes,customer_display,pricing_mode,customer_snapshot,site_address_snapshot,issue_date,expiry_date,created_at').eq('id',id).maybeSingle();
+ const {data:q,error}=await db.from('quotes').select('id,quote_number,status,title,scope_of_work,inclusions,exclusions,customer_notes,customer_display,pricing_mode,customer_reference,customer_snapshot,site_address_snapshot,issue_date,expiry_date,created_at').eq('id',id).maybeSingle();
  if(error||!q)notFound();
  const {data:allItems}=await db.from('quote_items').select('id,description,category,quantity,unit,unit_price_cents,gst_applicable,position').eq('quote_id',id).order('position');
  const items=((allItems||[]) as Item[]).filter(l=>q.pricing_mode==='fixed'?(l.category==='other'&&l.description===FIXED):!(l.category==='other'&&l.description===FIXED));
@@ -26,7 +26,7 @@ export default async function QuotePreview({params}:{params:Promise<{id:string}>
   <article className="quote-paper">
    {!printable&&<div className="quote-watermark">DRAFT — NOT APPROVED FOR SENDING</div>}
    <header className="quote-paper-header"><div><img className="quote-brand-logo" src="/exceptional-electrical-logo.png" alt="Exceptional Electrical" width="250" height="95"/></div><div className="quote-document-label"><span>QUOTATION</span><strong>{q.quote_number}</strong></div></header>
-   <div className="quote-paper-meta"><section><div className="quote-caption">PREPARED FOR</div><strong>{customer.name||'Customer not selected'}</strong>{customer.email&&<p>{customer.email}</p>}{customer.phone&&<p>{customer.phone}</p>}{site.address&&<><div className="quote-caption quote-site-label">JOB SITE</div><p>{site.address}</p></>}</section><section className="quote-meta-right"><div><span>Quote number</span><strong>{q.quote_number}</strong></div><div><span>Quote date</span><strong>{date(q.issue_date||q.created_at.slice(0,10))}</strong></div><div><span>Valid until</span><strong>{date(q.expiry_date)}</strong></div></section></div>
+   <div className="quote-paper-meta"><section><div className="quote-caption">PREPARED FOR</div><strong>{customer.name||'Customer not selected'}</strong>{customer.email&&<p>{customer.email}</p>}{customer.phone&&<p>{customer.phone}</p>}{site.address&&<><div className="quote-caption quote-site-label">JOB SITE</div><p>{site.address}</p></>}</section><section className="quote-meta-right"><div><span>Quote number</span><strong>{q.quote_number}</strong></div>{q.customer_reference?<div><span>Your reference</span><strong>{q.customer_reference}</strong></div>:null}<div><span>Quote date</span><strong>{date(q.issue_date||q.created_at.slice(0,10))}</strong></div><div><span>Valid until</span><strong>{date(q.expiry_date)}</strong></div></section></div>
    <div className="quote-paper-section"><div className="quote-caption">SCOPE OF WORK</div><p className="quote-multiline">{q.scope_of_work||q.title||'Electrical work'}</p></div>
    {q.inclusions&&<div className="quote-paper-section"><div className="quote-caption">INCLUSIONS</div><p className="quote-multiline">{q.inclusions}</p></div>}
    {q.exclusions&&<div className="quote-paper-section"><div className="quote-caption">EXCLUSIONS</div><p className="quote-multiline">{q.exclusions}</p></div>}

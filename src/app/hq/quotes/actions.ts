@@ -42,6 +42,8 @@ export type QuoteDraft={
   internalNotes:string;
   display:string;
   mode:string;
+  /** Optional customer PO / your-reference for this quote. */
+  customerReference?:string;
   lines:Line[];
   /** standard | variation — variation requires parentQuoteId */
   quoteType?:'standard'|'variation';
@@ -354,6 +356,7 @@ export async function saveQuoteDraft(v:QuoteDraft):Promise<QuoteSaveResult>{
   internal_notes:v.internalNotes,
   customer_display:v.display,
   pricing_mode:v.mode,
+  customer_reference:(v.customerReference||'').trim()||null,
   updated_at:new Date().toISOString(),
  };
  if(!v.id&&quoteType==='variation'&&v.parentQuoteId){
@@ -718,6 +721,7 @@ export async function getParentQuotePrefill(parentId:string,expectedCustomerId?:
     internalNotes:string;
     display:string;
     mode:string;
+    customerReference:string;
     address:string;
     addressId:string;
     customerId:string;
@@ -731,7 +735,7 @@ export async function getParentQuotePrefill(parentId:string,expectedCustomerId?:
   const db=dbAdmin();
   const {data:parent}=await db
     .from('quotes')
-    .select('id,title,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,site_address_id,site_address_snapshot,customer_id,status')
+    .select('id,title,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,customer_reference,site_address_id,site_address_snapshot,customer_id,status')
     .eq('id',parentId)
     .maybeSingle();
   if(!parent)return{ok:false,message:'Parent quote not found'};
@@ -758,6 +762,7 @@ export async function getParentQuotePrefill(parentId:string,expectedCustomerId?:
       internalNotes:String(parent.internal_notes||''),
       display:String(parent.customer_display||'itemised'),
       mode:String(parent.pricing_mode||'detailed'),
+      customerReference:String((parent as {customer_reference?:string|null}).customer_reference||''),
       address:String(snap?.address||''),
       addressId:String(parent.site_address_id||''),
       customerId:String(parent.customer_id||''),

@@ -69,6 +69,7 @@ export default async function NewQuote({
     internal_notes?:string|null;
     customer_display?:string|null;
     pricing_mode?:string|null;
+    customer_reference?:string|null;
     site_address_id?:string|null;
     site_address_snapshot?:{address?:string}|null;
   }|null=null;
@@ -77,7 +78,7 @@ export default async function NewQuote({
   if(parentId){
     const {data:parent}=await db
       .from('quotes')
-      .select('id,quote_number,title,customer_id,revision_number,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,site_address_id,site_address_snapshot')
+      .select('id,quote_number,title,customer_id,revision_number,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,customer_reference,site_address_id,site_address_snapshot')
       .eq('id',parentId)
       .maybeSingle();
     parentQuote=parent;
@@ -135,7 +136,7 @@ export default async function NewQuote({
   if(asVariation&&defaultParentId&&defaultParentId!==parentQuote?.id){
     const {data:parent}=await db
       .from('quotes')
-      .select('id,quote_number,title,customer_id,revision_number,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,site_address_id,site_address_snapshot')
+      .select('id,quote_number,title,customer_id,revision_number,scope_of_work,inclusions,exclusions,customer_notes,internal_notes,customer_display,pricing_mode,customer_reference,site_address_id,site_address_snapshot')
       .eq('id',defaultParentId)
       .maybeSingle();
     if(parent){
@@ -212,6 +213,7 @@ export default async function NewQuote({
         internalNotes:useParentPrefill?String(parentQuote?.internal_notes||''):'',
         display:useParentPrefill?(parentQuote?.customer_display||'itemised'):'itemised',
         mode:useParentPrefill?(parentQuote?.pricing_mode||'detailed'):'detailed',
+        customerReference:useParentPrefill?String(parentQuote?.customer_reference||''):'',
         lines:useParentPrefill?parentLines:[],
         quoteType:asVariation?'variation':'standard',
         parentQuoteId:defaultParentId,

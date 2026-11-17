@@ -72,7 +72,7 @@ type Initial=Partial<Omit<QuoteDraft,'lines'>> & {lines?:QuoteDraft['lines'];num
 
 const empty:QuoteDraft={
   customerId:'',enquiryId:'',addressId:'',address:'',title:'',scope:'',inclusions:'',exclusions:'',
-  notes:'',internalNotes:'',display:'itemised',mode:'detailed',lines:[],
+  notes:'',internalNotes:'',display:'itemised',mode:'detailed',customerReference:'',lines:[],
   quoteType:'standard',parentQuoteId:'',linkedJobId:'',linkedJobIds:[],validityDays:30,
 };
 const FIXED='Fixed-price electrical work';
@@ -466,6 +466,7 @@ export default function QuoteEditor({
    internalNotes:prefill.internalNotes,
    display:prefill.display,
    mode:prefill.mode,
+   customerReference:prefill.customerReference,
    address:prefill.address,
    addressId:prefill.addressId,
    lines:prefill.lines.map(l=>({...l})),
@@ -940,6 +941,16 @@ export default function QuoteEditor({
        <datalist id="quote-addresses">{addressList.filter(a=>a.customer_id===draft.customerId).map(a=><option key={a.id} value={addressLabel(a)}/>)}</datalist>
       </label>
      </div>
+     <label>Your reference / PO
+      <input
+       type="text"
+       placeholder="Customer PO or order number"
+       value={draft.customerReference||''}
+       disabled={locked}
+       maxLength={120}
+       onChange={e=>set('customerReference',e.target.value)}
+      />
+     </label>
      {customerChangeWarn?(
       <p className="hq-quote-field-hint hq-qw-warn" role="status">{customerChangeWarn}</p>
      ):null}

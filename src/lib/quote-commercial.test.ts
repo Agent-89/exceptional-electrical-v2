@@ -312,6 +312,7 @@ describe('quote-commercial helpers', () => {
       internalNotes: 'Internal',
       display: 'itemised',
       mode: 'detailed',
+      customerReference: 'PO-4421',
       address: '1 Test St',
       addressId: 'addr-1',
       lines: [
@@ -337,6 +338,7 @@ describe('quote-commercial helpers', () => {
     });
     assert.equal(detailed.title, 'Variation — Switchboard');
     assert.equal(detailed.scope, 'Replace MSB');
+    assert.equal(detailed.customerReference, 'PO-4421');
     assert.equal(detailed.lines[0].quantity, 4);
     assert.equal(detailed.lines[0].price, 12000);
     assert.equal(detailed.lines[0].cost, 6000);

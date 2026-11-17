@@ -168,6 +168,7 @@ npm run build
 - Race-safe DB exclusion constraints for electrician overlaps are not yet present; app-layer hard-blocks cover create + schedule edit paths.
 - Quotes can be marked sent but do not email customers yet.
 - Job detail **Invoices** tab is an empty placeholder pending Xero (C2). **More** holds stubs for Purchase orders, Bills, and Forms. Costs is not a top-level tab yet — it should graduate when materials tracking lands.
+- Quotes support optional `customer_reference` (“Your reference / PO”). When C2 billing lands, invoice create should be the **primary** place staff enter/confirm that reference, prefilled from the linked commercial-current quote when present, and mapped to Xero’s customer/reference field later.
 - Job header status is a colored-dot chevron dropdown (statuses in `src/lib/job-statuses.ts`). The three-dot menu is reserved for future job actions.
 - Pending hosted migration (do **not** apply until owner approves): `20261117092844_jobs_status_to_invoice_tafe` adds `to_invoice` and `tafe` to `jobs_status_check`. Until applied, selecting those statuses in the UI will fail at the database.
 - Inventory, purchasing, reports, payroll export, and tech offline mode are not built.
@@ -185,7 +186,7 @@ Prioritised against fully replacing Tradify. Do **not** start implementation unt
 
 ### P1 — Money and customer communications (close the Tradify gap)
 
-5. **C2 billing** — HQ invoice surface + Xero reconciliation against commercial-current quotes.
+5. **C2 billing** — HQ invoice surface + Xero reconciliation against commercial-current quotes. Invoice create must include first-class `customer_reference` (Your reference / PO) as the primary entry point, seeded from the linked quote when available.
 6. **Outbound email/SMS** — quote send, appointment reminders (gated; never from Preview against real customers).
 7. **Job materials / costing** (even before full inventory).
 8. **Vapi webhook** + signature verification behind staging; no live number forward until approved.
