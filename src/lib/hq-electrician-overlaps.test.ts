@@ -63,7 +63,7 @@ describe('formatHqElectricianOverlapMessage', () => {
     const message = formatHqElectricianOverlapMessage(lines);
     assert.match(message, /Alex Electrician/);
     assert.match(message, /JB00042/);
-    assert.match(message, /Google Calendar override does not bypass/);
+    assert.match(message, /Choose another time or electrician/);
     assert.doesNotMatch(message, /stack|supabase|uuid|password/i);
   });
 });

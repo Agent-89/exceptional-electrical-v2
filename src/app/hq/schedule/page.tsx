@@ -1,5 +1,3 @@
-import AppointmentRange from '../appointment-range';
-import JobPicker from './job-picker';
 import ElectricianDay from './electrician-day';
 import ElectricianWeekRow from './electrician-week-row';
 import NeilGoogleEvents from './neil-google-events';
@@ -9,10 +7,10 @@ import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
 import {canManageAdminOps} from '@/lib/hq-roles';
 import {getCachedActiveSchedulingStaff} from '@/lib/hq-reference-cache';
 import {isSchedulableJobStatus} from '@/lib/job-statuses';
-import ScheduleCreateForm from './schedule-create-form';
 import DispatchViews from './view-switch';
 import DispatchTimeline from './dispatch-timeline';
 import VisitPreview from './visit-preview';
+import ScheduleCreatePanel from './schedule-create-panel';
 import ScheduleVisitModal from './schedule-visit-modal';
 import '../hq.css';
 export const dynamic='force-dynamic';
@@ -25,7 +23,7 @@ const timeLabel=(s:string)=>new Date(s).toLocaleTimeString('en-AU',{timeZone:zon
 const dayKey=(s:string|Date)=>(typeof s==='string'?new Date(s):s).toLocaleDateString('sv-SE',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'});
 const dateAt=(s:string)=>new Date(s+'T00:00:00+08:00');
 const addDays=(d:Date,n:number)=>new Date(d.getTime()+n*86400000);
-export default async function SchedulePage({searchParams}:{searchParams:Promise<{week?:string;view?:string;focus?:string}>}){
+export default async function SchedulePage({searchParams}:{searchParams:Promise<{week?:string;view?:string;focus?:string;job?:string}>}){
  const user=await requireOfficeUser();const canEdit=true;
  const params=await searchParams;
  const now=new Date();
@@ -37,7 +35,8 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  const next=addDays(monday,7),prev=addDays(monday,-7);
  const days=Array.from({length:7},(_,i)=>addDays(monday,i));
  const view=params.view==='team'?'team':params.view==='week'?'week':'timeline';
- const viewQuery=(v:string,w=dayKey(monday))=>'/hq/schedule?week='+w+'&view='+v;
+ const bookingJobId=/^[0-9a-f-]{36}$/i.test(params.job??'')?params.job!:'';
+ const viewQuery=(v:string,w=dayKey(monday),includeJob=true)=>'/hq/schedule?week='+w+'&view='+v+(includeJob&&bookingJobId?'&job='+bookingJobId:'');
  const db=dbAdmin();
  const [{data:visits,error},staff,{data:googleConnection},{data:pickerJobs}]=await Promise.all([
   db.from('job_appointments').select('id,job_id,starts_at,ends_at,notes,status').eq('status','scheduled').gte('starts_at',monday.toISOString()).lt('starts_at',next.toISOString()).order('starts_at',{ascending:true}).limit(500),
@@ -103,6 +102,7 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  const displayedIds=new Set(displayedVisits.map(v=>v.id));
  const displayedTimelineVisits=timelineVisits.filter(v=>displayedIds.has(v.id));
  const metricHref=(target:string)=>viewQuery(view)+(target==='all'||target===focus?'':'&focus='+target);
+ const clearJobHref=viewQuery(view,dayKey(monday),false)+(focus==='all'?'':'&focus='+focus);
  // Google events load client-side via /api/.../events — do not block schedule RSC.
  const externalEvents:[]=[];
  const googleError=false;
@@ -112,6 +112,37 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
    id:j.id,
    label:'JB'+String(j.job_number).padStart(5,'0')+' — '+j.title+(j.customer_id?' · '+(customerMap.get(j.customer_id)??''):'')+(j.site_address_text?' · '+j.site_address_text:''),
   }));
+
+ let bookingJob:(null|{id:string;label:string;defaultStaffIds:string[]})=null;
+ if(bookingJobId){
+  let locked=jobMap.get(bookingJobId)??null;
+  if(!locked){
+   const {data:row}=await db.from('jobs').select('id,job_number,title,customer_id,site_address_text,status').eq('id',bookingJobId).maybeSingle();
+   if(row&&isSchedulableJobStatus(row.status)){
+    locked=row as Job;
+    jobMap.set(locked.id,locked);
+    if(locked.customer_id&&!customerMap.has(locked.customer_id)){
+     const {data:customer}=await db.from('customers').select('id,name').eq('id',locked.customer_id).maybeSingle();
+     if(customer)customerMap.set(customer.id as string,customer.name as string);
+    }
+   }
+  }else if(!isSchedulableJobStatus(locked.status)){
+   locked=null;
+  }
+  if(locked){
+   const {data:jobVisits}=await db.from('job_appointments').select('id').eq('job_id',locked.id).neq('status','cancelled');
+   const jobVisitIds=(jobVisits??[]).map(v=>v.id);
+   let defaultStaffIds:string[]=[];
+   if(jobVisitIds.length){
+    const {data:crewRows}=await db.from('job_appointment_staff').select('staff_id').in('appointment_id',jobVisitIds);
+    defaultStaffIds=[...new Set((crewRows??[]).map(r=>r.staff_id))];
+   }
+   const label='JB'+String(locked.job_number).padStart(5,'0')+' — '+locked.title+(locked.customer_id?' · '+(customerMap.get(locked.customer_id)??''):'');
+   bookingJob={id:locked.id,label,defaultStaffIds};
+   if(!pickerOptions.some(o=>o.id===locked!.id))pickerOptions.unshift({id:locked.id,label});
+  }
+ }
+
  const metrics=<div className="ee-dispatch-metrics ee-dispatch-metrics-compact ee-dispatch-metrics-actionable ee-dispatch-metrics-inline" aria-label="Schedule filters"><Link className={focus==='all'?'is-selected':''} aria-current={focus==='all'?'true':undefined} href={metricHref('all')}><small>Scheduled</small><strong>{all.length}</strong></Link><Link className={focus==='conflicts'?'is-selected':''} aria-current={focus==='conflicts'?'true':undefined} href={metricHref('conflicts')}><small>Conflicts</small><strong>{clashes.size}</strong></Link><Link className={focus==='unassigned'?'is-selected':''} aria-current={focus==='unassigned'?'true':undefined} href={metricHref('unassigned')}><small>Unassigned</small><strong>{all.filter(v=>(visitAssigned.get(v.id)??[]).length===0).length}</strong></Link></div>;
  const date=<div className="ee-schedule-date-nav"><Link aria-label="Previous week" href={viewQuery(view,dayKey(prev))}><ChevronLeft size={18} strokeWidth={2.2} aria-hidden="true"/></Link><strong>{dayLabel(monday)} – {dayLabel(addDays(monday,6))}</strong><Link aria-label="Next week" href={viewQuery(view,dayKey(next))}><ChevronRight size={18} strokeWidth={2.2} aria-hidden="true"/></Link><Link className="ee-schedule-today" href={viewQuery(view,today)}>This week</Link></div>;
  const renderVisit=(v:Visit)=>{
@@ -123,16 +154,37 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
  };
  const dayBoard=<section className="ee-dispatch-board" aria-label="Weekly appointments">{days.map(d=>{const key=dayKey(d),entries=displayedVisits.filter(v=>dayKey(v.starts_at)===key);return <div key={key} className={'ee-dispatch-day'+(key===today?' is-today':'')+(entries.length?'':' is-empty')}><div className="ee-dispatch-day-head"><strong>{dayLabel(d)}</strong><span>{entries.length} {entries.length===1?'visit':'visits'}</span></div>{entries.length?entries.map(renderVisit):<p className="ee-dispatch-empty">No visits</p>}<NeilGoogleEvents day={key}/></div>})}</section>;
  const teamBoard=<ElectricianDay canEdit={canEdit} visits={timelineVisits} days={days.map(d=>({key:dayKey(d),label:dayLabel(d)}))} staff={staffList} today={today} weekBoard={<section className="ee-dispatch-team-board" aria-label="Appointments by electrician">{[...staffMap.entries(),['unassigned','Unassigned'] as [string,string]].map(([id,name])=>{const entries=displayedVisits.filter(v=>{const crew=visitAssigned.get(v.id)??[];return id==='unassigned'?crew.length===0:crew.includes(id);});return <ElectricianWeekRow key={id} name={name} count={entries.length}>{days.map(d=>{const key=dayKey(d);const dayVisits=entries.filter(v=>dayKey(v.starts_at)===key);return <div className="ee-dispatch-team-day" key={key}><small>{dayLabel(d)}</small>{dayVisits.map(renderVisit)}{name.toLowerCase().includes('neil')&&<NeilGoogleEvents day={key} compact/>}</div>})}</ElectricianWeekRow>})}</section>}/>;
- const timelineBoard=<DispatchTimeline googleSettings={{connected:!!googleConnection,email:googleConnection?.google_email??null,error:googleError,canManage:canManageAdminOps(user.role)}} canEdit={canEdit} canOverrideNeil={['owner','admin'].includes(user.role)} today={today} nowMinutes={Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now).split(':')[0])*60+Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now).split(':')[1])} days={days.map(d=>({key:dayKey(d),label:dayLabel(d)}))} staff={staffList} visits={displayedTimelineVisits}/>;
+ const timelineBoard=<DispatchTimeline googleSettings={{connected:!!googleConnection,email:googleConnection?.google_email??null,error:googleError,canManage:canManageAdminOps(user.role)}} canEdit={canEdit} enableSlotCreate={canEdit} today={today} nowMinutes={Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now).split(':')[0])*60+Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now).split(':')[1])} days={days.map(d=>({key:dayKey(d),label:dayLabel(d)}))} staff={staffList} visits={displayedTimelineVisits}/>;
+ const bookingBanner=bookingJob?(
+  <div className="ee-booking-banner" role="status">
+   <p className="ee-booking-banner-copy">Picking a slot for <strong>{bookingJob.label}</strong>.</p>
+   <Link className="ee-booking-banner-done" href={clearJobHref}>Done</Link>
+  </div>
+ ):null;
+ const createAction=canEdit?(
+  <ScheduleVisitModal>
+   <ScheduleCreatePanel
+    jobs={pickerOptions}
+    lockedJob={bookingJob?{id:bookingJob.id,label:bookingJob.label}:null}
+    staff={staffList.map(({id,name})=>({id,name}))}
+    defaultStaffIds={bookingJob?.defaultStaffIds??[]}
+   />
+  </ScheduleVisitModal>
+ ):null;
  return <main className="hq-detail"><div className="hq-detail-inner ee-dispatch">
  <div className="ee-schedule-header-group"><div className="ee-schedule-topline"><h1 className="ee-sr-only">Schedule</h1><div className="ee-schedule-date-nav"><Link aria-label="Previous week" href={viewQuery(view,dayKey(prev))}><ChevronLeft size={18} strokeWidth={2.2} aria-hidden="true"/></Link><strong>{dayLabel(monday)} – {dayLabel(addDays(monday,6))}</strong><Link aria-label="Next week" href={viewQuery(view,dayKey(next))}><ChevronRight size={18} strokeWidth={2.2} aria-hidden="true"/></Link><Link className="ee-schedule-today" href={viewQuery(view,today)}>This week</Link></div></div>
  <div className="ee-dispatch-metrics ee-dispatch-metrics-compact ee-dispatch-metrics-actionable ee-dispatch-metrics-inline" aria-label="Schedule filters"><Link className={focus==='all'?'is-selected':''} aria-current={focus==='all'?'true':undefined} href={metricHref('all')}><small>Scheduled</small><strong>{all.length}</strong></Link><Link className={focus==='conflicts'?'is-selected':''} aria-current={focus==='conflicts'?'true':undefined} href={metricHref('conflicts')}><small>Conflicts</small><strong>{clashes.size}</strong></Link><Link className={focus==='unassigned'?'is-selected':''} aria-current={focus==='unassigned'?'true':undefined} href={metricHref('unassigned')}><small>Unassigned</small><strong>{all.filter(v=>(visitAssigned.get(v.id)??[]).length===0).length}</strong></Link></div></div>
  {error&&<p role="alert">Unable to load appointments. Please try again.</p>}
 
  {displayedVisits.length===0&&<p className="ee-dispatch-zero">{all.length===0?'No visits scheduled for this week. Select Schedule visit to add one.':'No appointments match this filter for the selected week.'}</p>}
- <DispatchViews weekNavigation={date} metrics={metrics} google={{connected:!!googleConnection,email:googleConnection?.google_email??null,events:externalEvents,error:googleError,canManage:canManageAdminOps(user.role)}} createAction={canEdit?<ScheduleVisitModal><div className="ee-dispatch-create"><ScheduleCreateForm><JobPicker jobs={pickerOptions}/><AppointmentRange/><fieldset className="ee-create-staff"><legend>Electricians for this visit</legend><p>Choose the crew for this appointment. Leave all unchecked to schedule as unassigned.</p><input type="hidden" name="explicit_visit_staff" value="yes"/><div className="ee-create-staff-list">{staffList.map(({id,name})=><label key={id}><input type="checkbox" name="staff_id" value={id}/>{name}</label>)}{staffList.length===0&&<span>No active electricians available.</span>}</div></fieldset><label className="ee-create-notes">Instructions (optional)<textarea name="notes" maxLength={2000} rows={2} placeholder="Access details or notes for the crew"/></label>{['owner','admin'].includes(user.role)&&<label className="ee-neil-override"><input type="checkbox" name="override_neil_calendar" value="yes"/> Override Neil’s Google Calendar conflict if one is detected (owner/admin only)</label>}<div className="ee-create-actions"><small>Perth time (AWST) · Choose electricians for this visit</small><button type="submit">Schedule visit</button></div></ScheduleCreateForm></div></ScheduleVisitModal>:null} initialView={view} week={dayKey(monday)} dayBoard={view==='week'?dayBoard:null} teamBoard={view==='team'?teamBoard:null} timelineBoard={view==='timeline'?timelineBoard:null} />
+ <DispatchViews weekNavigation={date} metrics={metrics} bookingBanner={bookingBanner} google={{connected:!!googleConnection,email:googleConnection?.google_email??null,events:externalEvents,error:googleError,canManage:canManageAdminOps(user.role)}} createAction={createAction} initialView={view} week={dayKey(monday)} dayBoard={view==='week'?dayBoard:null} teamBoard={view==='team'?teamBoard:null} timelineBoard={view==='timeline'?timelineBoard:null} />
  
  </div><style>{`
+.ee-booking-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;padding:10px 14px;border:1px solid #9ec4e4;border-radius:10px;background:#eef6ff;color:#17364b;font-size:13px;line-height:1.4}
+.ee-booking-banner-copy{margin:0;min-width:0;flex:1}
+.ee-booking-banner strong{font-weight:800}
+.ee-booking-banner-done{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 12px;border-radius:8px;background:#1688e9;color:#fff;font-weight:800;text-decoration:none;flex:none}
+.ee-booking-banner-done:hover{background:#0875c9}
 /* Spread primary schedule controls across the available desktop width */
 @media(min-width:1051px){
 .ee-dispatch .ee-dispatch-view-switch{width:100%!important;max-width:none!important;box-sizing:border-box;display:flex;align-items:center;gap:8px!important;padding:5px 9px!important}

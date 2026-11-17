@@ -4,7 +4,6 @@ import {
   formatHqElectricianOverlapMessage,
   hasElectricianOverlap,
 } from '@/lib/hq-electrician-overlaps';
-import {ensureJobAssignments} from '@/lib/job-assignments-sync';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 import type {ScheduleMutationResult} from '@/lib/schedule-mutation-result';
 import {revalidatePath} from 'next/cache';
@@ -79,7 +78,7 @@ async function findHqElectricianOverlapMessage(
 
 function neilFailureMessage(error:unknown):ScheduleMutationResult{
  const message=error instanceof Error?error.message:'Unable to verify Google Calendar availability.';
- if(/Google Calendar|override/i.test(message))return asFailure('neil_conflict',message);
+ if(/Google Calendar|Neil has a Google Calendar conflict/i.test(message))return asFailure('neil_conflict',message);
  return asFailure('error',message);
 }
 
@@ -110,17 +109,16 @@ export async function updateScheduledVisit(formData:FormData):Promise<ScheduleMu
    const overlap=await findHqElectricianOverlapMessage(db,id,update.starts_at!,update.ends_at!,crewIds);
    if(overlap)return asFailure('hq_overlap',overlap);
   }
-  let conflicts:Awaited<ReturnType<typeof requireNeilAvailability>>=[];
   if(action==='reschedule'){
    try{
-    conflicts=await requireNeilAvailability(crewIds,new Date(update.starts_at!),new Date(update.ends_at!),formData.get('override_neil_calendar')==='yes',user.role);
+    await requireNeilAvailability(crewIds,new Date(update.starts_at!),new Date(update.ends_at!));
    }catch(error){
     return neilFailureMessage(error);
    }
   }
   const {data:changed,error}=await db.from('job_appointments').update(update).eq('id',id).eq('status','scheduled').select('id').maybeSingle();
   if(error||!changed)return asFailure('conflict','Could not update appointment; it may have changed since opening.');
-  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:action==='cancel'?'appointment_cancelled':'appointment_rescheduled',note:action==='cancel'?'Visit cancelled':update.starts_at+' – '+update.ends_at+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
+  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:action==='cancel'?'appointment_cancelled':'appointment_rescheduled',note:action==='cancel'?'Visit cancelled':update.starts_at+' – '+update.ends_at});
   revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+visit.job_id);
   return {ok:true};
  }catch(error){
@@ -149,9 +147,8 @@ export async function updateVisitStaff(formData:FormData):Promise<ScheduleMutati
   if(!appointmentTimes)return asFailure('error','Unable to verify appointment time.');
   const overlap=await findHqElectricianOverlapMessage(db,id,appointmentTimes.starts_at,appointmentTimes.ends_at,staffIds);
   if(overlap)return asFailure('hq_overlap',overlap);
-  let conflicts:Awaited<ReturnType<typeof requireNeilAvailability>>=[];
   try{
-   conflicts=await requireNeilAvailability(staffIds,new Date(appointmentTimes.starts_at),new Date(appointmentTimes.ends_at),formData.get('override_neil_calendar')==='yes',user.role);
+   await requireNeilAvailability(staffIds,new Date(appointmentTimes.starts_at),new Date(appointmentTimes.ends_at));
   }catch(error){
    return neilFailureMessage(error);
   }
@@ -160,9 +157,7 @@ export async function updateVisitStaff(formData:FormData):Promise<ScheduleMutati
   // Add before removing existing crew so a failed insert never clears the roster.
   if(toAdd.length){const {error:addError}=await db.from('job_appointment_staff').insert(toAdd.map(staff_id=>({appointment_id:id,staff_id})));if(addError)return asFailure('error','Unable to assign visit staff.');}
   if(toRemove.length){const {error:removeError}=await db.from('job_appointment_staff').delete().eq('appointment_id',id).in('staff_id',toRemove);if(removeError)return asFailure('error','Unable to remove previous visit staff.');}
-  // Grow job team from visit crew; never remove job-team members when a visit shrinks.
-  if(staffIds.length)await ensureJobAssignments(db,{jobId:visit.job_id,staffIds,actorId:user.id});
-  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'visit_staff_updated',note:staffIds.length+' electrician(s) assigned to visit'+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
+  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'visit_staff_updated',note:staffIds.length+' electrician(s) assigned to visit'});
   revalidatePath('/hq/schedule');revalidatePath('/hq/jobs/'+visit.job_id);
   return {ok:true};
  }catch(error){
@@ -171,7 +166,7 @@ export async function updateVisitStaff(formData:FormData):Promise<ScheduleMutati
 }
 
 /** Persist a calendar drag or resize without changing its crew or notes. */
-export async function setScheduledVisitTimes(id:string,startIso:string,endIso:string,expectedStartIso:string,overrideNeil=false):Promise<ScheduleMutationResult>{
+export async function setScheduledVisitTimes(id:string,startIso:string,endIso:string,expectedStartIso:string):Promise<ScheduleMutationResult>{
  try{
   const user=await requireHqUser();
   assertOfficeOps(user);
@@ -185,16 +180,15 @@ export async function setScheduledVisitTimes(id:string,startIso:string,endIso:st
   const crewIds=(crew??[]).map(c=>c.staff_id);
   const overlap=await findHqElectricianOverlapMessage(db,id,start.toISOString(),end.toISOString(),crewIds);
   if(overlap)return asFailure('hq_overlap',overlap);
-  let conflicts:Awaited<ReturnType<typeof requireNeilAvailability>>=[];
   try{
-   conflicts=await requireNeilAvailability(crewIds,start,end,overrideNeil,user.role);
+   await requireNeilAvailability(crewIds,start,end);
   }catch(error){
    return neilFailureMessage(error);
   }
   const {data:changed,error}=await db.from('job_appointments').update({starts_at:start.toISOString(),ends_at:end.toISOString()}).eq('id',id).eq('status','scheduled').eq('starts_at',expected.toISOString()).select('id').maybeSingle();
   if(error||!changed)return asFailure('conflict','Visit changed since loading. Refresh and retry.');
   // Keep the critical update fast; log and cache refresh are best effort.
-  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'appointment_rescheduled',note:start.toISOString()+' – '+end.toISOString()+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
+  await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'appointment_rescheduled',note:start.toISOString()+' – '+end.toISOString()});
   revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+visit.job_id);
   return {ok:true,starts_at:start.toISOString(),ends_at:end.toISOString()};
  }catch(error){

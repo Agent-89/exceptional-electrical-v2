@@ -100,5 +100,5 @@ export function formatHqElectricianOverlapMessage(lines: readonly OverlapConflic
   const detail = lines
     .map((line) => `• ${line.staffName} — ${line.visitLabel} (${line.timeLabel})`)
     .join('\n');
-  return `Scheduling conflict: an electrician already has an overlapping HQ visit.\n${detail}\nChoose another time or electrician. Google Calendar override does not bypass this HQ rule.`;
+  return `Scheduling conflict: an electrician already has an overlapping HQ visit.\n${detail}\nChoose another time or electrician.`;
 }

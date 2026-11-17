@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
+import {ScheduleBookingProvider} from './booking-context';
 import {GoogleCalendarContext,type GoogleEvent} from './google-calendar-context';
 
 export default function DispatchViews({
@@ -12,6 +13,7 @@ export default function DispatchViews({
   teamBoard,
   timelineBoard,
   createAction,
+  bookingBanner,
   google,
 }:{
   initialView:'week'|'team'|'timeline';
@@ -22,6 +24,7 @@ export default function DispatchViews({
   teamBoard:React.ReactNode;
   timelineBoard:React.ReactNode;
   createAction?:React.ReactNode;
+  bookingBanner?:React.ReactNode;
   google?:{connected:boolean;email:string|null;events:GoogleEvent[];error:boolean;canManage:boolean};
 }){
   const router=useRouter();
@@ -78,23 +81,26 @@ export default function DispatchViews({
     startTransition(()=>{router.push(url.pathname+url.search);});
   };
 
-  return <GoogleCalendarContext.Provider value={{show:showGoogle&&!!google?.connected,events}}>
-    <nav className="ee-dispatch-view-switch" aria-label="Schedule layout" aria-busy={pending||undefined}>
-      <button type="button" aria-pressed={view==='week'} className={view==='week'?'is-active':''} onClick={()=>change('week')}>By day</button>
-      <button type="button" aria-pressed={view==='team'} className={view==='team'?'is-active':''} onClick={()=>change('team')}>By electrician</button>
-      <button type="button" aria-pressed={view==='timeline'} className={view==='timeline'?'is-active':''} onClick={()=>change('timeline')}>Time grid</button>
-      <div id="ee-dispatch-team-controls" className="ee-dispatch-timeline-controls" hidden={view!=='team'}/>
-      <div id="ee-dispatch-timeline-controls" className="ee-dispatch-timeline-controls" hidden={view!=='timeline'}/>
-      {weekNavigation&&<div className="ee-dispatch-top-week">{weekNavigation}</div>}
-      {createAction}
-      {metrics&&<div className="ee-dispatch-toolbar-metrics">{metrics}</div>}
-      {google&&<div className="ee-dispatch-google-visible">
-        <button type="button" className={"ee-google-visibility"+(showGoogle&&google.connected?" is-on":"")} aria-pressed={showGoogle&&google.connected} disabled={!google.connected} onClick={()=>setShowGoogle(v=>!v)} aria-label={showGoogle&&google.connected?"Hide Google Calendar events":"Show Google Calendar events"} title={google.connected?(showGoogle?"Hide Google Calendar events":"Show Google Calendar events"):"Google Calendar not connected"}><span className="ee-google-g">G</span></button>
-        {refreshError&&google.connected&&<span className="ee-google-refresh-error" title="Google Calendar refresh failed">!</span>}
-      </div>}
-    </nav>
-    <div hidden={view!=='week'}>{dayBoard}</div>
-    <div hidden={view!=='team'}>{teamBoard}</div>
-    <div hidden={view!=='timeline'}>{timelineBoard}</div>
-  </GoogleCalendarContext.Provider>;
+  return <ScheduleBookingProvider>
+    <GoogleCalendarContext.Provider value={{show:showGoogle&&!!google?.connected,events}}>
+      <nav className="ee-dispatch-view-switch" aria-label="Schedule layout" aria-busy={pending||undefined}>
+        <button type="button" aria-pressed={view==='week'} className={view==='week'?'is-active':''} onClick={()=>change('week')}>By day</button>
+        <button type="button" aria-pressed={view==='team'} className={view==='team'?'is-active':''} onClick={()=>change('team')}>By electrician</button>
+        <button type="button" aria-pressed={view==='timeline'} className={view==='timeline'?'is-active':''} onClick={()=>change('timeline')}>Time grid</button>
+        <div id="ee-dispatch-team-controls" className="ee-dispatch-timeline-controls" hidden={view!=='team'}/>
+        <div id="ee-dispatch-timeline-controls" className="ee-dispatch-timeline-controls" hidden={view!=='timeline'}/>
+        {weekNavigation&&<div className="ee-dispatch-top-week">{weekNavigation}</div>}
+        {createAction}
+        {metrics&&<div className="ee-dispatch-toolbar-metrics">{metrics}</div>}
+        {google&&<div className="ee-dispatch-google-visible">
+          <button type="button" className={"ee-google-visibility"+(showGoogle&&google.connected?" is-on":"")} aria-pressed={showGoogle&&google.connected} disabled={!google.connected} onClick={()=>setShowGoogle(v=>!v)} aria-label={showGoogle&&google.connected?"Hide Google Calendar events":"Show Google Calendar events"} title={google.connected?(showGoogle?"Hide Google Calendar events":"Show Google Calendar events"):"Google Calendar not connected"}><span className="ee-google-g">G</span></button>
+          {refreshError&&google.connected&&<span className="ee-google-refresh-error" title="Google Calendar refresh failed">!</span>}
+        </div>}
+      </nav>
+      {bookingBanner}
+      <div hidden={view!=='week'}>{dayBoard}</div>
+      <div hidden={view!=='team'}>{teamBoard}</div>
+      <div hidden={view!=='timeline'}>{timelineBoard}</div>
+    </GoogleCalendarContext.Provider>
+  </ScheduleBookingProvider>;
 }

@@ -867,12 +867,12 @@ export default function VisitFieldOps({
           </p>
           {!canFinalise ? (
             <p className="ee-tech-hint" role="status">
-              Shared visit · office sets the final outcome. Record your own work here.
+              Shared visit · closes when every assigned electrician submits a final report. Record your own work here.
             </p>
           ) : null}
           {sharedFinalised ? (
             <p className="ee-tech-hint" role="status">
-              Shared visit outcome is finalised. You can still update your personal work report.
+              This visit is finalised from the crew reports. You can still update your personal work report.
             </p>
           ) : null}
           <form onSubmit={onSaveReport} className="ee-tech-form">

@@ -19,6 +19,7 @@ type AppointmentView = {
   outstanding: string | null;
   issues: string | null;
   electricianNames: string[];
+  crew?: { id: string; name: string; avatarColor: string | null }[];
   scheduleNotes: string | null;
 };
 

@@ -131,9 +131,9 @@ Helpers: `src/lib/hq-roles.ts`. Prefer server-side gates; do not trust client-on
 
 - **Scope:** Only Neil’s connected Google Calendar is integrated. Other electricians have no Google Calendar sync in v1.
 - **Read behaviour:** Busy events on Neil’s calendar are considered only when Neil is on the visit crew. Show/hide is presentation-only; availability checks still use active busy events. No write-back to Google.
-- **Conflict override:** An auditable override exists solely for **Neil calendar busy conflicts** when Neil is assigned. Server-side, that override path is role-gated to `owner` / `admin` (`src/lib/neil-calendar-conflicts.ts`). Office and technician roles cannot override.
-- **Not a general override:** Do not treat “owner/admin” as a blanket calendar-override privilege for all staff or all conflict types. The Neil override never bypasses HQ electrician overlap hard-blocks (`hq_overlap`).
-- **Connect/disconnect:** OAuth connect/disconnect is an admin-ops action (owner/admin), separate from the Neil conflict-override checkbox on schedule mutations.
+- **Busy hard-block:** When Neil is on the visit crew and a Google busy event overlaps the appointment window, create/edit/move is hard-blocked with a conflict-style error (`src/lib/neil-calendar-conflicts.ts`). There is no owner/admin override path.
+- **Independent of HQ overlaps:** HQ electrician overlap hard-blocks (`hq_overlap`) remain separate and also non-bypassable.
+- **Connect/disconnect:** OAuth connect/disconnect is an admin-ops action (owner/admin).
 
 **Never** trigger real customer SMS/email, Xero writes, Tradify writes, or live Vapi cutover during Preview testing. Do not mutate Production data or external integrations without approval.
 

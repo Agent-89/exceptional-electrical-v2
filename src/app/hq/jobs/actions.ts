@@ -5,7 +5,6 @@ import {
  hasElectricianOverlap,
 } from '@/lib/hq-electrician-overlaps';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
-import {ensureJobAssignments} from '@/lib/job-assignments-sync';
 import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
 import {applyJobStatusSync} from '@/lib/job-status-sync';
 import {revalidatePath} from 'next/cache';
@@ -24,29 +23,18 @@ export async function createJob(formData:FormData){
  const enquiryId=String(formData.get('enquiry_id')||'').trim();
  const quoteId=String(formData.get('quote_id')||'').trim();
  const idempotencyKey=String(formData.get('idempotency_key')||'').trim();
- const staffIds=[...new Set(
-  formData.getAll('staff_id').map((value)=>String(value||'').trim()).filter(Boolean),
- )];
  const uuid=/^[0-9a-f-]{36}$/i;
  if(siteAddress.length>500)throw new Error('Site address is too long.');
  if(description.length<2||description.length>5000||title.length<2||title.length>200||!['low','normal','high','urgent'].includes(priority))throw new Error('Please check the job details.');
  if(enquiryId&&!uuid.test(enquiryId))throw new Error('Invalid enquiry link.');
  if(quoteId&&!uuid.test(quoteId))throw new Error('Invalid quote link.');
  if(!uuid.test(idempotencyKey))throw new Error('Missing create token. Refresh the page and try again.');
- if(staffIds.some((id)=>!uuid.test(id)))throw new Error('Invalid staff assignment.');
  const db=dbAdmin();
  const {data:existing}=await db.from('jobs').select('id').eq('create_idempotency_key',idempotencyKey).maybeSingle();
  if(existing){revalidatePath('/hq/jobs');redirect('/hq/jobs/'+existing.id)}
  if(customerId){const {data:customer}=await db.from('customers').select('id').eq('id',customerId).maybeSingle();if(!customer)throw new Error('Customer not found.');}
  if(enquiryId){const {data:enquiry}=await db.from('enquiries').select('id').eq('id',enquiryId).maybeSingle();if(!enquiry)throw new Error('Enquiry not found.');}
  if(quoteId){const {data:quote}=await db.from('quotes').select('id').eq('id',quoteId).maybeSingle();if(!quote)throw new Error('Quote not found.');}
- let validatedStaffIds:string[]=[];
- if(staffIds.length){
-  const {data:active,error:staffError}=await db.from('scheduling_staff').select('id').eq('active',true).in('id',staffIds);
-  if(staffError)throw new Error('Unable to validate staff.');
-  validatedStaffIds=(active??[]).map((row)=>row.id as string);
-  if(validatedStaffIds.length!==staffIds.length)throw new Error('Staff member not found.');
- }
  const {data,error}=await db.from('jobs').insert({title,description,customer_id:customerId||null,site_address_text:siteAddress||null,priority,enquiry_id:enquiryId||null,quote_id:quoteId||null,create_idempotency_key:idempotencyKey,created_by:user.id}).select('id').single();
  if(error){
   // Unique violation on create_idempotency_key: a concurrent retry already inserted this job.
@@ -58,15 +46,6 @@ export async function createJob(formData:FormData){
  }
  if(!data)throw new Error('Unable to create job.');
  await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'created'});
- if(validatedStaffIds.length){
-  const {error:assignError}=await db.from('job_assignments').upsert(
-   validatedStaffIds.map((staffId)=>({job_id:data.id,staff_id:staffId})),
-   {onConflict:'job_id,staff_id',ignoreDuplicates:true},
-  );
-  if(assignError)throw new Error('Job was created, but staff could not be assigned.');
-  await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'staff_assigned',note:`Assigned ${validatedStaffIds.length} electrician${validatedStaffIds.length===1?'':'s'} at create`});
-  await applyJobStatusSync(db,{jobId:data.id,trigger:'staff_assigned',actorId:user.id});
- }
  if(quoteId){
   const sync=await syncPrimaryJobQuoteAfterCreate({jobId:data.id,quoteId,actorId:user.id});
   if(sync.status==='failed'){
@@ -119,27 +98,6 @@ export async function updateJobDetails(formData:FormData){
  await db.from('job_activity').insert({job_id:id,actor_id:user.id,action:'details_updated'});
  revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+id);
 }
-export async function assignJobStaff(formData:FormData){
- const user=await requireHqUser();assertOfficeOps(user);
- const jobId=String(formData.get('job_id')||'');const staffId=String(formData.get('staff_id')||'');
- if(!/^[0-9a-f-]{36}$/i.test(jobId)||!/^[0-9a-f-]{36}$/i.test(staffId))throw new Error('Invalid staff assignment.');
- // job_assignments.staff_id references scheduling_staff.id (not auth / staff_profiles).
- const db=dbAdmin();const {data:staff}=await db.from('scheduling_staff').select('id').eq('id',staffId).eq('active',true).maybeSingle();
- if(!staff)throw new Error('Staff member not found.');
- const {error}=await db.from('job_assignments').upsert({job_id:jobId,staff_id:staff.id},{onConflict:'job_id,staff_id',ignoreDuplicates:true});
- if(error)throw new Error('Could not assign staff.');
- await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'staff_assigned'});
- await applyJobStatusSync(db,{jobId,trigger:'staff_assigned',actorId:user.id});
- revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');
-}
-export async function removeJobStaff(formData:FormData){
- const user=await requireHqUser();assertOfficeOps(user);
- const jobId=String(formData.get('job_id')||'');const staffId=String(formData.get('staff_id')||'');
- const db=dbAdmin();const {error}=await db.from('job_assignments').delete().eq('job_id',jobId).eq('staff_id',staffId);
- if(error)throw new Error('Could not remove assignment.');
- await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'staff_unassigned'});
- revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');
-}
 export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;message:string}>{
  try{
   const user=await requireHqUser();assertOfficeOps(user);
@@ -157,9 +115,16 @@ export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;m
   let staffIds:string[];
   if(explicit)staffIds=chosen;
   else{
-   const {data:jobStaff,error:staffLookupError}=await db.from('job_assignments').select('staff_id').eq('job_id',jobId);
-   if(staffLookupError)throw new Error('Unable to read job electricians.');
-   staffIds=[...new Set((jobStaff??[]).map(a=>a.staff_id))];
+   // Fallback for callers without explicit visit crew: derive from non-cancelled visits.
+   const {data:activeVisits,error:visitLookupError}=await db.from('job_appointments').select('id').eq('job_id',jobId).neq('status','cancelled');
+   if(visitLookupError)throw new Error('Unable to read job visits.');
+   const visitIds=(activeVisits??[]).map(v=>v.id);
+   if(!visitIds.length)staffIds=[];
+   else{
+    const {data:visitStaff,error:staffLookupError}=await db.from('job_appointment_staff').select('staff_id').in('appointment_id',visitIds);
+    if(staffLookupError)throw new Error('Unable to read job electricians.');
+    staffIds=[...new Set((visitStaff??[]).map(a=>a.staff_id))];
+   }
   }
   if(staffIds.length){
    const {data:active,error:staffError}=await db.from('scheduling_staff').select('id').eq('active',true).in('id',staffIds);
@@ -205,9 +170,8 @@ export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;m
     })));
    }
   }
-  let conflicts:Awaited<ReturnType<typeof requireNeilAvailability>>=[];
   try{
-   conflicts=await requireNeilAvailability(staffIds,begins,ends,formData.get('override_neil_calendar')==='yes',user.role);
+   await requireNeilAvailability(staffIds,begins,ends);
   }catch(error){
    return {ok:false,message:error instanceof Error?error.message:'Unable to verify Google Calendar availability.'};
   }
@@ -220,10 +184,9 @@ export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;m
     if(rollbackError)throw new Error('Visit was created but assigning electricians failed. Please review the calendar before retrying.');
     throw new Error('Unable to assign electricians. No appointment was saved.');
    }
-   await ensureJobAssignments(db,{jobId,staffIds,actorId:user.id});
   }
   await applyJobStatusSync(db,{jobId,trigger:'appointment_created',actorId:user.id});
-  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
+  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end});
   revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');
   return {ok:true,message:'Job scheduled successfully'};
  }catch(error){

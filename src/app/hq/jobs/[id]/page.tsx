@@ -9,12 +9,7 @@ import {
   isJobStatus,
 } from '@/lib/job-statuses';
 import { staffColor } from '@/lib/staff-color';
-import {
-  updateJob,
-  updateJobDetails,
-  assignJobStaff,
-  removeJobStaff,
-} from '../actions';
+import { updateJob, updateJobDetails } from '../actions';
 import {
   formatJobActivityWhen,
   presentJobActivityEvent,
@@ -102,7 +97,6 @@ export default async function JobPage({
     { data: customer },
     { data: activity },
     staff,
-    { data: assignments },
     appointmentsResult,
     { data: customerSeed },
     jobQuotesResult,
@@ -118,7 +112,6 @@ export default async function JobPage({
       .order('created_at', { ascending: false })
       .limit(80),
     getCachedActiveSchedulingStaff(),
-    db.from('job_assignments').select('staff_id').eq('job_id', id),
     db
       .from('job_appointments')
       .select(appointmentSelectWithResolution)
@@ -166,49 +159,76 @@ export default async function JobPage({
   const staffById = new Map(staff.map((s) => [s.id, s]));
   const staffNameById = new Map(staff.map((s) => [s.id, s.full_name]));
   const staffNames = Object.fromEntries(staffNameById.entries());
-  const assignedNames = (assignments ?? []).map((a) => {
-    const member = staffById.get(a.staff_id as string);
+
+  const activeAppointmentIds = new Set(
+    (appointments ?? [])
+      .filter((a) => String(a.status) !== 'cancelled')
+      .map((a) => String(a.id)),
+  );
+  const jobTeamIds: string[] = [];
+  const jobTeamSeen = new Set<string>();
+  for (const row of appointmentStaffRows ?? []) {
+    if (!activeAppointmentIds.has(row.appointment_id) || jobTeamSeen.has(row.staff_id)) continue;
+    jobTeamSeen.add(row.staff_id);
+    jobTeamIds.push(row.staff_id);
+  }
+  const jobTeam = jobTeamIds.map((staffId) => {
+    const member = staffById.get(staffId);
     const name = member?.full_name ?? 'Team member';
     return {
-      id: a.staff_id as string,
+      id: staffId,
       name,
       initials: staffInitials(name, member?.initials),
       avatarColor: member?.avatar_color ?? null,
     };
   });
 
-  const visitCrewByAppointment = new Map<string, string[]>();
+  const visitCrewByAppointment = new Map<
+    string,
+    { id: string; name: string; avatarColor: string | null }[]
+  >();
   for (const row of appointmentStaffRows ?? []) {
     const list = visitCrewByAppointment.get(row.appointment_id) ?? [];
-    list.push(staffNameById.get(row.staff_id) ?? 'Team member');
+    const member = staffById.get(row.staff_id);
+    list.push({
+      id: row.staff_id,
+      name: member?.full_name ?? staffNameById.get(row.staff_id) ?? 'Team member',
+      avatarColor: member?.avatar_color ?? null,
+    });
     visitCrewByAppointment.set(row.appointment_id, list);
   }
 
   const upcoming = (appointments ?? []).find(
     (a) => a.status === 'scheduled' && new Date(String(a.ends_at)).getTime() >= Date.now(),
   );
-  const upcomingCrew = upcoming ? visitCrewByAppointment.get(String(upcoming.id)) ?? [] : [];
+  const upcomingCrew = upcoming
+    ? (visitCrewByAppointment.get(String(upcoming.id)) ?? []).map((member) => member.name)
+    : [];
 
-  const appointmentViews = (appointments ?? []).map((a) => ({
-    id: String(a.id),
-    startsAt: String(a.starts_at),
-    endsAt: String(a.ends_at),
-    status: String(a.status),
-    fieldStatus: (a.field_status as string | undefined) ?? 'scheduled',
-    followUp: Boolean(a.field_follow_up_required),
-    followUpResolvedAt: (a.field_follow_up_resolved_at as string | null | undefined) ?? null,
-    followUpLinkedAppointmentId:
-      (a.field_follow_up_linked_appointment_id as string | null | undefined) ?? null,
-    followUpResolution:
-      (a.field_follow_up_resolution as 'linked_visit' | 'office_cleared' | null | undefined) ?? null,
-    followUpResolutionNote:
-      (a.field_follow_up_resolution_note as string | null | undefined) ?? null,
-    completionNote: (a.field_completion_note as string | null | undefined) ?? null,
-    outstanding: (a.field_outstanding_work as string | null | undefined) ?? null,
-    issues: (a.field_issues as string | null | undefined) ?? null,
-    electricianNames: visitCrewByAppointment.get(String(a.id)) ?? [],
-    scheduleNotes: (a.notes as string | null | undefined) ?? null,
-  }));
+  const appointmentViews = (appointments ?? []).map((a) => {
+    const crew = visitCrewByAppointment.get(String(a.id)) ?? [];
+    return {
+      id: String(a.id),
+      startsAt: String(a.starts_at),
+      endsAt: String(a.ends_at),
+      status: String(a.status),
+      fieldStatus: (a.field_status as string | undefined) ?? 'scheduled',
+      followUp: Boolean(a.field_follow_up_required),
+      followUpResolvedAt: (a.field_follow_up_resolved_at as string | null | undefined) ?? null,
+      followUpLinkedAppointmentId:
+        (a.field_follow_up_linked_appointment_id as string | null | undefined) ?? null,
+      followUpResolution:
+        (a.field_follow_up_resolution as 'linked_visit' | 'office_cleared' | null | undefined) ?? null,
+      followUpResolutionNote:
+        (a.field_follow_up_resolution_note as string | null | undefined) ?? null,
+      completionNote: (a.field_completion_note as string | null | undefined) ?? null,
+      outstanding: (a.field_outstanding_work as string | null | undefined) ?? null,
+      issues: (a.field_issues as string | null | undefined) ?? null,
+      electricianNames: crew.map((member) => member.name),
+      crew,
+      scheduleNotes: (a.notes as string | null | undefined) ?? null,
+    };
+  });
 
   const customersById = new Map((customerSeed ?? []).map((row) => [row.id as string, row]));
   if (customer?.id) customersById.set(customer.id as string, { id: customer.id, name: customer.name });
@@ -362,15 +382,26 @@ export default async function JobPage({
                     </div>
                     <div>
                       <span className="ee-eyebrow">JOB TEAM</span>
-                      <strong>
-                        {assignedNames.length
-                          ? assignedNames.map((person) => person.name).join(', ')
-                          : 'Not assigned'}
-                      </strong>
-                      <span className="ee-muted">
-                        Default crew · also grows from scheduled visits
-                      </span>
-                      <JobTabButton tab="visits">Manage team</JobTabButton>
+                      {jobTeam.length ? (
+                        <div className="ee-job-team-avatars" aria-label="Job team">
+                          {jobTeam.map((person) => (
+                            <span
+                              key={person.id}
+                              className="ee-avatar"
+                              style={{
+                                backgroundColor: staffColor(person.id, person.avatarColor),
+                                color: '#fff',
+                              }}
+                              title={person.name}
+                              aria-label={person.name}
+                            >
+                              {person.initials}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <strong>Not assigned</strong>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -448,86 +479,24 @@ export default async function JobPage({
               <SuspendedJobFiles jobId={id} appointments={appointmentViews} staffNames={staffNames} />
             ),
             visits: (
-              <>
-                <JobFieldActivity
-                  jobId={id}
-                  appointments={appointmentViews}
-                  techReports={[]}
-                  timeEntries={[]}
-                  notes={[]}
-                  photos={[]}
-                  section="visits"
-                  scheduleForm={canEdit ? <ScheduleAppointmentForm jobId={id} /> : null}
-                />
-
-                <section id="team" className="hq-panel ee-compact-panel">
-                  <div className="ee-section-title">
-                    <div>
-                      <span className="ee-eyebrow">TEAM</span>
-                      <h2>Job electricians</h2>
-                    </div>
-                  </div>
-                  {assignedNames.length ? (
-                    <div className="ee-team-list">
-                      {assignedNames.map((person) => (
-                        <div key={person.id}>
-                          <span
-                            className="ee-avatar"
-                            style={{
-                              backgroundColor: staffColor(person.id, person.avatarColor),
-                              color: '#fff',
-                            }}
-                            aria-hidden="true"
-                          >
-                            {person.initials}
-                          </span>
-                          <strong>{person.name}</strong>
-                          {canEdit ? (
-                            <form action={removeJobStaff}>
-                              <input type="hidden" name="job_id" value={id} />
-                              <input type="hidden" name="staff_id" value={person.id} />
-                              <button type="submit" aria-label={'Remove ' + person.name}>
-                                Remove
-                              </button>
-                            </form>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="ee-muted">No electricians assigned.</p>
-                  )}
-                  {canEdit && staff.some((person) => !assignedNames.some((a) => a.id === person.id)) ? (
-                    <details className="ee-expand">
-                      <summary>
-                        + Assign electrician
-                        <span className="ee-expand-mark" aria-hidden="true">
-                          ＋
-                        </span>
-                      </summary>
-                      <form action={assignJobStaff} className="ee-job-inline">
-                        <input type="hidden" name="job_id" value={id} />
-                        <select name="staff_id" required defaultValue="">
-                          <option value="" disabled>
-                            Choose staff member
-                          </option>
-                          {staff
-                            .filter((person) => !assignedNames.some((a) => a.id === person.id))
-                            .map((person) => (
-                              <option key={person.id} value={person.id}>
-                                {person.full_name}
-                              </option>
-                            ))}
-                        </select>
-                        <button type="submit">Assign</button>
-                      </form>
-                    </details>
-                  ) : null}
-                  {canEdit && !staff.length ? (
-                    <p className="ee-muted">No active scheduling staff available to assign.</p>
-                  ) : null}
-                </section>
-              </>
+              <JobFieldActivity
+                jobId={id}
+                appointments={appointmentViews}
+                techReports={[]}
+                timeEntries={[]}
+                notes={[]}
+                photos={[]}
+                section="visits"
+                scheduleForm={
+                  canEdit ? (
+                    <ScheduleAppointmentForm
+                      jobId={id}
+                      staff={staff}
+                      defaultStaffIds={jobTeam.map((person) => person.id)}
+                    />
+                  ) : null
+                }
+              />
             ),
             time: <SuspendedJobTime jobId={id} appointments={appointmentViews} staffNames={staffNames} />,
             quotes: (
@@ -642,10 +611,13 @@ export default async function JobPage({
 .ee-workspace-head h1{margin:6px 0 0;font-size:clamp(28px,5vw,40px);line-height:1.15}
 .ee-workspace-head p,.ee-muted{color:var(--hq-muted,#738396)}
 .ee-job-provenance{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 0}
-.ee-job-provenance-item{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:5px 10px;border:1px solid #d5e2ef;border-radius:999px;background:#fff;color:#18577d;text-decoration:none;white-space:nowrap}
-.ee-job-provenance-label{color:var(--hq-muted,#738396);font-size:12px;font-weight:700}
-.ee-job-provenance-id{color:#0875c9;font-size:13px;font-weight:800}
+.ee-job-provenance-item{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;width:fit-content;max-width:100%;box-sizing:border-box;padding:5px 10px;border:1px solid #d5e2ef;border-radius:999px;background:#fff;color:#18577d;text-decoration:none;white-space:nowrap}
+.ee-job-provenance-label{color:var(--hq-muted,#738396);font-size:12px;font-weight:700;flex:none}
+.ee-job-provenance-id{color:#0875c9;font-size:13px;font-weight:800;min-width:0}
 .ee-job-provenance-more{color:#0875c9;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
+.ee-visits-section-title{margin-bottom:0}
+.ee-visits-section-title h2{margin-bottom:4px}
+.ee-visits-section-stats{margin:0 0 8px}
 .ee-job-header-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .ee-workspace-status{display:inline-flex;align-items:center;gap:7px;background:#eaf2fa;color:#18577d;border-radius:999px;padding:7px 10px 7px 12px;font-size:13px;font-weight:700;white-space:nowrap;border:1px solid transparent}
 .ee-workspace-status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 auto}
@@ -736,8 +708,21 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-job-row{border-top:1px solid #e1e8f0;margin-top:10px;padding-top:10px}
 .ee-job-row>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:4px 0;min-height:36px;color:inherit}
 .ee-job-row>summary::-webkit-details-marker{display:none}
-.ee-job-row-main{display:grid;gap:2px;min-width:0;text-align:left}
+.ee-job-row-main{display:grid;gap:2px;min-width:0;text-align:left;flex:1}
 .ee-job-row-main strong{color:#10233a;font-size:15px;font-weight:700;overflow-wrap:anywhere}
+.ee-visit-row-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.ee-visit-crew-avatars{display:inline-flex;align-items:center;gap:3px}
+.ee-visit-crew-avatar{width:24px;height:24px;font-size:9px;flex:none}
+.ee-visit-row-end{display:flex;align-items:flex-start;gap:8px;flex:none}
+.ee-visit-pills{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;max-width:min(220px,46vw)}
+.ee-visit-pill{display:inline-flex;align-items:center;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800;line-height:1.2;white-space:nowrap}
+.ee-visit-pill.is-scheduled{background:#eef3f8;color:#45677e}
+.ee-visit-pill.is-progress{background:#e7f2ff;color:#0b6cb8}
+.ee-visit-pill.is-paused{background:#fff4e4;color:#97571c}
+.ee-visit-pill.is-completed{background:#e7f7ee;color:#1b7a45}
+.ee-visit-pill.is-unable{background:#fdeeee;color:#a13a3a}
+.ee-visit-pill.is-cancelled{background:#eef0f3;color:#5b6672}
+.ee-visit-pill.is-followup{background:#fff4e4;color:#97571c;border:1px solid #e4b16d}
 .ee-job-row-body{padding:10px 0 4px;display:grid;gap:10px;min-width:0}
 .ee-job-subblock{display:grid;gap:6px;min-width:0}
 .ee-job-subblock p{margin:0;overflow-wrap:anywhere}
@@ -810,6 +795,39 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-edit-form label{display:grid;gap:7px;font-weight:600}
 .ee-edit-form input,.ee-edit-form select,.ee-edit-form textarea,.ee-job-inline select{box-sizing:border-box;width:100%;min-width:0;padding:12px;border:1px solid #cbd8e6;border-radius:10px;background:var(--hq-card,#fff);color:inherit;font:inherit;font-size:16px}
 .ee-edit-form button{justify-self:start}
+.ee-schedule-slot-link{margin:0 0 4px}
+.ee-schedule-slot-link a{color:#0875c9;font-size:13px;font-weight:750;text-decoration:none}
+.ee-schedule-slot-link a:hover{text-decoration:underline}
+.ee-schedule-appointment-form .ee-create-staff{margin:0;padding:12px 14px;border:1px solid #cdd9e5;border-radius:11px;background:var(--hq-card,#fff);min-width:0;display:grid;gap:10px}
+.ee-schedule-appointment-form .ee-create-staff legend{padding:0 4px;font-size:13px;font-weight:800}
+.ee-schedule-appointment-form .ee-create-staff-hint{margin:0;color:var(--hq-muted,#738396);font-size:13px;font-weight:400}
+.ee-schedule-appointment-form .ee-create-staff-selected{display:grid;gap:8px}
+.ee-schedule-appointment-form .ee-create-staff-pill{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 8px;border:1px solid #d7e3ec;border-radius:12px;background:#f7fafc}
+.ee-schedule-appointment-form .ee-create-staff-avatar{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;color:#fff;font-size:11px;font-weight:800;letter-spacing:.02em;flex:0 0 auto}
+.ee-schedule-appointment-form .ee-create-staff-name{font-size:13px;font-weight:650;color:#173c54;line-height:1.2}
+.ee-schedule-appointment-form .ee-create-staff-remove{margin-left:auto;border:0;background:transparent;color:#0875c9;font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 4px}
+.ee-schedule-appointment-form .ee-create-staff-add{justify-self:start;border:1px dashed #9ec4e4;border-radius:999px;background:#f3f8fc;color:#0875c9;padding:9px 14px;font:inherit;font-size:13px;font-weight:750;cursor:pointer}
+.ee-schedule-appointment-form .ee-create-staff-add:disabled{opacity:.55;cursor:not-allowed}
+.ee-schedule-appointment-form .ee-create-staff-empty{color:var(--hq-muted,#738396);font-size:13px;font-weight:400;margin:0}
+.ee-staff-picker-backdrop{position:fixed;inset:0;z-index:80;background:#102c4280;display:grid;place-items:end center;padding:12px}
+.ee-staff-picker-dialog{width:min(480px,100%);max-height:min(88dvh,720px);display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:12px;background:#fff;border-radius:16px 16px 12px 12px;padding:16px;box-shadow:0 20px 60px #102c4250}
+.ee-staff-picker-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ee-staff-picker-head strong{font-size:18px;color:#17364b}
+.ee-staff-picker-head button{border:0;background:#edf4fa;color:#31536c;width:40px;height:40px;border-radius:10px;font-size:28px;line-height:1;cursor:pointer}
+.ee-staff-picker-hint{margin:0;color:#647d91;font-size:13px}
+.ee-staff-picker-list{overflow:auto;display:grid;gap:8px;padding-right:2px}
+.ee-staff-picker-option{display:flex!important;align-items:center;gap:10px;min-height:48px;padding:8px 10px;border:1px solid #d7e3ec;border-radius:12px;background:#f7fafc;cursor:pointer}
+.ee-staff-picker-option.is-selected{border-color:#1688e9;background:#eef6ff}
+.ee-staff-picker-option input{width:auto;margin:0;padding:0;flex:0 0 auto;accent-color:#1688e9}
+.ee-staff-picker-option .ee-avatar{flex:0 0 auto;width:35px;height:35px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800;letter-spacing:.02em}
+.ee-staff-picker-name{font-size:14px;font-weight:650;color:#173c54;line-height:1.2}
+.ee-staff-picker-actions{display:flex;justify-content:flex-end;gap:8px}
+.ee-staff-picker-actions button{border:1px solid #cbd8e6;border-radius:9px;background:#fff;color:#31536c;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer}
+.ee-staff-picker-actions .ee-staff-picker-confirm{background:#1688e9;border-color:#1688e9;color:#fff}
+@media(min-width:761px){
+ .ee-staff-picker-backdrop{place-items:center}
+ .ee-staff-picker-dialog{border-radius:16px}
+}
 .ee-review-actions{display:flex;flex-wrap:wrap;gap:8px}
 .ee-review-actions button{border:1px solid #d4e1ed;border-radius:10px;background:#fff;color:#17669e;padding:10px 12px;min-height:44px;font:inherit;font-weight:800;cursor:pointer}
 .ee-review-actions button:disabled{opacity:.6;cursor:wait}
@@ -821,10 +839,7 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-billable-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:-6px}
 .ee-billable-manual{color:#9a3412;font-size:13px;font-weight:700}
 .ee-follow-up-resolve{margin-top:12px;padding-top:12px;border-top:1px solid #e1e8f0}
-.ee-team-list{display:grid;gap:10px}
-.ee-team-list>div{display:flex;align-items:center;gap:12px}
-.ee-team-list form{margin-left:auto}
-.ee-team-list button{border:0;background:transparent;color:#0875c9;padding:8px}
+.ee-job-team-avatars{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .ee-avatar{display:grid;place-items:center;background:#e6f1fd;color:#fff;border-radius:50%;width:35px;height:35px;font-size:12px;font-weight:800;letter-spacing:.02em}
 .ee-job-inline{display:flex;gap:8px;margin-top:14px}
 .ee-job-inline button{border:0;border-radius:10px;background:#1688e9;color:white;padding:10px 16px}
@@ -871,6 +886,11 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
   .ee-workspace .ee-summary-grid strong{font-size:14px}
   .ee-job-stat-grid{grid-template-columns:minmax(0,1fr)}
   .ee-job-tabs{margin-right:-4px}
+  .ee-job-provenance{gap:6px}
+  .ee-job-provenance-item{flex:0 0 auto;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .ee-job-provenance-id{white-space:nowrap}
+  .ee-visits-section-title h2{margin-bottom:2px}
+  .ee-visits-section-stats{margin:0 0 6px}
 }
 @media(min-width:761px) and (max-width:1099px){
   .ee-job-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}

@@ -49,6 +49,7 @@ export type JobDetailAppointment = {
   outstanding: string | null;
   issues: string | null;
   electricianNames?: string[];
+  crew?: {id: string; name: string; avatarColor: string | null}[];
   scheduleNotes?: string | null;
 };
 
@@ -204,8 +205,8 @@ export function buildJobAttentionItems(input: {
         items.push({
           id: `outcome-${a.id}`,
           kind: 'visit_outcome',
-          label: 'Shared visit outcome not finalised',
-          detail: `${perthDateLabel(a.startsAt)} · ${reports.length} technician report${reports.length === 1 ? '' : 's'} on file`,
+          label: 'Waiting on technician reports to close visit',
+          detail: `${perthDateLabel(a.startsAt)} · ${reports.length} report${reports.length === 1 ? '' : 's'} on file · visit closes when every assigned electrician submits a final report`,
         });
       }
     }

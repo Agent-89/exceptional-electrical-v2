@@ -15,11 +15,13 @@ import { ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES } from '@/lib/tech-field-constants
 import {
   TECH_WORK_REPORT_CONFLICT_MESSAGE,
   VISIT_REPORT_CONFLICT_MESSAGE,
+  allAssignedReportsTerminal,
   buildVisitReportPatch,
   canTechnicianWriteSharedVisitFields,
   isTerminalVisitOutcome,
   isVisitOutcomeStatus,
   normalizeVisitReportText,
+  rollupSharedVisitOutcome,
   visitOutcomeUpdatesJobStatus,
   visitReportSaveIsNoop,
   visitReportSnapshotsMatch,
@@ -50,7 +52,7 @@ import {
   isFollowUpOutstanding,
   validateFollowUpResolution,
 } from '@/lib/job-follow-up';
-import { upsertOwnTechWorkReport } from '@/lib/tech-work-reports';
+import { listTechWorkReportsForAppointment, upsertOwnTechWorkReport } from '@/lib/tech-work-reports';
 
 /** Soft result for tech field actions — avoid throwing expected UX errors (they become 500 digests). */
 export type TechFieldActionResult =
@@ -362,7 +364,7 @@ export async function addManualTimeEntryAction(formData: FormData): Promise<Tech
   return okResult({ message: 'Manual time entry saved' });
 }
 
-async function countAppointmentTechnicians(appointmentId: string): Promise<number> {
+async function listAppointmentStaffIds(appointmentId: string): Promise<string[]> {
   const db = dbAdmin();
   const { data, error } = await db
     .from('job_appointment_staff')
@@ -370,7 +372,11 @@ async function countAppointmentTechnicians(appointmentId: string): Promise<numbe
     .eq('appointment_id', appointmentId)
     .limit(50);
   if (error) throw new Error('Unable to load visit crew.');
-  return new Set((data ?? []).map((row) => row.staff_id as string)).size;
+  return [...new Set((data ?? []).map((row) => row.staff_id as string))];
+}
+
+async function countAppointmentTechnicians(appointmentId: string): Promise<number> {
+  return (await listAppointmentStaffIds(appointmentId)).length;
 }
 
 function expectedVisitReportSnapshot(formData: FormData): VisitReportSnapshot {
@@ -477,6 +483,7 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
   }
 
   let sharedUpdated = false;
+  let sharedFinalised = sharedWrite.finaliseShared;
   if (sharedWrite.writeShared) {
     const expected = expectedVisitReportSnapshot(formData);
     // When only nudging in-progress (solo, non-terminal), keep existing shared text
@@ -531,7 +538,7 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
       }
       if (built.appointmentStatusCompleted) patch.status = 'completed';
 
-      // Never overwrite an office-finalised shared outcome.
+      // Never overwrite an already-finalised shared outcome.
       const { data, error } = await applyVisitReportExpectation(
         db.from('job_appointments').update(patch).eq('id', visit.id),
         expected,
@@ -556,6 +563,63 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
         sharedUpdated = true;
       }
     }
+  } else if (!isTerminalVisitOutcome(current.field_status) && assignedCount > 1) {
+    // Multi-tech: finalise shared visit only when every assigned electrician has a terminal report.
+    const assignedStaffIds = await listAppointmentStaffIds(visit.id);
+    const crewReports = await listTechWorkReportsForAppointment(visit.id);
+    if (
+      allAssignedReportsTerminal(
+        assignedStaffIds,
+        crewReports.map((report) => ({
+          staffId: report.staffId,
+          progressStatus: report.progressStatus,
+        })),
+      )
+    ) {
+      const rollup = rollupSharedVisitOutcome(
+        crewReports.map((report) => ({
+          staffId: report.staffId,
+          technicianName: report.technicianName,
+          progressStatus: report.progressStatus,
+          workSummary: report.workSummary,
+          outstandingWork: report.outstandingWork,
+          issues: report.issues,
+          followUpRequired: report.followUpRequired,
+        })),
+      );
+      const built = buildVisitReportPatch({
+        fieldStatus: rollup.fieldStatus,
+        fields: rollup.fields,
+        currentAppointmentStatus: current.status,
+        completedAtIso: new Date().toISOString(),
+      });
+      const patch: Record<string, unknown> = {
+        field_status: built.fieldStatus,
+        field_completion_note: built.completionNote,
+        field_outstanding_work: built.outstandingWork,
+        field_issues: built.issues,
+        field_follow_up_required: built.furtherVisitRequired,
+        field_completed_at: built.fieldCompletedAt ?? null,
+      };
+      if (built.appointmentStatusCompleted) patch.status = 'completed';
+
+      const { data, error } = await db
+        .from('job_appointments')
+        .update(patch)
+        .eq('id', visit.id)
+        .in('field_status', ['scheduled', 'in_progress', 'paused'])
+        .select('id')
+        .maybeSingle();
+      if (error) {
+        return failResult('Unable to finalise shared visit from crew reports.', 'unknown', {
+          techReportUpdatedAt: personalSave.row.updatedAt,
+        });
+      }
+      if (data) {
+        sharedUpdated = true;
+        sharedFinalised = true;
+      }
+    }
   }
 
   if (!personalSave.noop || sharedUpdated) {
@@ -566,7 +630,7 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
       note:
         `Work report → ${personalStatus}` +
         (sharedUpdated
-          ? sharedWrite.finaliseShared
+          ? sharedFinalised
             ? ' · shared visit finalised'
             : ' · shared visit updated'
           : ' · personal report only') +
@@ -584,7 +648,7 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
     });
   }
   return okResult({
-    message: sharedWrite.finaliseShared ? 'Work report saved and visit finalised' : 'Work report saved',
+    message: sharedFinalised ? 'Work report saved and visit finalised' : 'Work report saved',
     techReportUpdatedAt: personalSave.row.updatedAt,
   });
 }
