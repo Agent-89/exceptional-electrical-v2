@@ -1,12 +1,14 @@
-/** Office job detail tabs. UI navigation only — no schema or permission changes. */
+/**
+ * Office job detail tabs. UI navigation only — no schema or permission changes.
+ * Costs and Invoices are intentionally absent until they have real content; old
+ * `?tab=costs` / `?tab=invoices` links fall back to Overview.
+ */
 
 export const JOB_DETAIL_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'visits', label: 'Visits' },
   { id: 'time', label: 'Time' },
-  { id: 'costs', label: 'Costs' },
   { id: 'quotes', label: 'Quotes' },
-  { id: 'invoices', label: 'Invoices' },
   { id: 'more', label: 'More' },
 ] as const;
 

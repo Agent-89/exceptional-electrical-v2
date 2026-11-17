@@ -64,7 +64,7 @@ export default async function SchedulePage({searchParams}:{searchParams:Promise<
   ? await db.from('customers').select('id,name').in('id',customerIds)
   : {data:[] as {id:string;name:string}[]};
  const staffMap=new Map(staff.map(s=>[s.id,s.full_name]));
- const staffList=[...staffMap].map(([id,name])=>({id,name}));
+ const staffList=staff.map(s=>({id:s.id,name:s.full_name,avatar_color:s.avatar_color??null}));
  const customerMap=new Map((customers??[]).map(c=>[c.id as string,c.name as string]));
  const visitAssigned=new Map<string,string[]>();
  for(const a of visitStaff??[])visitAssigned.set(a.appointment_id,[...(visitAssigned.get(a.appointment_id)??[]),a.staff_id]);

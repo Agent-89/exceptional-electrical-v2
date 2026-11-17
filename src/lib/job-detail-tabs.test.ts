@@ -36,18 +36,20 @@ describe('job detail tab registry', () => {
   it('lists the office tabs in navigation order', () => {
     assert.deepEqual(
       JOB_DETAIL_TABS.map((tab) => tab.label),
-      ['Overview', 'Visits', 'Time', 'Costs', 'Quotes', 'Invoices', 'More'],
+      ['Overview', 'Visits', 'Time', 'Quotes', 'More'],
     );
     assert.deepEqual(
       JOB_DETAIL_TABS.map((tab) => tab.id),
-      ['overview', 'visits', 'time', 'costs', 'quotes', 'invoices', 'more'],
+      ['overview', 'visits', 'time', 'quotes', 'more'],
     );
   });
 
   it('parses direct links and falls back to overview', () => {
     assert.equal(parseJobDetailTab('visits'), 'visits');
     assert.equal(parseJobDetailTab(' TIME '), 'time');
-    assert.equal(parseJobDetailTab('Invoices'), 'invoices');
+    assert.equal(parseJobDetailTab('Quotes'), 'quotes');
+    assert.equal(parseJobDetailTab('Invoices'), 'overview');
+    assert.equal(parseJobDetailTab('costs'), 'overview');
     assert.equal(parseJobDetailTab(null), 'overview');
     assert.equal(parseJobDetailTab(''), 'overview');
     assert.equal(parseJobDetailTab('billing'), 'overview');
@@ -68,20 +70,20 @@ describe('job detail tab keyboard navigation', () => {
     assert.equal(jobDetailTabFromKey('more', 'ArrowRight'), 'overview');
     assert.equal(jobDetailTabFromKey('visits', 'ArrowRight'), 'time');
     assert.equal(jobDetailTabFromKey('time', 'ArrowLeft'), 'visits');
-    assert.equal(jobDetailTabFromKey('invoices', 'Home'), 'overview');
+    assert.equal(jobDetailTabFromKey('quotes', 'Home'), 'overview');
     assert.equal(jobDetailTabFromKey('overview', 'End'), 'more');
-    assert.equal(jobDetailTabFromKey('costs', 'ArrowUp'), null);
-    assert.equal(jobDetailTabFromKey('costs', 'ArrowDown'), null);
-    assert.equal(jobDetailTabFromKey('costs', 'Enter'), null);
-    assert.equal(adjacentJobDetailTab('quotes', 1), 'invoices');
-    assert.equal(adjacentJobDetailTab('quotes', -1), 'costs');
+    assert.equal(jobDetailTabFromKey('time', 'ArrowUp'), null);
+    assert.equal(jobDetailTabFromKey('time', 'ArrowDown'), null);
+    assert.equal(jobDetailTabFromKey('time', 'Enter'), null);
+    assert.equal(adjacentJobDetailTab('quotes', 1), 'more');
+    assert.equal(adjacentJobDetailTab('quotes', -1), 'time');
   });
 
   it('shows only the selected panel', () => {
     for (const tab of JOB_DETAIL_TABS) {
       const visible = visibleJobDetailPanels(tab.id);
       assert.deepEqual(visible, [tab.id]);
-      assert.equal(JOB_DETAIL_TABS.length - visible.length, 6);
+      assert.equal(JOB_DETAIL_TABS.length - visible.length, 4);
     }
   });
 });
@@ -105,7 +107,8 @@ describe('job detail tab shell regression', () => {
     assert.match(pageSource, /panels=\{\{[\s\S]*overview:/);
     assert.match(pageSource, /visits:/);
     assert.match(pageSource, /quotes:/);
-    assert.match(pageSource, /invoices:/);
+    assert.doesNotMatch(pageSource, /^\s+costs:/m);
+    assert.doesNotMatch(pageSource, /^\s+invoices:/m);
     assert.match(pageSource, /JobQuotesPanel/);
     assert.match(quotesPanelSource, /No quotes linked to this job yet/);
     assert.match(quotesPanelSource, /Make primary/);
@@ -117,7 +120,6 @@ describe('job detail tab shell regression', () => {
     assert.match(unlinkButtonSource, /window\.confirm/);
     assert.match(unlinkButtonSource, /confirm_unlink/);
     assert.match(unlinkButtonSource, /unlinkQuoteConfirmMessage/);
-    assert.match(pageSource, /This screen does not create or change invoices/);
     assert.match(activitySource, /No estimated or fabricated figures are\s+shown/);
     assert.match(activitySource, /section === 'visits'/);
     assert.match(activitySource, /section === 'time'/);

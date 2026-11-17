@@ -17,6 +17,7 @@ import {
   loadCustomerAddressesForQuote,
   type QuoteDraft,
 } from './actions';
+import HqToast, {type HqToastMessage} from '../hq-toast';
 import {createQuoteCustomer} from './customer-action';
 import type {CustomerMatchRecord} from '@/lib/customer-match';
 import {
@@ -54,7 +55,7 @@ type Initial=Partial<Omit<QuoteDraft,'lines'>> & {lines?:QuoteDraft['lines'];num
 const empty:QuoteDraft={
   customerId:'',enquiryId:'',addressId:'',address:'',title:'',scope:'',inclusions:'',exclusions:'',
   notes:'',internalNotes:'',display:'itemised',mode:'detailed',lines:[],
-  quoteType:'standard',parentQuoteId:'',linkedJobId:'',linkedJobIds:[],
+  quoteType:'standard',parentQuoteId:'',linkedJobId:'',linkedJobIds:[],validityDays:30,
 };
 const FIXED='Fixed-price electrical work';
 const isFixed=(l:QuoteDraft['lines'][number])=>l.category==='other'&&l.description===FIXED;
@@ -191,13 +192,17 @@ export default function QuoteEditor({
  const [pending,start]=useTransition();
  const [busyAction,setBusyAction]=useState('');
  const [feedback,setFeedback]=useState('');
+ const [toast,setToast]=useState<HqToastMessage|null>(null);
+ const [dirty,setDirty]=useState(false);
  const [parentQuery,setParentQuery]=useState('');
  const [jobSearchId,setJobSearchId]=useState('');
  const [showCosting,setShowCosting]=useState(false);
  const [menuOpen,setMenuOpen]=useState(false);
  const parents=normalizeParentOptions(parentOptions as ParentQuoteOption[]);
- const set=(key:keyof QuoteDraft,value:unknown)=>setDraft(d=>({...d,[key]:value}));
- const editLine=(i:number,key:string,value:unknown)=>setDraft(d=>({...d,lines:d.lines.map((l,j)=>j===i?{...l,[key]:value}:l)}));
+ const markDirty=()=>setDirty(true);
+ const set=(key:keyof QuoteDraft,value:unknown)=>{markDirty();setDraft(d=>({...d,[key]:value}));};
+ const showToast=(tone:HqToastMessage['tone'],text:string)=>setToast({id:Date.now(),tone,text});
+ const editLine=(i:number,key:string,value:unknown)=>{markDirty();setDraft(d=>({...d,lines:d.lines.map((l,j)=>j===i?{...l,[key]:value}:l)}));};
  const visibleLines=draft.lines.filter(l=>draft.mode==='fixed'?isFixed(l):!isFixed(l));
  const subtotal=visibleLines.reduce((s,l)=>s+quoteLineExGstCents(l.quantity,l.price),0);
  const gst=visibleLines.reduce((s,l)=>s+quoteLineGstCents(l.quantity,l.price,l.gst),0);
@@ -244,6 +249,13 @@ export default function QuoteEditor({
   return `${p.quoteNumber} ${p.title||''} ${p.status}`.toLowerCase().includes(q);
  });
  const parentGroups=groupParentQuotesByJob(filteredParents);
+
+ useEffect(()=>{
+  if(!dirty||locked)return;
+  const onBeforeUnload=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue='';};
+  window.addEventListener('beforeunload',onBeforeUnload);
+  return()=>window.removeEventListener('beforeunload',onBeforeUnload);
+ },[dirty,locked]);
 
  useEffect(()=>{
   if(!menuOpen)return;
@@ -506,9 +518,10 @@ export default function QuoteEditor({
 
  function save(approve=false,intent:QuoteSaveIntent='continue'){
   if(saveLock.current||pending)return;
-  if(!draft.title.trim()){setFeedback('Enter a quote title before saving.');return;}
-  if(hasInvalidLines){setFeedback('Check item descriptions, quantities and prices before saving.');return;}
-  if(draft.quoteType==='variation'&&!draft.parentQuoteId){setFeedback('Select the quote this variation revises.');return;}
+  if(!draft.title.trim()){setFeedback('Enter a quote title before saving.');showToast('error','Enter a quote title before saving.');return;}
+  if(hasInvalidLines){setFeedback('Check item descriptions, quantities and prices before saving.');showToast('error','Check item descriptions, quantities and prices before saving.');return;}
+  if(draft.quoteType==='variation'&&!draft.parentQuoteId){setFeedback('Select the quote this variation revises.');showToast('error','Select the quote this variation revises.');return;}
+  if(approve&&!window.confirm('Approve this quote? It will be locked for editing and get a valid-until date.'))return;
   saveLock.current=true;
   setBusyAction(approve?'approve':'save');
   start(async()=>{
@@ -521,12 +534,15 @@ export default function QuoteEditor({
     ]);
     const payload:QuoteDraft={
      ...draft,
+     validityDays:draft.validityDays||30,
      parentQuoteId:draft.quoteType==='variation'?draft.parentQuoteId:'',
      linkedJobId:jobIds[0]||'',
      linkedJobIds:jobIds,
     };
     const result=approve?await saveAndApproveQuote(payload):await saveQuoteDraft(payload);
     setFeedback(result.message);
+    showToast(result.ok?'success':'error',result.message);
+    if(result.ok)setDirty(false);
     if(!result.ok){
      if(result.id&&!draft.id)router.replace('/hq/quotes/'+result.id);
      else if(result.id)router.refresh();
@@ -549,7 +565,7 @@ export default function QuoteEditor({
      if(!draft.id)router.replace('/hq/quotes/'+result.id);
      else router.refresh();
     }
-   }catch{setFeedback('Unable to save. Try again.')}
+   }catch{setFeedback('Unable to save. Try again.');showToast('error','Unable to save. Try again.');}
    finally{
     saveLock.current=false;
     setBusyAction('');
@@ -557,8 +573,9 @@ export default function QuoteEditor({
   });
  }
 
- function runLifecycle(label:string,fn:()=>Promise<{ok:boolean;message:string}>){
+ function runLifecycle(label:string,fn:()=>Promise<{ok:boolean;message:string}>,confirmText?:string){
   if(saveLock.current||pending)return;
+  if(confirmText&&!window.confirm(confirmText))return;
   saveLock.current=true;
   setBusyAction(label);
   if(actionsRef.current)actionsRef.current.open=false;
@@ -567,14 +584,28 @@ export default function QuoteEditor({
    try{
     const r=await fn();
     setFeedback(r.message);
+    showToast(r.ok?'success':'error',r.message);
     router.refresh();
-   }catch{setFeedback('Unable to update quote status.')}
+   }catch{setFeedback('Unable to update quote status.');showToast('error','Unable to update quote status.');}
    finally{
     saveLock.current=false;
     setBusyAction('');
    }
   });
  }
+
+ const customerEmail=customers.find(c=>c.id===draft.customerId)?.email||'';
+ const mailtoHref=draft.id
+  ?`mailto:${customerEmail}?subject=${encodeURIComponent(`Quote ${initial?.number||''}`.trim())}&body=${encodeURIComponent(`Hi,\n\nPlease find our quotation ${initial?.number||''}.\n\nOpen the PDF preview from HQ Quotes, or reply to this email and we can send the PDF.\n\nThanks,\nExceptional Electrical`)}`
+  :'';
+ const primaryLifecycle=
+  canApproveNow&&locked
+   ?{label:busyAction==='approve-saved'?'Approving…':'Approve',run:()=>runLifecycle('approve-saved',()=>approveQuote(draft.id!,draft.validityDays||30),'Approve this quote?')}
+   :status==='approved'
+    ?{label:busyAction==='sent'?'Saving…':'Mark as sent',run:()=>runLifecycle('sent',()=>markQuoteSent(draft.id!))}
+    :status==='sent'
+     ?{label:busyAction==='accepted'?'Saving…':'Mark as accepted',run:()=>runLifecycle('accepted',()=>markQuoteAccepted(draft.id!),'Mark this quote as accepted?')}
+     :null;
 
  const saving=pending&&(busyAction==='save'||busyAction==='approve');
  const displayJobs=associatedJobs.length
@@ -615,6 +646,7 @@ export default function QuoteEditor({
      <h1 className={initial?.number?'hq-quote-ref':undefined}>{heading}</h1>
      <div className="hq-qw-meta">
       <span className="hq-status hq-qw-status">{statusLabel(status)}</span>
+      {dirty&&!locked?<span className="hq-quote-dirty-chip" role="status">Unsaved changes</span>:null}
       {commercial?.parentQuoteNumber?(
        <span className="hq-qw-meta-text">Rev of <strong>{commercial.parentQuoteNumber}</strong>{(commercial.revisionNumber||0)>0?` · ${commercial.revisionNumber}`:''}</span>
       ):null}
@@ -622,6 +654,11 @@ export default function QuoteEditor({
      </div>
     </div>
     <div className="hq-qw-header-actions">
+     {primaryLifecycle?(
+      <button type="button" className="hq-detail-action-primary" disabled={pending} onClick={primaryLifecycle.run} style={{border:0,cursor:'pointer'}}>
+       {primaryLifecycle.label}
+      </button>
+     ):null}
      {draft.id?(
       <div className="hq-qw-view-switch" role="navigation" aria-label="Quote views">
        <span className="is-active" aria-current="page">Quote details</span>
@@ -637,6 +674,12 @@ export default function QuoteEditor({
        <summary aria-label="More quote actions">Actions</summary>
        <div className="hq-qw-actions-panel" role="menu">
         <Link role="menuitem" href={`/hq/quotes/${draft.id}/preview`} target="_blank" rel="noopener noreferrer">PDF preview</Link>
+        <a role="menuitem" href={`/hq/quotes/${draft.id}/pdf`} download>Download PDF</a>
+        {customerEmail?(
+         <a role="menuitem" href={mailtoHref}>Email customer (mailto)</a>
+        ):(
+         <button type="button" role="menuitem" disabled title="Add a customer email first">Email customer (mailto)</button>
+        )}
         {displayJobs.length===1?(
          <Link role="menuitem" href={`/hq/jobs/${displayJobs[0].id}`}>View job</Link>
         ):displayJobs.length>1?(
@@ -646,7 +689,7 @@ export default function QuoteEditor({
          <Link role="menuitem" href={'/hq/jobs/new?quote='+draft.id}>{displayJobs.length?'Create another job':'Create job'}</Link>
         ):null}
         {canApproveNow&&locked?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('approve-saved',()=>approveQuote(draft.id!))}>
+         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('approve-saved',()=>approveQuote(draft.id!,draft.validityDays||30),'Approve this quote?')}>
           {busyAction==='approve-saved'?'Approving…':'Approve saved quote'}
          </button>
         ):null}
@@ -656,17 +699,17 @@ export default function QuoteEditor({
          </button>
         ):null}
         {(status==='approved'||status==='sent')?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('accepted',()=>markQuoteAccepted(draft.id!))}>
+         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('accepted',()=>markQuoteAccepted(draft.id!),'Mark this quote as accepted?')}>
           {busyAction==='accepted'?'Saving…':'Mark as accepted'}
          </button>
         ):null}
         {(status==='approved'||status==='sent')?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('declined',()=>markQuoteDeclined(draft.id!))}>
+         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('declined',()=>markQuoteDeclined(draft.id!),'Mark this quote as declined?')}>
           {busyAction==='declined'?'Saving…':'Mark as declined'}
          </button>
         ):null}
         {canOfferMakeCurrent?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('current',()=>makeQuoteCommercialCurrent(draft.id!))}>
+         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('current',()=>makeQuoteCommercialCurrent(draft.id!),'Make this the current commercial quote?')}>
           {busyAction==='current'?'Updating…':'Make current commercial'}
          </button>
         ):null}
@@ -676,7 +719,7 @@ export default function QuoteEditor({
     </div>
    </div>
    {feedback&&draft.id&&locked?<p className="hq-qw-feedback" role="status">{feedback}</p>:null}
-   {status==='approved'&&!feedback?<p className="hq-quote-lifecycle-hint">“Mark as sent” records that the quote was issued. It does not email the customer.</p>:null}
+   {status==='approved'&&!feedback?<p className="hq-quote-lifecycle-hint">“Mark as sent” records that the quote was issued. It does not email the customer — use Email customer (mailto) or Download PDF.</p>:null}
   </header>
 
   <fieldset disabled={locked||pending} className="hq-qw-fieldset">
@@ -1048,6 +1091,14 @@ export default function QuoteEditor({
     <section className="hq-qw-section hq-quote-notes-panel" aria-labelledby="qw-notes-heading">
      <h2 id="qw-notes-heading">Additional details</h2>
      <div className="hq-qw-grid-2">
+      <label>Valid for
+       <select value={String(draft.validityDays||30)} onChange={e=>set('validityDays',Number(e.target.value))} disabled={locked}>
+        <option value="14">14 days</option>
+        <option value="30">30 days</option>
+        <option value="60">60 days</option>
+       </select>
+       <span className="hq-quote-field-hint">Applied as Valid until when the quote is approved.</span>
+      </label>
       <label>Customer-facing notes<textarea rows={3} value={draft.notes} onChange={e=>set('notes',e.target.value)}/></label>
       <label>Internal notes (staff only)<textarea rows={3} value={draft.internalNotes} onChange={e=>set('internalNotes',e.target.value)}/></label>
      </div>
@@ -1070,9 +1121,14 @@ export default function QuoteEditor({
       </button>
      ):null}
     </div>
-    <span className="hq-qw-footer-status" role="status">{feedback||(draft.id?'Preview uses the last saved version.':'')}</span>
+    <span className="hq-qw-footer-status" role="status">{feedback||(dirty?'Unsaved changes':(draft.id?'Preview uses the last saved version.':''))}</span>
    </div>
   )}
+  <HqToast toast={toast} onDismiss={()=>setToast(null)}/>
+  <style>{`
+   .hq-quote-dirty-chip{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;background:#fff1db;color:#8c520b;font-size:12px;font-weight:750}
+   .hq-quote-field-hint{display:block;margin-top:6px;color:#718294;font-size:12px;font-weight:500}
+  `}</style>
  </div>
  </main>;
 }

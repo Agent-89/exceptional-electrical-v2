@@ -333,17 +333,6 @@ export default async function JobPage({
               />
             ),
             time: <SuspendedJobTime jobId={id} appointments={appointmentViews} staffNames={staffNames} />,
-            costs: (
-              <JobFieldActivity
-                jobId={id}
-                appointments={appointmentViews}
-                techReports={[]}
-                timeEntries={[]}
-                notes={[]}
-                photos={[]}
-                section="costs"
-              />
-            ),
             quotes: (
               <JobQuotesPanel
                 jobId={id}
@@ -356,20 +345,6 @@ export default async function JobPage({
                 actionError={actionError}
                 canEdit={canEdit}
               />
-            ),
-            invoices: (
-              <section className="hq-panel ee-compact-panel">
-                <div className="ee-section-title">
-                  <div>
-                    <span className="ee-eyebrow">INVOICES</span>
-                    <h2>Invoices</h2>
-                  </div>
-                </div>
-                <p className="ee-muted" style={{ marginBottom: 0 }}>
-                  Invoices will appear here in a later update. Xero stays the accounting record.
-                  This screen does not create or change invoices.
-                </p>
-              </section>
             ),
             more: (
               <>
