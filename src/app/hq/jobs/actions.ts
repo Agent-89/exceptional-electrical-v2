@@ -9,31 +9,43 @@ import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
 import {assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {jobTitleFromDescription} from '@/lib/job-title-from-description';
 import {syncPrimaryJobQuoteAfterCreate} from './job-quote-actions';
 export async function createJob(formData:FormData){
  const user=await requireHqUser();
  assertOfficeOps(user);
- const title=String(formData.get('title')||'').trim();
  const customerId=String(formData.get('customer_id')||'').trim();
  const description=String(formData.get('description')||'').trim();
+ const title=jobTitleFromDescription(description);
  const priority=String(formData.get('priority')||'normal');
  const siteAddress=String(formData.get('site_address_text')||'').trim();
  const enquiryId=String(formData.get('enquiry_id')||'').trim();
  const quoteId=String(formData.get('quote_id')||'').trim();
  const idempotencyKey=String(formData.get('idempotency_key')||'').trim();
+ const staffIds=[...new Set(
+  formData.getAll('staff_id').map((value)=>String(value||'').trim()).filter(Boolean),
+ )];
  const uuid=/^[0-9a-f-]{36}$/i;
  if(siteAddress.length>500)throw new Error('Site address is too long.');
- if(title.length<2||title.length>200||description.length>5000||!['low','normal','high','urgent'].includes(priority))throw new Error('Please check the job details.');
+ if(description.length<2||description.length>5000||title.length<2||title.length>200||!['low','normal','high','urgent'].includes(priority))throw new Error('Please check the job details.');
  if(enquiryId&&!uuid.test(enquiryId))throw new Error('Invalid enquiry link.');
  if(quoteId&&!uuid.test(quoteId))throw new Error('Invalid quote link.');
  if(!uuid.test(idempotencyKey))throw new Error('Missing create token. Refresh the page and try again.');
+ if(staffIds.some((id)=>!uuid.test(id)))throw new Error('Invalid staff assignment.');
  const db=dbAdmin();
  const {data:existing}=await db.from('jobs').select('id').eq('create_idempotency_key',idempotencyKey).maybeSingle();
  if(existing){revalidatePath('/hq/jobs');redirect('/hq/jobs/'+existing.id)}
  if(customerId){const {data:customer}=await db.from('customers').select('id').eq('id',customerId).maybeSingle();if(!customer)throw new Error('Customer not found.');}
  if(enquiryId){const {data:enquiry}=await db.from('enquiries').select('id').eq('id',enquiryId).maybeSingle();if(!enquiry)throw new Error('Enquiry not found.');}
  if(quoteId){const {data:quote}=await db.from('quotes').select('id').eq('id',quoteId).maybeSingle();if(!quote)throw new Error('Quote not found.');}
- const {data,error}=await db.from('jobs').insert({title,description:description||null,customer_id:customerId||null,site_address_text:siteAddress||null,priority,enquiry_id:enquiryId||null,quote_id:quoteId||null,create_idempotency_key:idempotencyKey,created_by:user.id}).select('id').single();
+ let validatedStaffIds:string[]=[];
+ if(staffIds.length){
+  const {data:active,error:staffError}=await db.from('scheduling_staff').select('id').eq('active',true).in('id',staffIds);
+  if(staffError)throw new Error('Unable to validate staff.');
+  validatedStaffIds=(active??[]).map((row)=>row.id as string);
+  if(validatedStaffIds.length!==staffIds.length)throw new Error('Staff member not found.');
+ }
+ const {data,error}=await db.from('jobs').insert({title,description,customer_id:customerId||null,site_address_text:siteAddress||null,priority,enquiry_id:enquiryId||null,quote_id:quoteId||null,create_idempotency_key:idempotencyKey,created_by:user.id}).select('id').single();
  if(error){
   // Unique violation on create_idempotency_key: a concurrent retry already inserted this job.
   if(String(error.code)==='23505'||/create_idempotency_key|duplicate key/i.test(error.message||'')){
@@ -44,6 +56,14 @@ export async function createJob(formData:FormData){
  }
  if(!data)throw new Error('Unable to create job.');
  await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'created'});
+ if(validatedStaffIds.length){
+  const {error:assignError}=await db.from('job_assignments').upsert(
+   validatedStaffIds.map((staffId)=>({job_id:data.id,staff_id:staffId})),
+   {onConflict:'job_id,staff_id',ignoreDuplicates:true},
+  );
+  if(assignError)throw new Error('Job was created, but staff could not be assigned.');
+  await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'staff_assigned',note:`Assigned ${validatedStaffIds.length} electrician${validatedStaffIds.length===1?'':'s'} at create`});
+ }
  if(quoteId){
   const sync=await syncPrimaryJobQuoteAfterCreate({jobId:data.id,quoteId,actorId:user.id});
   if(sync.status==='failed'){
@@ -66,6 +86,8 @@ export async function createJob(formData:FormData){
   }
  }
  revalidatePath('/hq/jobs');
+ revalidatePath('/hq/jobs/'+data.id);
+ revalidatePath('/hq/schedule');
  redirect('/hq/jobs/'+data.id);
 }
 export async function updateJob(formData:FormData){

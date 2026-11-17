@@ -25,7 +25,7 @@ export default async function NewQuote({
 
   const [{data:customers},{data:enquiries},{data:addresses}]=await Promise.all([
     db.from('customers').select('id,name,email,phone').order('name').limit(1000),
-    db.from('enquiries').select('id,name,customer_id,message,service_category,suburb').order('created_at',{ascending:false}).limit(200),
+    db.from('enquiries').select('id,name,customer_id,message,service_category,suburb,reference_number').order('created_at',{ascending:false}).limit(200),
     db.from('customer_addresses').select('id,customer_id,label,address_line1,suburb,state,postcode').limit(1000),
   ]);
 
