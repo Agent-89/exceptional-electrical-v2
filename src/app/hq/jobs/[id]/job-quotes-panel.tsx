@@ -5,18 +5,8 @@ import {
   type JobQuoteDisplay,
 } from '@/lib/job-quotes';
 import { quoteBuilderNewHref } from '@/lib/quote-commercial';
-import {
-  linkQuoteToJob,
-  setPrimaryJobQuote,
-} from '../job-quote-actions';
+import { setPrimaryJobQuote } from '../job-quote-actions';
 import UnlinkJobQuoteButton from './unlink-job-quote-button';
-
-export type LinkableQuoteOption = {
-  id: string;
-  quote_number: string;
-  title: string | null;
-  status: string;
-};
 
 function statusLabel(status: string): string {
   return status.replaceAll('_', ' ');
@@ -26,7 +16,6 @@ export default function JobQuotesPanel({
   jobId,
   customerId,
   quotes,
-  linkableQuotes,
   tableAvailable,
   loadError,
   notice,
@@ -36,13 +25,51 @@ export default function JobQuotesPanel({
   jobId: string;
   customerId: string | null;
   quotes: JobQuoteDisplay[];
-  linkableQuotes: LinkableQuoteOption[];
   tableAvailable: boolean;
   loadError: string | null;
   notice?: string | null;
   actionError?: string | null;
   canEdit: boolean;
 }) {
+  const createActions =
+    canEdit && tableAvailable ? (
+      <div className="ee-job-quote-create-actions">
+        {customerId ? (
+          <>
+            <Link
+              className="hq-detail-action-primary"
+              href={quoteBuilderNewHref({ jobId, type: 'standard' })}
+            >
+              New quote
+            </Link>
+            <Link
+              className="hq-detail-action-secondary"
+              href={quoteBuilderNewHref({
+                jobId,
+                type: 'variation',
+                parentQuoteId:
+                  quotes.find((q) => q.isCommercialCurrent)?.id ||
+                  quotes.find((q) => q.isPrimary)?.id ||
+                  quotes[0]?.id ||
+                  null,
+              })}
+            >
+              New variation
+            </Link>
+          </>
+        ) : (
+          <>
+            <button type="button" className="hq-detail-action-primary" disabled>
+              New quote
+            </button>
+            <button type="button" disabled>
+              New variation
+            </button>
+          </>
+        )}
+      </div>
+    ) : null;
+
   return (
     <section className="hq-panel ee-compact-panel" id="job-quotes">
       <div className="ee-section-title">
@@ -50,6 +77,7 @@ export default function JobQuotesPanel({
           <span className="ee-eyebrow">QUOTES</span>
           <h2>Quotes &amp; variations</h2>
         </div>
+        {createActions}
       </div>
 
       {notice ? (
@@ -65,6 +93,12 @@ export default function JobQuotesPanel({
       {loadError ? (
         <p className="ee-form-error" role="alert">
           {loadError}
+        </p>
+      ) : null}
+
+      {canEdit && tableAvailable && !customerId ? (
+        <p className="ee-muted" style={{ marginTop: 0 }}>
+          A customer is required before creating a quote.
         </p>
       ) : null}
 
@@ -126,111 +160,6 @@ export default function JobQuotesPanel({
               ) : null}
             </article>
           ))}
-        </div>
-      ) : null}
-
-      {canEdit && tableAvailable ? (
-        <div className="ee-job-quote-forms">
-          <form action={linkQuoteToJob} className="ee-job-quote-link-form">
-            <h3>Link existing quote</h3>
-            {!customerId ? (
-              <p className="ee-muted" style={{ marginBottom: 0 }}>
-                Add a customer to this job before linking a quote. Jobs without a customer cannot
-                link customer quotes.
-              </p>
-            ) : linkableQuotes.length === 0 ? (
-              <p className="ee-muted" style={{ marginBottom: 0 }}>
-                No other quotes are available to link for this customer.
-              </p>
-            ) : (
-              <>
-                <label>
-                  Quote
-                  <select name="quote_id" required defaultValue="">
-                    <option value="" disabled>
-                      Select a quote
-                    </option>
-                    {linkableQuotes.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.quote_number}
-                        {option.title ? ` · ${option.title}` : ''} · {statusLabel(option.status)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Type
-                  <select name="association_kind" defaultValue="quote">
-                    <option value="quote">Quote</option>
-                    <option value="variation">Variation</option>
-                    <option value="additional_works">Additional works</option>
-                  </select>
-                </label>
-                <label>
-                  Label (optional)
-                  <input
-                    name="label"
-                    maxLength={80}
-                    placeholder="e.g. Variation — switchboard"
-                  />
-                </label>
-                <label className="ee-job-quote-check">
-                  <input type="checkbox" name="make_primary" value="yes" />
-                  Set as primary quote
-                </label>
-                <input type="hidden" name="job_id" value={jobId} />
-                <button type="submit" className="hq-detail-action-primary">
-                  Link quote
-                </button>
-              </>
-            )}
-          </form>
-
-          <div className="ee-job-quote-create">
-            <h3>Create from this job</h3>
-            <p className="ee-muted" style={{ marginTop: 0 }}>
-              Opens the quote builder with this job context. Variations get a normal EEQ number and
-              must select a parent quote. Saving links the draft without changing commercial current.
-            </p>
-            <div className="ee-job-quote-create-actions">
-              {customerId ? (
-                <>
-                  <Link
-                    className="hq-detail-action-primary"
-                    href={quoteBuilderNewHref({ jobId, type: 'standard' })}
-                  >
-                    New quote
-                  </Link>
-                  <Link
-                    className="hq-detail-action-secondary"
-                    href={quoteBuilderNewHref({
-                      jobId,
-                      type: 'variation',
-                      parentQuoteId:
-                        quotes.find((q) => q.isCommercialCurrent)?.id ||
-                        quotes.find((q) => q.isPrimary)?.id ||
-                        quotes[0]?.id ||
-                        null,
-                    })}
-                  >
-                    New variation
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <button type="button" className="hq-detail-action-primary" disabled>
-                    New quote
-                  </button>
-                  <button type="button" disabled>
-                    New variation
-                  </button>
-                </>
-              )}
-            </div>
-            {!customerId ? (
-              <p className="ee-muted">A customer is required before creating a quote.</p>
-            ) : null}
-          </div>
         </div>
       ) : null}
 

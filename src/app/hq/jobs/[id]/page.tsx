@@ -24,10 +24,7 @@ import JobFieldActivity from './job-field-activity';
 import JobDetailTabs, { JobTabButton } from './job-detail-tabs';
 import JobHeaderActions from './job-header-actions';
 import JobQuotesPanel from './job-quotes-panel';
-import {
-  listLinkableQuotesForJob,
-  loadJobQuotesForDisplay,
-} from '@/lib/job-quotes-store';
+import { loadJobQuotesForDisplay } from '@/lib/job-quotes-store';
 import {
   SuspendedJobAttention,
   SuspendedJobFiles,
@@ -158,18 +155,12 @@ export default async function JobPage({
   }
 
   const appointmentIds = (appointments ?? []).map((a) => String(a.id));
-  const [{ data: appointmentStaffRows }, linkableQuotes] = await Promise.all([
-    appointmentIds.length
-      ? db
-          .from('job_appointment_staff')
-          .select('appointment_id,staff_id')
-          .in('appointment_id', appointmentIds)
-      : Promise.resolve({ data: [] as { appointment_id: string; staff_id: string }[] }),
-    listLinkableQuotesForJob(db, {
-      customerId: (job.customer_id as string | null) ?? null,
-      excludeQuoteIds: jobQuotesResult.quotes.map((quote) => quote.id),
-    }),
-  ]);
+  const { data: appointmentStaffRows } = appointmentIds.length
+    ? await db
+        .from('job_appointment_staff')
+        .select('appointment_id,staff_id')
+        .in('appointment_id', appointmentIds)
+    : { data: [] as { appointment_id: string; staff_id: string }[] };
 
   const canEdit = true;
   const staffById = new Map(staff.map((s) => [s.id, s]));
@@ -241,31 +232,30 @@ export default async function JobPage({
             <div className="ee-job-number">JOB {jobNumberLabel}</div>
             <h1>{customer?.name ?? 'No customer selected'}</h1>
             {(linkedEnquiry || primaryQuote) ? (
-              <p className="ee-job-provenance">
+              <div className="ee-job-provenance">
                 {linkedEnquiry ? (
-                  <span>
-                    From enquiry ·{' '}
-                    <Link href={`/hq/enquiries/${linkedEnquiry.id}`}>
+                  <Link
+                    className="ee-job-provenance-item"
+                    href={`/hq/enquiries/${linkedEnquiry.id}`}
+                  >
+                    <span className="ee-job-provenance-label">Enquiry</span>
+                    <span className="ee-job-provenance-id">
                       ENQ-{String(linkedEnquiry.reference_number).padStart(4, '0')}
-                    </Link>
-                  </span>
+                    </span>
+                  </Link>
                 ) : null}
-                {linkedEnquiry && primaryQuote ? <span className="ee-job-provenance-sep">·</span> : null}
                 {primaryQuote ? (
-                  <span>
-                    From quote ·{' '}
-                    <Link href={`/hq/quotes/${primaryQuote.id}`}>{primaryQuote.quoteNumber}</Link>
-                    {extraQuoteCount > 0 ? (
-                      <>
-                        {' '}
-                        <Link className="ee-muted" href={`/hq/jobs/${id}?tab=quotes`}>
-                          +{extraQuoteCount} more
-                        </Link>
-                      </>
-                    ) : null}
-                  </span>
+                  <Link className="ee-job-provenance-item" href={`/hq/quotes/${primaryQuote.id}`}>
+                    <span className="ee-job-provenance-label">Quote</span>
+                    <span className="ee-job-provenance-id">{primaryQuote.quoteNumber}</span>
+                  </Link>
                 ) : null}
-              </p>
+                {extraQuoteCount > 0 ? (
+                  <Link className="ee-job-provenance-more" href={`/hq/jobs/${id}?tab=quotes`}>
+                    +{extraQuoteCount} more
+                  </Link>
+                ) : null}
+              </div>
             ) : null}
           </div>
           {canEdit ? (
@@ -545,7 +535,6 @@ export default async function JobPage({
                 jobId={id}
                 customerId={(job.customer_id as string | null) ?? null}
                 quotes={jobQuotesResult.quotes}
-                linkableQuotes={linkableQuotes}
                 tableAvailable={jobQuotesResult.tableAvailable}
                 loadError={jobQuotesResult.error}
                 notice={notice}
@@ -652,9 +641,11 @@ export default async function JobPage({
 .ee-job-number{color:#0875c9;font-size:13px;font-weight:850;letter-spacing:.08em}
 .ee-workspace-head h1{margin:6px 0 0;font-size:clamp(28px,5vw,40px);line-height:1.15}
 .ee-workspace-head p,.ee-muted{color:var(--hq-muted,#738396)}
-.ee-job-provenance{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:8px 0 0;font-size:14px}
-.ee-job-provenance a{color:#0875c9;font-weight:700;text-decoration:none}
-.ee-job-provenance-sep{color:var(--hq-muted,#738396)}
+.ee-job-provenance{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 0}
+.ee-job-provenance-item{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:5px 10px;border:1px solid #d5e2ef;border-radius:999px;background:#fff;color:#18577d;text-decoration:none;white-space:nowrap}
+.ee-job-provenance-label{color:var(--hq-muted,#738396);font-size:12px;font-weight:700}
+.ee-job-provenance-id{color:#0875c9;font-size:13px;font-weight:800}
+.ee-job-provenance-more{color:#0875c9;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
 .ee-job-header-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .ee-workspace-status{display:inline-flex;align-items:center;gap:7px;background:#eaf2fa;color:#18577d;border-radius:999px;padding:7px 10px 7px 12px;font-size:13px;font-weight:700;white-space:nowrap;border:1px solid transparent}
 .ee-workspace-status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 auto}
@@ -721,21 +712,16 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-job-quote-create-actions a.hq-detail-action-primary{border-color:#1688e9}
 .ee-job-quote-create-actions a.hq-detail-action-secondary{background:#fff}
 .ee-job-quote-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:2px}
-.ee-job-quote-forms{display:grid;gap:18px;margin-top:16px;padding-top:14px;border-top:1px solid #e1e8f0}
-.ee-job-quote-forms h3{margin:0 0 8px;font-size:15px}
-.ee-job-quote-link-form{display:grid;gap:10px;max-width:520px}
-.ee-job-quote-link-form label{display:grid;gap:5px;font-size:13px;font-weight:700}
-.ee-job-quote-link-form select,.ee-job-quote-link-form input[type="text"],.ee-job-quote-link-form input:not([type]){width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #cdd9e5;border-radius:10px;background:#fff;font:inherit;font-size:15px}
-.ee-job-quote-check{display:flex!important;align-items:center;gap:8px;font-weight:650!important}
-.ee-job-quote-check input{width:auto}
-.ee-job-quote-create-actions{display:flex;flex-wrap:wrap;gap:10px}
+.ee-section-title .ee-job-quote-create-actions{flex:0 1 auto;justify-content:flex-end}
+.ee-job-quote-create-actions{display:flex;flex-wrap:wrap;gap:8px}
 .ee-job-quote-create-actions button{border:1px solid #d5e2ef;background:#fff;color:#18577d;border-radius:10px;padding:10px 14px;min-height:44px;font:inherit;font-size:14px;font-weight:750;cursor:pointer}
 .ee-job-quote-create-actions button:disabled{opacity:.55;cursor:not-allowed}
 .ee-job-quote-create-actions .hq-detail-action-primary{border-color:#1688e9}
 @media(max-width:700px){
   .ee-job-quote-head{flex-direction:column;align-items:flex-start}
-  .ee-job-quote-create-actions{flex-direction:column}
-  .ee-job-quote-create-actions button{width:100%}
+  .ee-section-title:has(.ee-job-quote-create-actions){align-items:flex-start;flex-direction:column}
+  .ee-section-title .ee-job-quote-create-actions{width:100%}
+  .ee-job-quote-create-actions a,.ee-job-quote-create-actions button{flex:1 1 calc(50% - 4px);justify-content:center}
 }
 .ee-description{margin:6px 0 18px;line-height:1.5}
 .ee-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;border-top:1px solid #e1e8f0;padding-top:20px}

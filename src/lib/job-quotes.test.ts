@@ -328,7 +328,7 @@ describe('create-and-link and sync outcomes', () => {
 
   it('documents recoverable orphan-draft messaging when a quote id is known', () => {
     assert.match(orphanDraftRecoveryMessage('q-123'), /Draft quote q-123/);
-    assert.match(orphanDraftRecoveryMessage('q-123'), /Link existing quote/i);
+    assert.match(orphanDraftRecoveryMessage('q-123'), /New quote \/ New variation/i);
   });
 
   it('reads quoteId from successful create-and-link payloads', () => {
