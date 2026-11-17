@@ -49,3 +49,48 @@ export function shouldCancelGestureWithoutButtons(
 export function shouldSuppressClickAfterDrag(active: boolean): boolean {
   return active;
 }
+
+/** Empty-lane create: tap uses a 60-minute block; drag uses the selected span. */
+export const TIMELINE_CREATE_DEFAULT_MINUTES = 60;
+export const TIMELINE_CREATE_MIN_MINUTES = 15;
+export const TIMELINE_CREATE_TOUCH_HOLD_MS = 450;
+
+export function snapTimelineMinutes(value: number, step = 15): number {
+  return Math.round(value / step) * step;
+}
+
+export function clampTimelineMinutes(value: number, start: number, end: number): number {
+  return Math.max(start, Math.min(end, value));
+}
+
+export function normalizeCreateRange(
+  a: number,
+  b: number,
+  boundsStart: number,
+  boundsEnd: number,
+  minDuration = TIMELINE_CREATE_MIN_MINUTES,
+): { start: number; end: number } {
+  let start = clampTimelineMinutes(Math.min(a, b), boundsStart, boundsEnd);
+  let end = clampTimelineMinutes(Math.max(a, b), boundsStart, boundsEnd);
+  start = snapTimelineMinutes(start);
+  end = snapTimelineMinutes(end);
+  if (end - start < minDuration) end = Math.min(boundsEnd, start + minDuration);
+  if (end - start < minDuration) start = Math.max(boundsStart, end - minDuration);
+  return { start, end };
+}
+
+export function createTapRange(
+  minute: number,
+  boundsStart: number,
+  boundsEnd: number,
+  duration = TIMELINE_CREATE_DEFAULT_MINUTES,
+): { start: number; end: number } {
+  const snapped = snapTimelineMinutes(clampTimelineMinutes(minute, boundsStart, boundsEnd));
+  let start = snapped;
+  let end = snapped + duration;
+  if (end > boundsEnd) {
+    end = boundsEnd;
+    start = Math.max(boundsStart, end - duration);
+  }
+  return normalizeCreateRange(start, end, boundsStart, boundsEnd, TIMELINE_CREATE_MIN_MINUTES);
+}

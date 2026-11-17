@@ -3,11 +3,13 @@ import { describe, it } from 'node:test';
 import {
   TECH_WORK_REPORT_CONFLICT_MESSAGE,
   VISIT_REPORT_CONFLICT_MESSAGE,
+  allAssignedReportsTerminal,
   buildVisitReportPatch,
   canTechnicianFinaliseSharedVisit,
   canTechnicianWriteSharedVisitFields,
   defaultVisitOutcomeForForm,
   resolveTechnicianVisitOutcome,
+  rollupSharedVisitOutcome,
   seedTechWorkReportFromShared,
   techWorkReportSaveIsNoop,
   techWorkReportSnapshotsMatch,
@@ -81,20 +83,22 @@ describe('multi-technician shared visit finalisation', () => {
     if (resolved.ok) assert.equal(resolved.fieldStatus, 'work_completed');
   });
 
-  it('blocks one technician from accidentally finalising a shared multi-tech visit', () => {
+  it('allows multi-tech personal terminal reports without immediately finalising shared', () => {
     assert.equal(canTechnicianFinaliseSharedVisit(2), false);
     const completed = resolveTechnicianVisitOutcome({
       requested: 'work_completed',
       assignedTechnicianCount: 2,
+      currentSharedFieldStatus: 'in_progress',
     });
-    assert.equal(completed.ok, false);
-    if (!completed.ok) assert.match(completed.error, /office will close|own work report/i);
+    assert.equal(completed.ok, true);
+    if (completed.ok) assert.equal(completed.fieldStatus, 'work_completed');
 
     const unable = resolveTechnicianVisitOutcome({
       requested: 'unable_to_complete',
       assignedTechnicianCount: 3,
+      currentSharedFieldStatus: 'in_progress',
     });
-    assert.equal(unable.ok, false);
+    assert.equal(unable.ok, true);
 
     const progress = resolveTechnicianVisitOutcome({
       requested: 'in_progress',
@@ -102,6 +106,56 @@ describe('multi-technician shared visit finalisation', () => {
     });
     assert.equal(progress.ok, true);
     if (progress.ok) assert.equal(progress.fieldStatus, 'in_progress');
+  });
+
+  it('rolls up shared outcome only when every assigned tech has a terminal report', () => {
+    assert.equal(
+      allAssignedReportsTerminal(
+        ['a', 'b'],
+        [
+          { staffId: 'a', progressStatus: 'work_completed' },
+          { staffId: 'b', progressStatus: 'in_progress' },
+        ],
+      ),
+      false,
+    );
+    assert.equal(
+      allAssignedReportsTerminal(
+        ['a', 'b'],
+        [
+          { staffId: 'a', progressStatus: 'work_completed' },
+          { staffId: 'b', progressStatus: 'unable_to_complete' },
+        ],
+      ),
+      true,
+    );
+    assert.equal(allAssignedReportsTerminal(['a', 'b'], [{ staffId: 'a', progressStatus: 'work_completed' }]), false);
+
+    const rolled = rollupSharedVisitOutcome([
+      {
+        staffId: 'a',
+        technicianName: 'Billy Hicks',
+        progressStatus: 'work_completed',
+        workSummary: 'Finished switchboard',
+        outstandingWork: null,
+        issues: null,
+        followUpRequired: false,
+      },
+      {
+        staffId: 'b',
+        technicianName: 'Cooper Peberdy',
+        progressStatus: 'unable_to_complete',
+        workSummary: 'Waiting on parts',
+        outstandingWork: 'Order breaker',
+        issues: null,
+        followUpRequired: true,
+      },
+    ]);
+    assert.equal(rolled.fieldStatus, 'unable_to_complete');
+    assert.equal(rolled.fields.furtherVisitRequired, true);
+    assert.match(rolled.fields.completionNote ?? '', /Billy Hicks: Finished switchboard/);
+    assert.match(rolled.fields.completionNote ?? '', /Cooper Peberdy: Waiting on parts/);
+    assert.match(rolled.fields.outstandingWork ?? '', /Cooper Peberdy: Order breaker/);
   });
 
   it('rejects unsupported status values instead of inventing schema values', () => {

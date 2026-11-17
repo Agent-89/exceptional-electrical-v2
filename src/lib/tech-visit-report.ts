@@ -34,8 +34,8 @@ export function defaultVisitOutcomeForForm(current: FieldStatus): VisitOutcomeSt
 }
 
 /**
- * Shared visit outcome is appointment-scoped. When multiple technicians are
- * assigned, only the office should finalise the shared visit closure.
+ * Solo technicians may finalise the shared visit immediately from their own report.
+ * Multi-tech crews finalise only when every assigned technician has a terminal report.
  */
 export function canTechnicianFinaliseSharedVisit(assignedTechnicianCount: number): boolean {
   return assignedTechnicianCount <= 1;
@@ -43,6 +43,65 @@ export function canTechnicianFinaliseSharedVisit(assignedTechnicianCount: number
 
 export function isTerminalVisitOutcome(status: string): boolean {
   return status === 'work_completed' || status === 'unable_to_complete';
+}
+
+/** One technician's report contribution used when rolling up the shared visit outcome. */
+export type TechReportRollupInput = {
+  staffId: string;
+  technicianName: string | null;
+  progressStatus: string;
+  workSummary: string | null;
+  outstandingWork: string | null;
+  issues: string | null;
+  followUpRequired: boolean;
+};
+
+/** True when every assigned electrician has a terminal personal report. */
+export function allAssignedReportsTerminal(
+  assignedStaffIds: string[],
+  reports: { staffId: string; progressStatus: string }[],
+): boolean {
+  if (!assignedStaffIds.length) return false;
+  const byStaff = new Map(reports.map((report) => [report.staffId, report.progressStatus]));
+  return assignedStaffIds.every((staffId) => {
+    const status = byStaff.get(staffId);
+    return Boolean(status && isTerminalVisitOutcome(status));
+  });
+}
+
+function joinRollupNotes(
+  reports: TechReportRollupInput[],
+  pick: (report: TechReportRollupInput) => string | null,
+): string | null {
+  const parts = reports
+    .map((report) => {
+      const text = normalizeVisitReportText(pick(report));
+      if (!text) return null;
+      const name = report.technicianName?.trim() || 'Technician';
+      return `${name}: ${text}`;
+    })
+    .filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join('\n\n') : null;
+}
+
+/**
+ * Roll shared visit outcome from terminal personal reports.
+ * Unable wins over completed; further visit if any tech flagged it.
+ */
+export function rollupSharedVisitOutcome(reports: TechReportRollupInput[]): {
+  fieldStatus: VisitOutcomeStatus;
+  fields: VisitReportFields;
+} {
+  const unable = reports.some((report) => report.progressStatus === 'unable_to_complete');
+  return {
+    fieldStatus: unable ? 'unable_to_complete' : 'work_completed',
+    fields: {
+      completionNote: joinRollupNotes(reports, (report) => report.workSummary),
+      outstandingWork: joinRollupNotes(reports, (report) => report.outstandingWork),
+      issues: joinRollupNotes(reports, (report) => report.issues),
+      furtherVisitRequired: reports.some((report) => report.followUpRequired),
+    },
+  };
 }
 
 /** Finishing a personal timer must never close the visit or the job. */
@@ -105,9 +164,9 @@ export type VisitReportPatch = VisitReportFields & {
 };
 
 /**
- * Resolve the shared field_status a technician is allowed to write.
- * Multi-tech crews may save personal reports but cannot finalise the shared visit.
- * Terminal shared outcomes are office-owned and must not be overwritten.
+ * Resolve a technician's personal visit outcome status.
+ * Multi-tech crews may save terminal personal reports; shared closure waits until all crew reports are terminal.
+ * Terminal shared outcomes must not be overwritten by a later personal save path that still writes shared fields.
  */
 export function resolveTechnicianVisitOutcome(input: {
   requested: string;
@@ -123,19 +182,10 @@ export function resolveTechnicianVisitOutcome(input: {
     isTerminalVisitOutcome(input.requested) &&
     !canTechnicianFinaliseSharedVisit(input.assignedTechnicianCount)
   ) {
+    // Personal report may still be edited; callers that only write personal rows should not use this error.
     return {
       ok: false,
-      error: 'This visit outcome was already finalised by the office.',
-    };
-  }
-  if (
-    isTerminalVisitOutcome(input.requested) &&
-    !canTechnicianFinaliseSharedVisit(input.assignedTechnicianCount)
-  ) {
-    return {
-      ok: false,
-      error:
-        'This visit has multiple technicians. Save your own work report — the office will close the shared visit outcome.',
+      error: 'This visit outcome was already finalised from the crew reports.',
     };
   }
   return { ok: true, fieldStatus: input.requested };
@@ -189,9 +239,9 @@ export function techWorkReportSaveIsNoop(
 }
 
 /**
- * Whether a technician save may also write shared job_appointments.field_*.
- * Never when the shared outcome is already terminal (office-owned).
- * Solo techs may finalise; multi-tech may only nudge non-terminal status to in_progress.
+ * Whether a technician save may also write shared job_appointments.field_* immediately.
+ * Never when the shared outcome is already terminal.
+ * Solo techs may finalise immediately; multi-tech shared finalise is handled by crew roll-up after personal save.
  */
 export function canTechnicianWriteSharedVisitFields(input: {
   assignedTechnicianCount: number;
@@ -202,7 +252,7 @@ export function canTechnicianWriteSharedVisitFields(input: {
     return {
       writeShared: false,
       finaliseShared: false,
-      reason: 'Shared visit outcome is already finalised by the office.',
+      reason: 'Shared visit outcome is already finalised.',
     };
   }
   const solo = canTechnicianFinaliseSharedVisit(input.assignedTechnicianCount);
@@ -212,7 +262,7 @@ export function canTechnicianWriteSharedVisitFields(input: {
   if (solo) {
     return { writeShared: true, finaliseShared: false };
   }
-  // Multi-tech: personal report only. Shared status is driven by timers / office.
+  // Multi-tech: personal report only here; shared roll-up runs separately when all crew reports are terminal.
   return { writeShared: false, finaliseShared: false };
 }
 

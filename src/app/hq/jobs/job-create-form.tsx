@@ -3,11 +3,9 @@ import Link from 'next/link';
 import {useState} from 'react';
 import {useFormStatus} from 'react-dom';
 import {jobTitleFromDescription} from '@/lib/job-title-from-description';
-import {staffColor} from '@/lib/staff-color';
 import {createJob} from './actions';
 
 type Customer={id:string;name:string};
-type Staff={id:string;full_name:string;initials?:string|null;avatar_color?:string|null};
 type Prefill={
  customerId:string;
  enquiryId:string;
@@ -39,21 +37,13 @@ function newIdempotencyKey(){
  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
 }
 
-function staffInitials(person:Staff){
- const raw=(person.initials||'').trim();
- if(raw)return raw.slice(0,2).toUpperCase();
- return person.full_name.trim().split(/\s+/).map(part=>part[0]).filter(Boolean).slice(0,2).join('').toUpperCase()||'?';
-}
-
 export default function JobCreateForm({
  customers,
- staff,
  prefill,
  provenance,
  cancelHref='/hq/jobs',
 }:{
  customers:Customer[];
- staff:Staff[];
  prefill:Prefill;
  provenance:Provenance|null;
  cancelHref?:string;
@@ -98,24 +88,6 @@ export default function JobCreateForm({
     <span className="ee-create-title-preview">Job title · {titlePreview}</span>
    ):null}
   </label>
-
-  <fieldset className="ee-create-staff ee-create-span">
-   <legend>Assign staff <span className="ee-optional">(optional)</span></legend>
-   <p className="ee-create-staff-hint">Default crew for this job. Book visits on the job page after create.</p>
-   <div className="ee-create-staff-list">
-    {staff.map(person=>{
-     const color=staffColor(person.id,person.avatar_color);
-     return (
-      <label key={person.id} className="ee-create-staff-option">
-       <input type="checkbox" name="staff_id" value={person.id}/>
-       <span className="ee-create-staff-avatar" style={{backgroundColor:color}} aria-hidden="true">{staffInitials(person)}</span>
-       <span className="ee-create-staff-name">{person.full_name}</span>
-      </label>
-     );
-    })}
-    {staff.length===0?<span className="ee-create-staff-empty">No active electricians available.</span>:null}
-   </div>
-  </fieldset>
 
   <div className="ee-create-actions"><Link href={cancelHref}>Cancel</Link><SubmitButton/></div>
  </form>;

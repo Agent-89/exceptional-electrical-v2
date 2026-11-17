@@ -23,12 +23,11 @@ export async function neilCalendarConflicts(staffIds:string[],start:Date,end:Dat
  return events.filter(e=>e.busy&&new Date(e.start)<end&&new Date(e.end)>start)
   .map(e=>({title:e.title,start:e.start,end:e.end}));
 }
-export async function requireNeilAvailability(staffIds:string[],start:Date,end:Date,override:boolean,role:string){
+
+/** Hard-block Neil Google Calendar busy overlaps when Neil is on the visit crew. No override path. */
+export async function requireNeilAvailability(staffIds:string[],start:Date,end:Date):Promise<void>{
  const conflicts=await neilCalendarConflicts(staffIds,start,end);
- if(conflicts.length&&!override){
-  const label=conflicts.map(e=>e.title+' ('+new Date(e.start).toLocaleString('en-AU',{timeZone:'Australia/Perth',dateStyle:'medium',timeStyle:'short'})+' – '+new Date(e.end).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',timeStyle:'short'})+')').join('; ');
-  throw new Error('The connected Google Calendar has a busy event: '+label+'. To proceed, tick “Override Google Calendar conflict” and save again.');
- }
- if(conflicts.length&&override&&!['owner','admin'].includes(role))throw new Error('Only an owner or admin may override Neil’s Google Calendar conflict.');
- return conflicts;
+ if(!conflicts.length)return;
+ const label=conflicts.map(e=>e.title+' ('+new Date(e.start).toLocaleString('en-AU',{timeZone:'Australia/Perth',dateStyle:'medium',timeStyle:'short'})+' – '+new Date(e.end).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',timeStyle:'short'})+')').join('; ');
+ throw new Error('Neil has a Google Calendar conflict: '+label+'. Choose a different time or remove Neil from this visit.');
 }

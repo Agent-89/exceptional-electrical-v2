@@ -4,22 +4,27 @@ import {useEffect,useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {createPortal} from 'react-dom';
 import {
+ createTapRange,
  initialGestureArmed,
+ normalizeCreateRange,
  pointerDistance,
  shouldActivateDrag,
  shouldArmMouseDrag,
  shouldCancelGestureWithoutButtons,
  shouldSuppressClickAfterDrag,
+ TIMELINE_CREATE_TOUCH_HOLD_MS,
 } from '@/lib/timeline-gesture';
+import {useScheduleBooking} from './booking-context';
 import {setScheduledVisitTimes} from './actions';
 import VisitPreview from './visit-preview';
 import {ChevronLeft,ChevronRight} from 'lucide-react';
 
 export type TimelineVisit={startIso:string;endIso:string;id:string;day:string;startMinutes:number;endMinutes:number;title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds:string[];address?:string|null;notes?:string|null;status?:string|null;conflict?:string|null};
-type Props={toolbarExtras?:React.ReactNode;googleSettings?:{connected:boolean;email:string|null;error:boolean;canManage:boolean};canEdit:boolean;canOverrideNeil:boolean;visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;nowMinutes:number};
+type Props={toolbarExtras?:React.ReactNode;googleSettings?:{connected:boolean;email:string|null;error:boolean;canManage:boolean};canEdit:boolean;enableSlotCreate?:boolean;visits:TimelineVisit[];days:{key:string;label:string}[];staff:{id:string;name:string}[];today:string;nowMinutes:number};
 const DEFAULT_START=6*60,DEFAULT_END=18*60,COMFORTABLE_HOUR_HEIGHT=48;
 const hourLabel=(h:number)=>`${h%12||12} ${h<12?'am':'pm'}`;
-export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,staff,today,nowMinutes}:Props){
+export default function DispatchTimeline({canEdit,enableSlotCreate=false,visits,days,staff,today,nowMinutes}:Props){
+ const {openCreate}=useScheduleBooking();
  const router=useRouter();
  const [density,setDensity]=useState<'fit'|'comfortable'>('fit');
  const [allDay,setAllDay]=useState(false);
@@ -32,33 +37,37 @@ export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,st
  const HOUR_HEIGHT=density==='fit'?hourHeight:COMFORTABLE_HOUR_HEIGHT;
  const [moving,setMoving]=useState<TimelineVisit|null>(null);
  const [proposed,setProposed]=useState<{visit:TimelineVisit;day:string;start:number;end:number;warning:string}|null>(null);
- const [overrideNeil,setOverrideNeil]=useState(false);
  const [serverWarning,setServerWarning]=useState('');
  const [moveDay,setMoveDay]=useState('');
  const [moveTime,setMoveTime]=useState('07:00');
  const [moveEnd,setMoveEnd]=useState('08:00');
  const [moveError,setMoveError]=useState('');
  const [preview,setPreview]=useState<{id:string;day:string;start:number;end:number}|null>(null);
+ const [createPreview,setCreatePreview]=useState<{day:string;start:number;end:number}|null>(null);
  const [overrides,setOverrides]=useState<Record<string,{day:string;start:number;end:number;startIso:string;endIso:string}>>({});
  const previewRef=useRef<{id:string;day:string;start:number;end:number}|null>(null);
  const suppressClick=useRef(false);
  const gesture=useRef<{id:string;kind:'move'|'start'|'end';day:string;start:number;end:number;anchorY:number;anchorX:number;anchorMinute:number;originStart:number;originEnd:number;originDay:string;pointerId:number;active:boolean;armed:boolean;touch:boolean;pointerType:string}|null>(null);
+ const createGesture=useRef<{day:string;anchorY:number;anchorX:number;anchorMinute:number;pointerId:number;active:boolean;armed:boolean;touch:boolean;pointerType:string}|null>(null);
  const {show:showGoogle,events:googleEvents}=useGoogleCalendar();
  const lanes=useRef<Record<string,HTMLDivElement|null>>({});
  const holdTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+ const createHoldTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const clearHold=()=>{if(holdTimer.current!==null){clearTimeout(holdTimer.current);holdTimer.current=null;}};
+ const clearCreateHold=()=>{if(createHoldTimer.current!==null){clearTimeout(createHoldTimer.current);createHoldTimer.current=null;}};
  const cancelGesture=()=>{clearHold();gesture.current=null;previewRef.current=null;setPreview(null);};
+ const cancelCreateGesture=()=>{clearCreateHold();createGesture.current=null;setCreatePreview(null);};
  useEffect(()=>{
-  const stopScroll=(e:TouchEvent)=>{if(gesture.current?.touch&&gesture.current.armed)e.preventDefault();};
+  const stopScroll=(e:TouchEvent)=>{if((gesture.current?.touch&&gesture.current.armed)||(createGesture.current?.touch&&createGesture.current.armed))e.preventDefault();};
   const onGlobalPointerUp=(e:PointerEvent)=>{
    const g=gesture.current;
    if(!g||g.pointerId!==e.pointerId)return;
    // Lost pointerup on the appointment (common after opening/closing the details modal).
    if(!g.active){cancelGesture();return;}
   };
-  const onGlobalPointerCancel=()=>cancelGesture();
-  const onBlur=()=>cancelGesture();
-  const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'){cancelGesture();setProposed(null);setMoving(null);}};
+  const onGlobalPointerCancel=()=>{cancelGesture();cancelCreateGesture();};
+  const onBlur=()=>{cancelGesture();cancelCreateGesture();};
+  const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'){cancelGesture();cancelCreateGesture();setProposed(null);setMoving(null);}};
   document.addEventListener('touchmove',stopScroll,{passive:false});
   window.addEventListener('pointerup',onGlobalPointerUp,true);
   window.addEventListener('pointercancel',onGlobalPointerCancel,true);
@@ -71,7 +80,9 @@ export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,st
    window.removeEventListener('blur',onBlur);
    window.removeEventListener('keydown',onKey);
    if(holdTimer.current!==null)clearTimeout(holdTimer.current);
+   if(createHoldTimer.current!==null)clearTimeout(createHoldTimer.current);
    cancelGesture();
+   cancelCreateGesture();
   };
  },[]);
  const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
@@ -160,34 +171,113 @@ export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,st
   if(nextStart===v.startIso&&nextEnd===v.endIso)return;
   const overlaps=effective.filter(other=>other.id!==v.id&&v.staffIds.some(id=>other.staffIds.includes(id))&&new Date(other.startIso)<new Date(nextEnd)&&new Date(other.endIso)>new Date(nextStart));
   const warning=overlaps.length?'\n\nStaff conflict with: '+overlaps.map(x=>x.customer+' — '+x.title).join('; '):'';
-  setMoving(null);setOverrideNeil(false);setServerWarning('');setProposed({visit:v,day,start,end,warning});
+  setMoving(null);setServerWarning('');setProposed({visit:v,day,start,end,warning});
  };
- const applyTimes=(v:TimelineVisit,day:string,start:number,end:number,override=false)=>{
+ const applyTimes=(v:TimelineVisit,day:string,start:number,end:number)=>{
   const nextStart=toIso(day,start),nextEnd=toIso(day,end);
   const previous=overrides[v.id];
   const clientWarning=proposed&&proposed.visit.id===v.id?proposed.warning:'';
   setOverrides(old=>({...old,[v.id]:{day,start,end,startIso:nextStart,endIso:nextEnd}}));
   setServerWarning('');
   startTransition(async()=>{
-   const result=await setScheduledVisitTimes(v.id,nextStart,nextEnd,v.startIso,override);
+   const result=await setScheduledVisitTimes(v.id,nextStart,nextEnd,v.startIso);
    if(result.ok){
     setMoving(null);
     setProposed(null);
-    setOverrideNeil(false);
     router.refresh();
     return;
    }
    // Restore original times and keep the confirmation dialog usable.
    setOverrides(old=>{const copy={...old};if(previous)copy[v.id]=previous;else delete copy[v.id];return copy;});
    setServerWarning(result.message||'Unable to reschedule visit.');
-   // Neil override never bypasses HQ electrician conflicts.
-   if(result.code==='hq_overlap')setOverrideNeil(false);
    setProposed({visit:v,day,start,end,warning:clientWarning});
   });
  };
  const [mode,setMode]=useState<'week'|'day'>('week');
  useEffect(()=>{if(window.matchMedia('(max-width: 760px)').matches)setMode('day');},[]);
  const [selected,setSelected]=useState(days.find(d=>d.key===today)?.key??days[0]?.key??'');
+ useEffect(()=>{
+  const next=days.find(d=>d.key===today)?.key??days[0]?.key;
+  if(next)setSelected(next);
+ },[days,today]);
+ const minuteFromClientY=(day:string,clientY:number)=>{
+  const lane=lanes.current[day];
+  if(!lane)return START;
+  const rect=lane.getBoundingClientRect();
+  return snap(START+(clientY-rect.top)/HOUR_HEIGHT*60);
+ };
+ // Empty-lane create:
+ // - Desktop/pen: click = 60m draft; click-drag = custom range.
+ // - Touch: quick tap = 60m draft; custom range needs long-press then drag.
+ //   Movement before the hold arms cancels create so native scroll wins.
+ //   Never preventDefault on touch pointerdown (scroll must stay free).
+ const beginCreate=(e:React.PointerEvent,day:string)=>{
+  if(!canEdit||!enableSlotCreate||pending||(e.pointerType==='mouse'&&e.button!==0))return;
+  if((e.target as HTMLElement).closest('.ee-timeline-event,.ee-timeline-google-event,.ee-timeline-resize'))return;
+  const touch=e.pointerType==='touch';
+  if(!touch)e.preventDefault();
+  const minute=minuteFromClientY(day,e.clientY);
+  createGesture.current={day,anchorY:e.clientY,anchorX:e.clientX,anchorMinute:minute,pointerId:e.pointerId,active:false,armed:!touch,touch,pointerType:e.pointerType};
+  if(!touch){
+   try{(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);}catch{}
+  }
+  if(touch){
+   clearCreateHold();
+   createHoldTimer.current=setTimeout(()=>{
+    const g=createGesture.current;
+    if(g&&g.pointerId===e.pointerId){
+     g.armed=true;
+     try{(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);}catch{}
+     if(navigator.vibrate)navigator.vibrate(20);
+    }
+   },TIMELINE_CREATE_TOUCH_HOLD_MS);
+  }
+ };
+ const moveCreate=(e:React.PointerEvent)=>{
+  const g=createGesture.current;
+  if(!g||g.pointerId!==e.pointerId)return;
+  const distance=pointerDistance(g.anchorX,g.anchorY,e.clientX,e.clientY);
+  if(shouldCancelGestureWithoutButtons(g.pointerType,e.buttons,g.armed||g.active)){
+   cancelCreateGesture();
+   return;
+  }
+  // Touch moved before long-press — treat as scroll, drop create gesture.
+  if(g.touch&&!g.armed){
+   if(distance>9)cancelCreateGesture();
+   return;
+  }
+  if(shouldArmMouseDrag(distance,g.armed,g.touch))g.armed=true;
+  if(!g.armed)return;
+  if(shouldActivateDrag(distance,g.armed,g.active)){
+   g.active=true;
+   e.preventDefault();
+  }
+  if(!g.active)return;
+  const minute=minuteFromClientY(g.day,e.clientY);
+  const range=normalizeCreateRange(g.anchorMinute,minute,START,END);
+  setCreatePreview({day:g.day,start:range.start,end:range.end});
+ };
+ const endCreate=(e:React.PointerEvent)=>{
+  const g=createGesture.current;
+  if(!g||g.pointerId!==e.pointerId)return;
+  clearCreateHold();
+  createGesture.current=null;
+  const minute=minuteFromClientY(g.day,e.clientY);
+  const travel=pointerDistance(g.anchorX,g.anchorY,e.clientX,e.clientY);
+  if(g.active){
+   const range=normalizeCreateRange(g.anchorMinute,minute,START,END);
+   setCreatePreview(null);
+   openCreate({day:g.day,startMinutes:range.start,endMinutes:range.end});
+   return;
+  }
+  setCreatePreview(null);
+  // Quick tap (desktop always; touch only when the finger barely moved).
+  // Scroll/cancel paths clear createGesture earlier so they never reach here.
+  if(!g.touch||travel<8){
+   const range=createTapRange(g.anchorMinute,START,END);
+   openCreate({day:g.day,startMinutes:range.start,endMinutes:range.end});
+  }
+ };
  const staffId='all';
  const showUnassigned=true;
  const visible=effective.filter(v=>(staffId==='all'||(staffId==='unassigned'?v.staffIds.length===0:v.staffIds.includes(staffId)))&&(showUnassigned||v.staffIds.length>0));
@@ -211,7 +301,7 @@ export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,st
   <div className="ee-timeline-scroll"><div className={"ee-timeline-grid"+(mode==="week"?" is-week":" is-day")} style={{gridTemplateColumns:mode==="week"?`62px repeat(${shownDays.length},minmax(0,1fr))`:"62px minmax(0,1fr)"}}>
    <div className="ee-timeline-corner">AWST</div>{shownDays.map(d=><div key={d.key} className={'ee-timeline-day-header'+(d.key===today?' today':'')}>{d.label}<small>{visible.filter(v=>v.day===d.key).length} visits</small></div>)}
    <div className="ee-timeline-hours" style={{height:minHeight}}>{Array.from({length:END/60-START/60+1},(_,i)=><span key={i} style={{top:i*HOUR_HEIGHT}}>{hourLabel(START/60+i)}</span>)}</div>
-   {shownDays.map(d=><div className="ee-timeline-lane" key={d.key} ref={el=>{lanes.current[d.key]=el}} style={{height:minHeight,backgroundSize:`100% ${HOUR_HEIGHT}px`}}>
+   {shownDays.map(d=><div className={"ee-timeline-lane"+(enableSlotCreate?' is-create-target':'')} key={d.key} ref={el=>{lanes.current[d.key]=el}} style={{height:minHeight,backgroundSize:`100% ${HOUR_HEIGHT}px`}} onPointerDown={e=>beginCreate(e,d.key)} onPointerMove={moveCreate} onPointerUp={endCreate} onPointerCancel={cancelCreateGesture}>
     {showGoogle&&googleEvents.filter(e=>e.busy).flatMap(e=>{
      const dayStart=new Date(d.key+'T00:00:00+08:00').getTime(),dayEnd=dayStart+86400000;
      const from=Math.max(dayStart,new Date(e.start).getTime()),to=Math.min(dayEnd,new Date(e.end).getTime());
@@ -221,17 +311,18 @@ export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,st
      return [<a key={'google-'+e.id+'-'+d.key} className="ee-timeline-google-event" href={e.url??'#'} target={e.url?'_blank':undefined} rel="noopener noreferrer" title={e.title+' · '+new Date(e.start).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',hour:'numeric',minute:'2-digit'})+'–'+new Date(e.end).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',hour:'numeric',minute:'2-digit'})} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(24,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${(dayLayouts.get(d.key)?.get('google-'+e.id)?.index??0)/(dayLayouts.get(d.key)?.get('google-'+e.id)?.count??1)*100}% + 3px)`,width:`calc(${100/(dayLayouts.get(d.key)?.get('google-'+e.id)?.count??1)}% - 6px)`,right:'auto'}}><strong>{e.title}</strong><span>{new Date(e.start).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',hour:'numeric',minute:'2-digit'})} – {new Date(e.end).toLocaleTimeString('en-AU',{timeZone:'Australia/Perth',hour:'numeric',minute:'2-digit'})}</span><small>Neil unavailable · Google</small></a>];
     })}
     {preview?.day===d.key&&<div className="ee-timeline-ghost" style={{top:(preview.start-START)/60*HOUR_HEIGHT+2,height:Math.max(22,(preview.end-preview.start)/60*HOUR_HEIGHT-4)}}><strong>{effective.find(v=>v.id===preview.id)?.customer}</strong><span>{format(preview.start)} – {format(preview.end)}</span></div>}
+    {createPreview?.day===d.key&&<div className="ee-timeline-ghost ee-timeline-create-ghost" style={{top:(createPreview.start-START)/60*HOUR_HEIGHT+2,height:Math.max(22,(createPreview.end-createPreview.start)/60*HOUR_HEIGHT-4)}}><strong>New visit</strong><span>{format(createPreview.start)} – {format(createPreview.end)}</span></div>}
     {d.key===today&&nowMinutes>=START&&nowMinutes<=END&&<div className="ee-timeline-now" style={{top:(nowMinutes-START)/60*HOUR_HEIGHT}}><span>Now</span></div>}
     {visible.filter(v=>v.day===d.key).map(v=>{
      const start=Math.max(START,v.startMinutes),end=Math.min(END,v.endMinutes);
      if(end<=start)return null;
      const {index,count}=dayLayouts.get(d.key)?.get('visit-'+v.id)??{index:0,count:1};
-     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')+(preview?.id===v.id?' is-dragging':'')} key={v.id} onPointerDown={e=>beginGesture(e,v,'move')} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={cancelGesture} onClickCapture={e=>{if(suppressClick.current){e.preventDefault();e.stopPropagation();suppressClick.current=false;}}} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}>{canEdit&&<div className="ee-timeline-resize top" onPointerDown={e=>beginGesture(e,v,'start')} title="Drag to adjust start time"/>}<VisitPreview appointmentId={v.id} startIso={v.startIso} endIso={v.endIso} canEdit={canEdit} staff={staff} title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} status={v.status} conflict={v.conflict} compact onOpenChange={open=>{cancelGesture();if(open){setProposed(null);setMoving(null);}}}/>{canEdit&&<div className="ee-timeline-resize bottom" onPointerDown={e=>beginGesture(e,v,'end')} title="Drag to adjust end time"/>}</div>;
+     return <div className={'ee-timeline-event'+(v.conflict?' conflict':'')+(preview?.id===v.id?' is-dragging':'')} key={v.id} onPointerDown={e=>{e.stopPropagation();beginGesture(e,v,'move');}} onPointerMove={e=>{e.stopPropagation();moveGesture(e);}} onPointerUp={e=>{e.stopPropagation();endGesture(e);}} onPointerCancel={e=>{e.stopPropagation();cancelGesture();}} onClickCapture={e=>{if(suppressClick.current){e.preventDefault();e.stopPropagation();suppressClick.current=false;}}} style={{top:(start-START)/60*HOUR_HEIGHT+2,height:Math.max(30,(end-start)/60*HOUR_HEIGHT-4),left:`calc(${index/count*100}% + 3px)`,width:`calc(${100/count}% - 6px)`,borderLeftColor:v.conflict?'#d99034':'#1688e9'}}>{canEdit&&<div className="ee-timeline-resize top" onPointerDown={e=>beginGesture(e,v,'start')} title="Drag to adjust start time"/>}<VisitPreview appointmentId={v.id} startIso={v.startIso} endIso={v.endIso} canEdit={canEdit} staff={staff} title={v.title} jobNumber={v.jobNumber} jobHref={v.jobHref} time={v.time} customer={v.customer} electricians={v.electricians} staffIds={v.staffIds} address={v.address} notes={v.notes} status={v.status} conflict={v.conflict} compact onOpenChange={open=>{cancelGesture();cancelCreateGesture();if(open){setProposed(null);setMoving(null);}}}/>{canEdit&&<div className="ee-timeline-resize bottom" onPointerDown={e=>beginGesture(e,v,'end')} title="Drag to adjust end time"/>}</div>;
     })}
    </div>)}
   </div></div>
 
-  {proposed&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!pending){setProposed(null);setServerWarning('');setOverrideNeil(false);cancelGesture();}}}><div className="ee-timeline-move-dialog" role="dialog" aria-modal="true" aria-label="Confirm appointment change"><h2>Confirm appointment change</h2><p><strong>{proposed.visit.customer} — {proposed.visit.title}</strong></p><p>Current: {proposed.visit.day} · {format(proposed.visit.startMinutes)}–{format(proposed.visit.endMinutes)}</p><p>New: <strong>{proposed.day} · {format(proposed.start)}–{format(proposed.end)}</strong></p>{proposed.warning&&<p className="ee-timeline-conflict-warning" style={{whiteSpace:'pre-wrap'}}>{proposed.warning.trim()}</p>}{serverWarning&&<p role="alert" className="ee-timeline-conflict-warning" style={{whiteSpace:'pre-wrap'}}>{serverWarning}</p>}{canOverrideNeil&&<label className="ee-neil-override"><input type="checkbox" checked={overrideNeil} onChange={e=>setOverrideNeil(e.target.checked)} disabled={pending}/> Override Neil’s Google Calendar conflict only (does not bypass HQ electrician conflicts)</label>}<div><button type="button" disabled={pending} onClick={()=>{setProposed(null);setServerWarning('');setOverrideNeil(false);cancelGesture();}}>Keep original</button><button type="button" disabled={pending} onClick={()=>applyTimes(proposed.visit,proposed.day,proposed.start,proposed.end,overrideNeil)}>{pending?'Saving…':'Confirm change'}</button></div></div></div>}
+  {proposed&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!pending){setProposed(null);setServerWarning('');cancelGesture();}}}><div className="ee-timeline-move-dialog" role="dialog" aria-modal="true" aria-label="Confirm appointment change"><h2>Confirm appointment change</h2><p><strong>{proposed.visit.customer} — {proposed.visit.title}</strong></p><p>Current: {proposed.visit.day} · {format(proposed.visit.startMinutes)}–{format(proposed.visit.endMinutes)}</p><p>New: <strong>{proposed.day} · {format(proposed.start)}–{format(proposed.end)}</strong></p>{proposed.warning&&<p className="ee-timeline-conflict-warning" style={{whiteSpace:'pre-wrap'}}>{proposed.warning.trim()}</p>}{serverWarning&&<p role="alert" className="ee-timeline-conflict-warning" style={{whiteSpace:'pre-wrap'}}>{serverWarning}</p>}<div><button type="button" disabled={pending} onClick={()=>{setProposed(null);setServerWarning('');cancelGesture();}}>Keep original</button><button type="button" disabled={pending} onClick={()=>applyTimes(proposed.visit,proposed.day,proposed.start,proposed.end)}>{pending?'Saving…':'Confirm change'}</button></div></div></div>}
   {moving&&<div className="ee-timeline-move-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setMoving(null)}}><form className="ee-timeline-move-dialog" onSubmit={e=>{e.preventDefault();const [sh,sm]=moveTime.split(':').map(Number),[eh,em]=moveEnd.split(':').map(Number);const start=snap(sh*60+sm),end=snap(eh*60+em);if(end<=start){setMoveError('End time must be after start time.');return;}setMoveError('');confirmTimes(moving,moveDay,start,end)}}><h2>Change appointment</h2><p>{moving.customer} — {moving.title}</p><label>Date<input type="date" required value={moveDay} onChange={e=>setMoveDay(e.target.value)}/></label><label>Start time<input type="time" required step={900} value={moveTime} onChange={e=>{setMoveTime(e.target.value);setMoveError('')}}/></label><label>End time<input type="time" required step={900} value={moveEnd} onChange={e=>{setMoveEnd(e.target.value);setMoveError('')}}/></label>{moveError&&<p role="alert" className="ee-timeline-conflict-warning">{moveError}</p>}<div><button type="button" onClick={()=>setMoving(null)}>Cancel</button><button type="submit" disabled={pending}>Review change</button></div></form></div>}
   <style jsx global>{`
   @media(max-width:760px){.ee-timeline-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:7px!important;padding:8px!important}.ee-timeline-toolbar .ee-timeline-tabs{width:100%;grid-column:1;grid-row:1}.ee-timeline-toolbar .ee-timeline-tabs button{flex:1}.ee-timeline-toolbar .ee-timeline-staff-filter{grid-column:1/-1;grid-row:2;flex:none!important}.ee-timeline-toolbar .ee-timeline-staff-filter select{width:100%;max-width:none!important}.ee-timeline-toolbar .ee-timeline-check{grid-column:2;grid-row:1;align-self:center;white-space:nowrap}.ee-timeline-toolbar .ee-timeline-extra-controls{grid-column:1/-1;grid-row:3;order:initial!important;display:flex;justify-content:space-between;width:100%;flex:none!important}.ee-timeline-toolbar .ee-timeline-density{grid-column:1/-1;grid-row:4;width:100%;margin:0}.ee-timeline-day-picker{justify-content:space-between;gap:6px}.ee-timeline-day-picker select{flex:1;min-width:0}.ee-timeline-scroll{overflow-x:hidden!important}.ee-timeline-grid{grid-template-columns:52px minmax(0,1fr)!important}.ee-timeline-corner{padding:8px 4px}.ee-timeline-day-header{font-size:12px;padding:8px}.ee-timeline-hours span{right:4px}.ee-timeline-event .ee-visit-preview-trigger{gap:4px}.ee-timeline-event .ee-visit-preview-number{white-space:normal;overflow-wrap:anywhere}.ee-timeline-event .ee-visit-preview-avatars{display:flex;flex-wrap:wrap}.ee-timeline-google-event strong{overflow-wrap:anywhere}.ee-timeline-event{padding:5px}}
@@ -239,7 +330,7 @@ export default function DispatchTimeline({canEdit,canOverrideNeil,visits,days,st
   .ee-timeline-density{display:flex;gap:2px;padding:2px;border-radius:8px;background:#e7eef6;margin-left:auto}.ee-timeline-density button{border:0;background:transparent;border-radius:6px;padding:7px 9px;font-size:11px;font-weight:750;color:#47657c;cursor:pointer;white-space:nowrap}.ee-timeline-density button.active{background:white;color:#0875c9;box-shadow:0 1px 3px #1232}.ee-timeline-scroll{overflow-y:clip!important;max-height:none!important;height:auto!important;overscroll-behavior-y:auto}.ee-timeline-day-header,.ee-timeline-corner{top:0;z-index:15}.ee-timeline-corner{z-index:17}@media(max-width:760px){.ee-timeline-density{width:100%;justify-content:center;margin-left:0}.ee-timeline-density button{flex:1}}
   .ee-timeline-scroll{min-height:0;overflow-y:clip!important;max-height:none!important;contain:none!important}.ee-timeline-grid{height:auto!important;max-height:none!important}.ee-timeline-extra-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}.ee-timeline-extra-controls .ee-dispatch-metrics-inline{display:flex;gap:4px!important;margin:0!important}.ee-timeline-extra-controls .ee-dispatch-metrics-inline>a{min-height:30px!important;padding:3px 7px!important}.ee-timeline-extra-controls .ee-schedule-date-nav{display:flex;width:auto;gap:5px}.ee-timeline-extra-controls .ee-schedule-date-nav strong{font-size:11px}.ee-timeline-toolbar .ee-timeline-staff-filter{align-items:center!important}.ee-timeline-toolbar .ee-timeline-staff-filter>span{display:inline!important;line-height:32px}.ee-timeline-toolbar{align-items:center!important}@media(max-width:1000px){.ee-timeline-extra-controls{order:4;flex:1 1 100%;justify-content:space-between}.ee-timeline-density{margin-left:auto}}@media(max-width:760px){.ee-timeline-toolbar .ee-timeline-staff-filter>span{display:none!important}.ee-timeline-extra-controls{gap:6px}.ee-timeline-extra-controls .ee-schedule-date-nav{flex-wrap:wrap}.ee-timeline-extra-controls .ee-dispatch-metrics-inline>a small{font-size:10px!important}}
   .ee-timeline-google-event{min-width:0;position:absolute;z-index:1;left:3px;right:3px;display:flex;flex-direction:column;gap:4px;padding:7px;background:#ffe0e0;border:1px solid #f4a5a5;border-left:4px solid #ef6268;border-radius:7px;color:#772e32;font-size:11px;overflow:hidden;text-decoration:none;box-sizing:border-box}.ee-timeline-google-event strong{font-size:12px;line-height:1.25}.ee-timeline-google-event span,.ee-timeline-google-event small{font-size:10px;line-height:1.3}.ee-timeline-google-event:hover{z-index:4;background:#ffd1d1}
-  .ee-timeline-conflict-warning{background:#fff4e4;border:1px solid #e4b16d;padding:10px;border-radius:8px;white-space:pre-line;color:#865a1a}.ee-timeline-help{font-size:12px;color:#647d91;margin:0 0 8px}.ee-timeline-help summary{cursor:pointer;width:max-content}.ee-timeline-help p{margin:6px 0}.ee-timeline-ghost{position:absolute;z-index:20;left:3px;right:3px;border:2px dashed #0875c9;border-radius:8px;background:#1688e955;pointer-events:none;display:flex;flex-direction:column;padding:8px;gap:4px;color:#07558c;font-size:12px;box-sizing:border-box;overflow:hidden}.ee-timeline-event.is-dragging{opacity:.25}.ee-timeline-resize{position:absolute;left:8px;right:8px;height:10px;z-index:4;cursor:ns-resize;touch-action:none}.ee-timeline-resize.top{top:0}.ee-timeline-resize.bottom{bottom:0}.ee-timeline-resize:hover{background:#1688e955;border-radius:5px}.ee-timeline-event>.ee-visit-preview-root{position:relative;z-index:3;pointer-events:auto}.ee-timeline-event{touch-action:pan-x pan-y;user-select:none;-webkit-user-select:none}.ee-timeline-move-hint{font-size:12px;color:#647d91;margin:0 0 8px}.ee-timeline-lane.is-drop-target{background-color:#eff8ff;outline:2px dashed #1688e9;outline-offset:-3px}.ee-timeline-move{align-self:flex-start;border:0;border-radius:5px;padding:2px 5px;font-size:10px;color:#0875c9;background:#fff;cursor:pointer;margin-top:auto}.ee-timeline-event{cursor:grab}.ee-timeline-event:active{cursor:grabbing}.ee-timeline-move-backdrop{position:fixed;inset:0;z-index:2147483500;background:#102c4280;display:grid;place-items:center;padding:16px}.ee-timeline-move-dialog{display:grid;gap:14px;background:white;padding:22px;border-radius:14px;width:min(400px,100%);box-shadow:0 20px 60px #102c4250}.ee-timeline-move-dialog h2{margin:0;font-size:20px}.ee-timeline-move-dialog p{margin:0;color:#647d91}.ee-timeline-move-dialog label{display:grid;gap:5px;font-weight:700;font-size:13px}.ee-timeline-move-dialog input{font:inherit;font-size:16px;padding:10px;border:1px solid #cbd8e6;border-radius:8px}.ee-timeline-move-dialog>div{display:flex;justify-content:flex-end;gap:8px}.ee-timeline-move-dialog button{border:1px solid #cbd8e6;border-radius:8px;background:white;padding:10px 14px;cursor:pointer}.ee-timeline-move-dialog button[type=submit],.ee-timeline-move-dialog button:last-child{background:#1688e9;color:white;border-color:#1688e9}.ee-timeline{margin-bottom:18px}.ee-timeline-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;background:#fff;border:1px solid #dce5ee;border-radius:11px}.ee-timeline-tabs{display:flex;padding:4px;background:#e7eef6;border-radius:10px;gap:3px}.ee-timeline-tabs button{border:0;background:transparent;padding:9px 12px;border-radius:8px;color:#47657c;font-weight:750;cursor:pointer}.ee-timeline-tabs button.active{background:#fff;color:#0875c9;box-shadow:0 1px 3px #1232}.ee-timeline-toolbar label{display:flex;align-items:center;gap:8px;color:#4d687d;font-size:12px;font-weight:700;white-space:nowrap}.ee-timeline-toolbar select,.ee-timeline-day-picker select{padding:9px 12px;border:1px solid #d4e1ed;border-radius:9px;background:white;color:#17364b;font:inherit;min-width:150px}.ee-timeline-toolbar .ee-timeline-check{display:inline-flex;align-items:center;gap:5px;padding:0;white-space:nowrap;margin:0}.ee-timeline-check input{margin:0;width:16px;height:16px;flex:none}.ee-timeline-check input{accent-color:#1688e9}@media(max-width:760px){.ee-timeline-toolbar{gap:8px;padding:8px}.ee-timeline-toolbar label{white-space:normal}.ee-timeline-toolbar label:not(.ee-timeline-check){flex:1;min-width:0}.ee-timeline-toolbar label:not(.ee-timeline-check) select{flex:1;min-width:0;max-width:100%}.ee-timeline-toolbar .ee-timeline-check{flex:none;font-size:11px}.ee-timeline-tabs button{padding:8px 12px}}.ee-timeline-day-picker{display:flex;gap:8px;align-items:center;margin-bottom:12px}.ee-timeline-day-picker button{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;background:#fff;border:1px solid #d4e1ed;border-radius:8px;padding:0;color:#0875c9;cursor:pointer}.ee-timeline-scroll{overflow-x:auto;overflow-y:clip;border:1px solid #dce5ee;border-radius:13px;background:white;max-height:none;height:auto;overscroll-behavior-x:contain}.ee-timeline-outside{font-size:12px;color:#865a1a;background:#fff7e8;border:1px solid #efdcb7;border-radius:8px;padding:9px 12px;margin:0 0 10px}.ee-timeline-grid{display:grid;width:100%;min-width:0}.ee-timeline-corner,.ee-timeline-day-header{position:sticky;top:0;z-index:5;background:#f4f8fc;border-bottom:1px solid #dce5ee;padding:10px;font-size:12px;font-weight:800;color:#17364b}.ee-timeline-corner{font-size:10px;color:#7a8fa0;left:0;z-index:9}.ee-timeline-day-header{border-left:1px solid #dce5ee;display:grid;gap:4px;min-width:0;overflow:hidden;padding:8px 4px;font-size:11px}.ee-timeline-day-header small{font-weight:500;color:#718397}.ee-timeline-day-header.today{background:#e8f3ff;color:#0875c9}.ee-timeline-hours{position:sticky;left:0;z-index:8;background:#f9fbfd;border-right:1px solid #dce5ee}.ee-timeline-hours span{position:absolute;right:7px;transform:translateY(-50%);font-size:10px;color:#718397}.ee-timeline-lane{position:relative;border-left:1px solid #e0e9f1;background-image:linear-gradient(to bottom,#e8edf3 1px,transparent 1px)}.ee-timeline-now{position:absolute;left:0;right:0;height:2px;background:#ec5a56;z-index:10;pointer-events:none}.ee-timeline-now span{position:absolute;right:0;top:-15px;font-size:10px;font-weight:800;color:#c83e39}.ee-timeline-event{min-width:0;position:absolute;z-index:2;cursor:pointer;background:#e8f3ff;border:1px solid #95c9f0;border-left:3px solid #1688e9;border-radius:8px;padding:4px;overflow:visible;box-sizing:border-box;display:flex;flex-direction:column} .ee-timeline-event:hover{z-index:3;border-color:#1688e9;box-shadow:0 3px 12px #164a7525}.ee-timeline-event>.ee-visit-preview-root{flex:1;min-height:0}.ee-timeline-event.conflict{background:#fff4e4;border-color:#d99034}.ee-timeline-event .ee-visit-preview-trigger{gap:3px}.ee-timeline-event .ee-visit-preview-title{font-size:11px}.ee-timeline-event .ee-dispatch-time{font-size:11px}.ee-timeline-event .ee-visit-preview-avatars{margin-top:1px}.ee-timeline-event .ee-visit-preview-avatar{width:21px;height:21px}.ee-timeline-caption{color:#72869b;font-size:12px;line-height:1.5;margin:10px 0 0}@media(max-width:760px){.ee-timeline-toolbar{align-items:stretch}.ee-timeline-toolbar label{flex:1;justify-content:space-between}.ee-timeline-tabs{width:100%}.ee-timeline-tabs button{flex:1} .ee-timeline-scroll{max-height:none}.ee-timeline-event .ee-visit-preview-title{font-size:12px}}
+  .ee-timeline-conflict-warning{background:#fff4e4;border:1px solid #e4b16d;padding:10px;border-radius:8px;white-space:pre-line;color:#865a1a}.ee-timeline-help{font-size:12px;color:#647d91;margin:0 0 8px}.ee-timeline-help summary{cursor:pointer;width:max-content}.ee-timeline-help p{margin:6px 0}.ee-timeline-ghost{position:absolute;z-index:20;left:3px;right:3px;border:2px dashed #0875c9;border-radius:8px;background:#1688e955;pointer-events:none;display:flex;flex-direction:column;padding:8px;gap:4px;color:#07558c;font-size:12px;box-sizing:border-box;overflow:hidden}.ee-timeline-event.is-dragging{opacity:.25}.ee-timeline-resize{position:absolute;left:8px;right:8px;height:10px;z-index:4;cursor:ns-resize;touch-action:none}.ee-timeline-resize.top{top:0}.ee-timeline-resize.bottom{bottom:0}.ee-timeline-resize:hover{background:#1688e955;border-radius:5px}.ee-timeline-event>.ee-visit-preview-root{position:relative;z-index:3;pointer-events:auto}.ee-timeline-event{touch-action:pan-x pan-y;user-select:none;-webkit-user-select:none}.ee-timeline-move-hint{font-size:12px;color:#647d91;margin:0 0 8px}.ee-timeline-lane.is-drop-target{background-color:#eff8ff;outline:2px dashed #1688e9;outline-offset:-3px}.ee-timeline-move{align-self:flex-start;border:0;border-radius:5px;padding:2px 5px;font-size:10px;color:#0875c9;background:#fff;cursor:pointer;margin-top:auto}.ee-timeline-event{cursor:grab}.ee-timeline-event:active{cursor:grabbing}.ee-timeline-move-backdrop{position:fixed;inset:0;z-index:2147483500;background:#102c4280;display:grid;place-items:center;padding:16px}.ee-timeline-move-dialog{display:grid;gap:14px;background:white;padding:22px;border-radius:14px;width:min(400px,100%);box-shadow:0 20px 60px #102c4250}.ee-timeline-move-dialog h2{margin:0;font-size:20px}.ee-timeline-move-dialog p{margin:0;color:#647d91}.ee-timeline-move-dialog label{display:grid;gap:5px;font-weight:700;font-size:13px}.ee-timeline-move-dialog input{font:inherit;font-size:16px;padding:10px;border:1px solid #cbd8e6;border-radius:8px}.ee-timeline-move-dialog>div{display:flex;justify-content:flex-end;gap:8px}.ee-timeline-move-dialog button{border:1px solid #cbd8e6;border-radius:8px;background:white;padding:10px 14px;cursor:pointer}.ee-timeline-move-dialog button[type=submit],.ee-timeline-move-dialog button:last-child{background:#1688e9;color:white;border-color:#1688e9}.ee-timeline{margin-bottom:18px}.ee-timeline-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;background:#fff;border:1px solid #dce5ee;border-radius:11px}.ee-timeline-tabs{display:flex;padding:4px;background:#e7eef6;border-radius:10px;gap:3px}.ee-timeline-tabs button{border:0;background:transparent;padding:9px 12px;border-radius:8px;color:#47657c;font-weight:750;cursor:pointer}.ee-timeline-tabs button.active{background:#fff;color:#0875c9;box-shadow:0 1px 3px #1232}.ee-timeline-toolbar label{display:flex;align-items:center;gap:8px;color:#4d687d;font-size:12px;font-weight:700;white-space:nowrap}.ee-timeline-toolbar select,.ee-timeline-day-picker select{padding:9px 12px;border:1px solid #d4e1ed;border-radius:9px;background:white;color:#17364b;font:inherit;min-width:150px}.ee-timeline-toolbar .ee-timeline-check{display:inline-flex;align-items:center;gap:5px;padding:0;white-space:nowrap;margin:0}.ee-timeline-check input{margin:0;width:16px;height:16px;flex:none}.ee-timeline-check input{accent-color:#1688e9}@media(max-width:760px){.ee-timeline-toolbar{gap:8px;padding:8px}.ee-timeline-toolbar label{white-space:normal}.ee-timeline-toolbar label:not(.ee-timeline-check){flex:1;min-width:0}.ee-timeline-toolbar label:not(.ee-timeline-check) select{flex:1;min-width:0;max-width:100%}.ee-timeline-toolbar .ee-timeline-check{flex:none;font-size:11px}.ee-timeline-tabs button{padding:8px 12px}}.ee-timeline-day-picker{display:flex;gap:8px;align-items:center;margin-bottom:12px}.ee-timeline-day-picker button{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;background:#fff;border:1px solid #d4e1ed;border-radius:8px;padding:0;color:#0875c9;cursor:pointer}.ee-timeline-scroll{overflow-x:auto;overflow-y:clip;border:1px solid #dce5ee;border-radius:13px;background:white;max-height:none;height:auto;overscroll-behavior-x:contain}.ee-timeline-outside{font-size:12px;color:#865a1a;background:#fff7e8;border:1px solid #efdcb7;border-radius:8px;padding:9px 12px;margin:0 0 10px}.ee-timeline-grid{display:grid;width:100%;min-width:0}.ee-timeline-corner,.ee-timeline-day-header{position:sticky;top:0;z-index:5;background:#f4f8fc;border-bottom:1px solid #dce5ee;padding:10px;font-size:12px;font-weight:800;color:#17364b}.ee-timeline-corner{font-size:10px;color:#7a8fa0;left:0;z-index:9}.ee-timeline-day-header{border-left:1px solid #dce5ee;display:grid;gap:4px;min-width:0;overflow:hidden;padding:8px 4px;font-size:11px}.ee-timeline-day-header small{font-weight:500;color:#718397}.ee-timeline-day-header.today{background:#e8f3ff;color:#0875c9}.ee-timeline-hours{position:sticky;left:0;z-index:8;background:#f9fbfd;border-right:1px solid #dce5ee}.ee-timeline-hours span{position:absolute;right:7px;transform:translateY(-50%);font-size:10px;color:#718397}.ee-timeline-lane{position:relative;border-left:1px solid #e0e9f1;background-image:linear-gradient(to bottom,#e8edf3 1px,transparent 1px)}.ee-timeline-lane.is-create-target{cursor:crosshair}.ee-timeline-create-ghost{border-style:solid;background:#1688e933}.ee-timeline-now{position:absolute;left:0;right:0;height:2px;background:#ec5a56;z-index:10;pointer-events:none}.ee-timeline-now span{position:absolute;right:0;top:-15px;font-size:10px;font-weight:800;color:#c83e39}.ee-timeline-event{min-width:0;position:absolute;z-index:2;cursor:pointer;background:#e8f3ff;border:1px solid #95c9f0;border-left:3px solid #1688e9;border-radius:8px;padding:4px;overflow:visible;box-sizing:border-box;display:flex;flex-direction:column} .ee-timeline-event:hover{z-index:3;border-color:#1688e9;box-shadow:0 3px 12px #164a7525}.ee-timeline-event>.ee-visit-preview-root{flex:1;min-height:0}.ee-timeline-event.conflict{background:#fff4e4;border-color:#d99034}.ee-timeline-event .ee-visit-preview-trigger{gap:3px}.ee-timeline-event .ee-visit-preview-title{font-size:11px}.ee-timeline-event .ee-dispatch-time{font-size:11px}.ee-timeline-event .ee-visit-preview-avatars{margin-top:1px}.ee-timeline-event .ee-visit-preview-avatar{width:21px;height:21px}.ee-timeline-caption{color:#72869b;font-size:12px;line-height:1.5;margin:10px 0 0}@media(max-width:760px){.ee-timeline-toolbar{align-items:stretch}.ee-timeline-toolbar label{flex:1;justify-content:space-between}.ee-timeline-tabs{width:100%}.ee-timeline-tabs button{flex:1} .ee-timeline-scroll{max-height:none}.ee-timeline-event .ee-visit-preview-title{font-size:12px}}
 
 /* Compact schedule filters: retain touch targets while saving vertical space */
 .ee-timeline-toolbar{border-radius:9px!important;min-height:38px!important;padding:3px 7px!important;margin-bottom:5px!important;gap:7px!important}.ee-timeline-tabs button{min-height:32px!important;padding:6px 10px!important}.ee-timeline-toolbar select{min-height:32px!important;padding:5px 9px!important}.ee-timeline-density button{min-height:30px;padding:5px 9px}.ee-timeline-toolbar .ee-timeline-staff-filter{gap:5px}.ee-timeline-help{margin:0 0 4px!important}

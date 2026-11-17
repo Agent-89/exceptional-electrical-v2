@@ -46,7 +46,7 @@ Customer addresses have no Tradify source key. Staff profiles are keyed to auth.
 - Show/hide toggle affects presentation only; Neil's availability check always considers active external busy events.
 - Never mark other electricians or the whole business unavailable.
 - Free/transparent events must not block; private events should reveal no unnecessary details to other staff.
-- Overlaps with Neil's HQ visits raise a conflict warning; authorised manager may override with an auditable reason.
+- Overlaps with Neil's HQ visits hard-block scheduling when Neil is on the visit crew; there is no override path.
 - Sync with bounded refresh, pagination, retry, and a stale-data indicator. No write-back to Google in v1.
 
 ## Implementation order

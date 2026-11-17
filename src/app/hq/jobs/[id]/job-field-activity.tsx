@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { FIELD_STATUS_LABELS, type FieldStatus } from '@/lib/tech-field-constants';
+import { staffColor } from '@/lib/staff-color';
 import {
   VISIT_OUTCOME_LABELS,
   isTerminalVisitOutcome,
@@ -14,10 +14,57 @@ import {
   type JobDetailTimeEntry,
 } from '@/lib/job-detail-summary';
 import { isFollowUpOutstanding } from '@/lib/job-follow-up';
-import OfficeVisitOutcomeForm from './office-visit-outcome-form';
 import ResolveFollowUpForm from './resolve-follow-up-form';
 import JobTimePanel from './job-time-panel';
 import JobUpdatesPanel from './job-updates-panel';
+
+function crewInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
+function visitPrimaryPill(appointment: JobDetailAppointment): { label: string; tone: string } {
+  if (appointment.status === 'cancelled') return { label: 'Cancelled', tone: 'cancelled' };
+  switch (appointment.fieldStatus) {
+    case 'work_completed':
+      return { label: 'Completed', tone: 'completed' };
+    case 'unable_to_complete':
+      return { label: 'Unable to complete', tone: 'unable' };
+    case 'in_progress':
+      return { label: 'In progress', tone: 'progress' };
+    case 'paused':
+      return { label: 'Paused', tone: 'paused' };
+    default:
+      return { label: 'Scheduled', tone: 'scheduled' };
+  }
+}
+
+function VisitCrewAvatars({
+  crew,
+}: {
+  crew: { id: string; name: string; avatarColor: string | null }[];
+}) {
+  if (!crew.length) return null;
+  return (
+    <span className="ee-visit-crew-avatars" aria-label={`Crew: ${crew.map((m) => m.name).join(', ')}`}>
+      {crew.map((member) => (
+        <span
+          key={member.id}
+          className="ee-avatar ee-visit-crew-avatar"
+          title={member.name}
+          style={{ backgroundColor: staffColor(member.id, member.avatarColor) }}
+        >
+          {crewInitials(member.name)}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 type NoteView = {
   id: string;
@@ -120,14 +167,13 @@ export default function JobFieldActivity({
   if (section === 'visits') {
     return (
       <section className="hq-panel ee-compact-panel" id="visits-reports">
-        <div className="ee-section-title">
+        <div className="ee-section-title ee-visits-section-title">
           <div>
             <span className="ee-eyebrow">VISITS</span>
             <h2>Appointments and technician reports</h2>
           </div>
-          <span className="ee-muted">{appointments.length}</span>
         </div>
-        <p className="ee-muted" style={{ marginTop: 0 }}>
+        <p className="ee-muted ee-visits-section-stats">
           {visitStats.visitCount} visit{visitStats.visitCount === 1 ? '' : 's'} ·{' '}
           {visitStats.reportCount} report{visitStats.reportCount === 1 ? '' : 's'} ·{' '}
           {visitStats.finalisedCount} finalised
@@ -141,50 +187,60 @@ export default function JobFieldActivity({
               (report) => report.appointmentId === appointment.id,
             );
             const crew =
-              appointment.electricianNames && appointment.electricianNames.length
-                ? appointment.electricianNames.join(', ')
-                : 'Visit crew not listed';
+              appointment.crew?.length
+                ? appointment.crew
+                : (appointment.electricianNames ?? []).map((name, index) => ({
+                    id: `${appointment.id}-name-${index}`,
+                    name,
+                    avatarColor: null as string | null,
+                  }));
+            const primaryPill = visitPrimaryPill(appointment);
+            const furtherOutstanding = isFollowUpOutstanding(appointment);
+            const reportsLabel = reportsForVisit.length
+              ? `${reportsForVisit.length} report${reportsForVisit.length === 1 ? '' : 's'}`
+              : 'No reports';
             return (
               <details className="ee-expand ee-job-row" key={appointment.id}>
                 <summary>
                   <span className="ee-job-row-main">
                     <strong>{perthDayTime(appointment.startsAt, appointment.endsAt)}</strong>
-                    <span className="ee-muted">
-                      {FIELD_STATUS_LABELS[appointment.fieldStatus as FieldStatus] ??
-                        appointment.fieldStatus}
-                      {isFollowUpOutstanding(appointment)
-                        ? ' · Further visit outstanding'
-                        : appointment.followUp && appointment.followUpResolvedAt
-                          ? ' · Further visit resolved'
-                          : ''}
-                      {reportsForVisit.length
-                        ? ` · ${reportsForVisit.length} report${reportsForVisit.length === 1 ? '' : 's'}`
-                        : ' · No reports'}
+                    <span className="ee-visit-row-meta">
+                      <span className="ee-muted">{reportsLabel}</span>
+                      <VisitCrewAvatars crew={crew} />
                     </span>
                   </span>
-                  <span className="ee-expand-mark" aria-hidden="true">
-                    ＋
+                  <span className="ee-visit-row-end">
+                    <span className="ee-visit-pills">
+                      <span className={`ee-visit-pill is-${primaryPill.tone}`}>{primaryPill.label}</span>
+                      {furtherOutstanding ? (
+                        <span className="ee-visit-pill is-followup">Further visit</span>
+                      ) : null}
+                    </span>
+                    <span className="ee-expand-mark" aria-hidden="true">
+                      ＋
+                    </span>
                   </span>
                 </summary>
                 <div className="ee-job-row-body">
-                  <p className="ee-muted" style={{ marginTop: 0 }}>
-                    Schedule {appointment.status} · Visit electricians: {crew}
-                  </p>
                   {appointment.scheduleNotes ? <p>Instructions: {appointment.scheduleNotes}</p> : null}
 
                   <div className="ee-job-subblock">
-                    <strong>Shared office summary</strong>
-                    {appointment.completionNote ? <p>{appointment.completionNote}</p> : null}
-                    {appointment.outstanding ? <p>Outstanding: {appointment.outstanding}</p> : null}
-                    {appointment.issues ? <p>Issues: {appointment.issues}</p> : null}
+                    <strong>Visit summary</strong>
+                    {appointment.completionNote ? <p style={{ whiteSpace: 'pre-wrap' }}>{appointment.completionNote}</p> : null}
+                    {appointment.outstanding ? (
+                      <p style={{ whiteSpace: 'pre-wrap' }}>Outstanding: {appointment.outstanding}</p>
+                    ) : null}
+                    {appointment.issues ? (
+                      <p style={{ whiteSpace: 'pre-wrap' }}>Issues: {appointment.issues}</p>
+                    ) : null}
                     {!appointment.completionNote &&
                     !appointment.outstanding &&
                     !appointment.issues ? (
-                      <p className="ee-muted">No shared summary yet.</p>
+                      <p className="ee-muted">No visit summary yet.</p>
                     ) : null}
                     <p className="ee-muted" style={{ marginBottom: 0 }}>
                       Further visit required:{' '}
-                      {isFollowUpOutstanding(appointment)
+                      {furtherOutstanding
                         ? 'Yes · outstanding'
                         : appointment.followUp
                           ? 'Yes · resolved by office'
@@ -201,7 +257,7 @@ export default function JobFieldActivity({
                     ) : null}
                   </div>
 
-                  {isFollowUpOutstanding(appointment) ? (
+                  {furtherOutstanding ? (
                     <ResolveFollowUpForm
                       jobId={jobId}
                       appointmentId={appointment.id}
@@ -262,17 +318,6 @@ export default function JobFieldActivity({
                       <p className="ee-muted">No individual technician work reports yet.</p>
                     )}
                   </div>
-
-                  {!isTerminalVisitOutcome(appointment.fieldStatus) ? (
-                    <OfficeVisitOutcomeForm
-                      appointmentId={appointment.id}
-                      fieldStatus={appointment.fieldStatus}
-                      completionNote={appointment.completionNote}
-                      outstanding={appointment.outstanding}
-                      issues={appointment.issues}
-                      followUp={appointment.followUp}
-                    />
-                  ) : null}
                 </div>
               </details>
             );
@@ -280,17 +325,7 @@ export default function JobFieldActivity({
         ) : (
           <p className="ee-muted">No visits scheduled yet.</p>
         )}
-        {scheduleForm ? (
-          <details className="ee-expand">
-            <summary>
-              + Schedule a visit
-              <span className="ee-expand-mark" aria-hidden="true">
-                ＋
-              </span>
-            </summary>
-            {scheduleForm}
-          </details>
-        ) : null}
+        {scheduleForm}
       </section>
     );
   }

@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import {dbAdmin,requireOfficeUser} from '@/lib/hq-auth';
-import {getCachedActiveSchedulingStaff} from '@/lib/hq-reference-cache';
 import JobCreateForm from '../job-create-form';
 import '../../hq.css';
 export const dynamic='force-dynamic';
@@ -80,10 +79,9 @@ export default async function NewJobPage({searchParams}:{searchParams:Promise<{c
   }
  }
 
- const [{data:customers},staff]=await Promise.all([
-  canEdit?db.from('customers').select('id,name').order('name').limit(1000):Promise.resolve({data:[] as {id:string;name:string}[]}),
-  canEdit?getCachedActiveSchedulingStaff():Promise.resolve([]),
- ]);
+ const {data:customers}=canEdit
+  ? await db.from('customers').select('id,name').order('name').limit(1000)
+  : {data: [] as {id:string;name:string}[]};
 
  const backHref=prefill.quoteId?`/hq/quotes/${prefill.quoteId}`:prefill.enquiryId?`/hq/enquiries/${prefill.enquiryId}`:'/hq/jobs';
  const backLabel=prefill.quoteId?'← Quote':prefill.enquiryId?'← Enquiry':'← Jobs';
@@ -94,13 +92,12 @@ export default async function NewJobPage({searchParams}:{searchParams:Promise<{c
   <div className="hq-detail-head"><div>
    <div className="hq-kicker">NEW WORK ORDER</div>
    <h1>Create job</h1>
-   <p>Capture customer, scope, and crew. Schedule once the job exists.</p>
+   <p>Capture customer and scope. Assign crew when you schedule the first visit.</p>
   </div></div>
   {canEdit?(
    <section className="hq-panel">
     <JobCreateForm
      customers={customers??[]}
-     staff={staff.map((person)=>({id:person.id,full_name:person.full_name,initials:person.initials,avatar_color:person.avatar_color}))}
      prefill={prefill}
      provenance={provenance}
      cancelHref={cancelHref}
@@ -118,22 +115,12 @@ export default async function NewJobPage({searchParams}:{searchParams:Promise<{c
 .ee-create-provenance a{color:var(--hq-accent,#1688e9);font-weight:600;text-decoration:none}
 .ee-create-provenance a:hover{text-decoration:underline}
 .ee-create-title-preview{display:block;margin-top:2px;color:var(--hq-muted,#738396);font-size:13px;font-weight:400}
-.ee-create-staff{margin:0;padding:12px 14px;border:1px solid #cdd9e5;border-radius:11px;background:var(--hq-card,#fff)}
-.ee-create-staff legend{padding:0 4px;font-weight:600}
-.ee-create-staff-hint{margin:6px 0 10px;color:var(--hq-muted,#738396);font-size:13px;font-weight:400}
-.ee-create-staff-list{display:flex;flex-wrap:wrap;gap:8px}
-.ee-create-staff-option{display:inline-flex!important;align-items:center;gap:8px;min-height:40px;padding:6px 10px 6px 8px;border:1px solid #d7e3ec;border-radius:999px;background:#f7fafc;font-weight:500!important;cursor:pointer}
-.ee-create-staff-option:has(input:checked){border-color:#1688e9;background:#eef6ff}
-.ee-create-staff-option input{width:auto;margin:0;padding:0;flex:0 0 auto;accent-color:#1688e9}
-.ee-create-staff-avatar{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;color:#fff;font-size:11px;font-weight:800;letter-spacing:.02em;flex:0 0 auto}
-.ee-create-staff-name{font-size:13px;font-weight:650;color:#173c54;line-height:1.2}
-.ee-create-staff-empty{color:var(--hq-muted,#738396);font-size:13px;font-weight:400}
 .ee-create-actions{display:flex;justify-content:flex-end;align-items:center;gap:20px;padding-top:8px}
 .ee-create-actions a{color:inherit}
 .ee-create-actions button:disabled{opacity:.65;cursor:wait}
 @media(min-width:850px){
  .ee-create-form{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:22px}
- .ee-create-form>.ee-create-span,.ee-create-form>.ee-create-staff,.ee-create-form>.ee-create-provenance,.ee-create-actions{grid-column:1/-1}
+ .ee-create-form>.ee-create-span,.ee-create-form>.ee-create-provenance,.ee-create-actions{grid-column:1/-1}
  .ee-create-form textarea{resize:vertical}
 }
 @media(max-width:600px){

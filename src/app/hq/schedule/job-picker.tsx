@@ -1,12 +1,28 @@
 'use client';
 import {useMemo,useState} from 'react';
 type JobOption={id:string;label:string};
-export default function JobPicker({jobs}:{jobs:JobOption[]}){
+export default function JobPicker({
+ jobs,
+ lockedJob,
+}:{
+ jobs:JobOption[];
+ lockedJob?:JobOption|null;
+}){
  const [query,setQuery]=useState('');
- const [selected,setSelected]=useState('');
+ const [selected,setSelected]=useState(lockedJob?.id??'');
  const [open,setOpen]=useState(false);
  const matches=useMemo(()=>jobs.filter(j=>j.label.toLowerCase().includes(query.toLowerCase())).slice(0,40),[jobs,query]);
- const chosen=jobs.find(j=>j.id===selected);
+ const chosen=jobs.find(j=>j.id===selected)||(lockedJob&&lockedJob.id===selected?lockedJob:undefined);
+
+ if(lockedJob){
+  return <div className="ee-job-picker ee-job-picker-locked">
+   <label>Job</label>
+   <p className="ee-job-picker-locked-label">{lockedJob.label}</p>
+   <input type="hidden" name="job_id" value={lockedJob.id}/>
+   <style jsx>{`.ee-job-picker{display:grid;gap:6px}.ee-job-picker>label{font-size:12px;font-weight:750}.ee-job-picker-locked-label{margin:0;padding:12px;border:1px solid #cbd8e6;border-radius:9px;background:#f3f8fc;color:#17364b;font-size:15px;font-weight:650}`}</style>
+  </div>;
+ }
+
  return <div className="ee-job-picker">
   <label htmlFor="ee-job-search">Job</label>
   <input id="ee-job-search" type="search" autoComplete="off" value={open?query:(chosen?.label??query)} placeholder="Search job number, customer, title or address" onFocus={()=>{setOpen(true);setQuery('')}} onChange={e=>{setQuery(e.target.value);setSelected('');setOpen(true)}} aria-expanded={open} aria-controls="ee-job-options" required={!selected}/>
