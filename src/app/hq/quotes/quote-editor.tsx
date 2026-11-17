@@ -13,6 +13,8 @@ import {
   associateQuoteWithJob,
   unlinkQuoteFromJob,
   getParentQuotePrefill,
+  searchQuoteCustomers,
+  loadCustomerAddressesForQuote,
   type QuoteDraft,
 } from './actions';
 import {createQuoteCustomer} from './customer-action';
@@ -60,7 +62,7 @@ const money=(n:number)=>(n/100).toLocaleString('en-AU',{style:'currency',currenc
 const statusLabel=(s:string)=>s.replaceAll('_',' ');
 type Choice={id:string;label:string;detail?:string};
 
-function SearchPicker({value,placeholder,choices,onSelect,optional=false,disabled=false}:{value:string;placeholder:string;choices:Choice[];onSelect:(id:string)=>void;optional?:boolean;disabled?:boolean}){
+function SearchPicker({value,placeholder,choices,onSelect,optional=false,disabled=false,onQuery}:{value:string;placeholder:string;choices:Choice[];onSelect:(id:string)=>void;optional?:boolean;disabled?:boolean;onQuery?:(query:string)=>void}){
  const [open,setOpen]=useState(false);const [query,setQuery]=useState('');const [active,setActive]=useState(0);
  const listId=useId();
  const selected=choices.find(c=>c.id===value);
@@ -76,8 +78,8 @@ function SearchPicker({value,placeholder,choices,onSelect,optional=false,disable
     placeholder={selected?selected.label:placeholder}
     value={open?query:selected?.label||''}
     disabled={disabled}
-    onFocus={()=>{if(!disabled)setOpen(true)}}
-    onChange={e=>{setQuery(e.target.value);setOpen(true);setActive(0)}}
+    onFocus={()=>{if(!disabled){setOpen(true);onQuery?.('')}}}
+    onChange={e=>{const next=e.target.value;setQuery(next);setOpen(true);setActive(0);onQuery?.(next)}}
     onKeyDown={e=>{
      if(e.key==='Escape'){setOpen(false);setQuery('')}
      if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setActive(i=>Math.min(i+1,filtered.length-1))}
@@ -85,7 +87,7 @@ function SearchPicker({value,placeholder,choices,onSelect,optional=false,disable
      if(e.key==='Enter'&&open&&filtered[active]){e.preventDefault();pick(filtered[active].id)}
     }}
    />
-   <button type="button" aria-label="Show choices" disabled={disabled} onClick={()=>{setOpen(v=>!v);setQuery('')}}>⌄</button>
+   <button type="button" aria-label="Show choices" disabled={disabled} onClick={()=>{setOpen(v=>!v);setQuery('');if(!open)onQuery?.('')}}>⌄</button>
   </div>
   {open&&!disabled&&<div className="hq-search-picker-menu" role="listbox" id={listId}>{optional&&<button type="button" className="hq-search-picker-option" onMouseDown={e=>e.preventDefault()} onClick={()=>pick('')}>No linked enquiry (standalone)</button>}{filtered.length?filtered.map((c,i)=><button type="button" role="option" aria-selected={c.id===value} key={c.id} className={'hq-search-picker-option'+(i===active?' is-active':'')} onMouseDown={e=>e.preventDefault()} onClick={()=>pick(c.id)}><strong>{c.label}</strong>{c.detail?<small>{c.detail}</small>:null}</button>):<p className="hq-search-picker-empty">No matches found</p>}</div>}
  </div>;
@@ -178,6 +180,8 @@ export default function QuoteEditor({
  const addressLabel=(a:Address)=>[a.address_line1,a.suburb,a.state,a.postcode].filter(Boolean).join(', ');
  const [,setCustomerSearch]=useState(customers.find(c=>c.id===initial?.customerId)?customerLabel(customers.find(c=>c.id===initial?.customerId)!):'');
  const [customerList,setCustomerList]=useState(customers);
+ const [addressList,setAddressList]=useState(addresses);
+ const customerSearchTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const [newCustomer,setNewCustomer]=useState(false);
  const [customerForm,setCustomerForm]=useState({name:'',email:'',phone:''});
  const [customerBusy,setCustomerBusy]=useState(false);
@@ -699,7 +703,41 @@ export default function QuoteEditor({
         value={draft.customerId}
         placeholder="Search name, phone or email"
         choices={customerList.map(c=>({id:c.id,label:c.name,detail:c.phone||c.email||''}))}
-        onSelect={id=>{if(handleCustomerChange(id)){setEnquirySearch('');resetCustomerConflict()}}}
+        onQuery={(q)=>{
+         if(customerSearchTimer.current)clearTimeout(customerSearchTimer.current);
+         customerSearchTimer.current=setTimeout(()=>{
+          void searchQuoteCustomers(q).then(rows=>{
+           setCustomerList(prev=>{
+            const byId=new Map(prev.map(c=>[c.id,c]));
+            for(const row of rows)byId.set(row.id,row);
+            return [...byId.values()];
+           });
+          });
+         },220);
+        }}
+        onSelect={id=>{
+         if(handleCustomerChange(id)){
+          setEnquirySearch('');
+          resetCustomerConflict();
+          if(id){
+           void loadCustomerAddressesForQuote(id).then(rows=>{
+            setAddressList(prev=>{
+             const others=prev.filter(a=>a.customer_id!==id);
+             const next=rows.map(a=>({
+              id:a.id,
+              customer_id:a.customer_id,
+              label:a.label||'',
+              address_line1:a.address_line1,
+              suburb:a.suburb||'',
+              state:a.state||'',
+              postcode:a.postcode||'',
+             }));
+             return [...others,...next];
+            });
+           });
+          }
+         }
+        }}
        />
       </label>
       <label>Job site address
@@ -709,11 +747,11 @@ export default function QuoteEditor({
         value={draft.address}
         onChange={e=>{
          const value=e.target.value;
-         const match=addresses.filter(a=>a.customer_id===draft.customerId).find(a=>addressLabel(a)===value);
+         const match=addressList.filter(a=>a.customer_id===draft.customerId).find(a=>addressLabel(a)===value);
          setDraft(d=>({...d,address:value,addressId:match?.id||''}));
         }}
        />
-       <datalist id="quote-addresses">{addresses.filter(a=>a.customer_id===draft.customerId).map(a=><option key={a.id} value={addressLabel(a)}/>)}</datalist>
+       <datalist id="quote-addresses">{addressList.filter(a=>a.customer_id===draft.customerId).map(a=><option key={a.id} value={addressLabel(a)}/>)}</datalist>
       </label>
      </div>
      {customerChangeBlocked?(

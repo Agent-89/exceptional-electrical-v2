@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
@@ -46,7 +47,8 @@ export type HqUser = {
   role: HqRole;
 };
 
-export async function hqUser(): Promise<HqUser | null> {
+/** Per-request memo so layout + page share one auth lookup. */
+export const hqUser = cache(async (): Promise<HqUser | null> => {
   const jar = await cookies();
   const token = jar.get('ee_hq_access')?.value;
   if (!token) return null;
@@ -76,7 +78,7 @@ export async function hqUser(): Promise<HqUser | null> {
     return null;
   }
   return { id: user.id, email: user.email ?? '', name: staff.full_name, role };
-}
+});
 
 export async function requireHqUser(): Promise<HqUser> {
   const user = await hqUser();

@@ -725,3 +725,34 @@ export async function getParentQuotePrefill(parentId:string,expectedCustomerId?:
     },
   };
 }
+
+/** On-demand customer search for quote pickers (avoids shipping 1000 customers in RSC). */
+export async function searchQuoteCustomers(query:string):Promise<{id:string;name:string;email:string|null;phone:string|null}[]>{
+  await requireHqUser();
+  const q=query.trim().replace(/[%_,()"]/g,'').slice(0,80);
+  const db=dbAdmin();
+  if(!q){
+    const {data}=await db.from('customers').select('id,name,email,phone').order('name').limit(40);
+    return (data||[]) as {id:string;name:string;email:string|null;phone:string|null}[];
+  }
+  const pattern=`%${q}%`;
+  const {data}=await db
+    .from('customers')
+    .select('id,name,email,phone')
+    .or(`name.ilike."${pattern}",email.ilike."${pattern}",phone.ilike."${pattern}"`)
+    .order('name')
+    .limit(40);
+  return (data||[]) as {id:string;name:string;email:string|null;phone:string|null}[];
+}
+
+/** Addresses for a selected customer (loaded when the customer changes). */
+export async function loadCustomerAddressesForQuote(customerId:string):Promise<{id:string;customer_id:string;label:string|null;address_line1:string;suburb:string|null;state:string|null;postcode:string|null}[]>{
+  await requireHqUser();
+  if(!customerId||!/^[0-9a-f-]{36}$/i.test(customerId))return [];
+  const {data}=await dbAdmin()
+    .from('customer_addresses')
+    .select('id,customer_id,label,address_line1,suburb,state,postcode')
+    .eq('customer_id',customerId)
+    .limit(100);
+  return (data||[]) as {id:string;customer_id:string;label:string|null;address_line1:string;suburb:string|null;state:string|null;postcode:string|null}[];
+}
