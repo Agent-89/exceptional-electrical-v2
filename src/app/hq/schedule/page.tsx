@@ -486,6 +486,10 @@ grid-template-rows:38px 38px!important;gap:6px 9px!important;padding:7px 10px!im
 .ee-timeline-google-settings span{color:#637c90}
 .ee-timeline-google-settings button,.ee-timeline-google-settings a{align-self:flex-start;border:1px solid #d1e1ef;background:#fff;border-radius:7px;padding:6px 9px;color:#1479c5;font-size:12px;cursor:pointer}
 
+/* Fit / All day shortcuts: styled at all breakpoints (were desktop-only). */
+.ee-dispatch .ee-timeline-density-shortcut{border:1px solid #cbddeb;background:#fff;border-radius:8px;padding:6px 11px;min-height:32px;color:#176ba7;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.ee-dispatch .ee-timeline-density-shortcut[aria-pressed="true"]{background:#e5f3ff;border-color:#1688e9}
+
 /* Desktop unified scheduling controls: consistent hierarchy across views. */
 @media(min-width:1000px){
 .ee-dispatch .ee-dispatch-view-switch{grid-template-columns:max-content max-content max-content minmax(0,1fr) max-content max-content!important;grid-template-rows:40px 38px!important}
@@ -496,8 +500,6 @@ grid-template-rows:38px 38px!important;gap:6px 9px!important;padding:7px 10px!im
 .ee-dispatch .ee-dispatch-view-switch .ee-dispatch-google-visible{grid-column:6!important;grid-row:1!important}
 .ee-dispatch .ee-dispatch-view-switch .ee-dispatch-toolbar-metrics{grid-column:4/7!important;grid-row:2!important;justify-self:end!important}
 .ee-dispatch .ee-dispatch-view-switch .ee-dispatch-timeline-controls{grid-column:1/4!important;grid-row:2!important}
-.ee-dispatch .ee-timeline-density-shortcut{border:1px solid #cbddeb;background:#fff;border-radius:8px;padding:6px 11px;min-height:32px;color:#176ba7;font-size:12px;font-weight:700;cursor:pointer}
-.ee-dispatch .ee-timeline-density-shortcut[aria-pressed="true"]{background:#e5f3ff;border-color:#1688e9}
 .ee-dispatch .ee-dispatch-timeline-controls .ee-timeline-toolbar{display:flex!important;align-items:center!important}
 }
 
