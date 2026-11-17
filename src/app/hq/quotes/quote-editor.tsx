@@ -205,6 +205,7 @@ export default function QuoteEditor({
  const [parentQuery,setParentQuery]=useState('');
  const [jobSearchId,setJobSearchId]=useState('');
  const [menuOpen,setMenuOpen]=useState(false);
+ const [collapsedLines,setCollapsedLines]=useState<Record<number,boolean>>({});
  const parents=normalizeParentOptions(parentOptions as ParentQuoteOption[]);
  const markDirty=()=>setDirty(true);
  const set=(key:keyof QuoteDraft,value:unknown)=>{markDirty();setDraft(d=>({...d,[key]:value}));};
@@ -217,10 +218,35 @@ export default function QuoteEditor({
  const hasMissingCosts=visibleLines.some(l=>l.cost===null);
  const hasInvalidLines=draft.lines.some(l=>!l.description.trim()||!Number.isFinite(l.quantity)||l.quantity<=0||!Number.isFinite(l.price)||l.price<0);
  const [fixedIncludesGst,setFixedIncludesGst]=useState(false);
- const addLine=(category='other')=>{
-  set('lines',[...draft.lines,{description:'',category,quantity:1,unit:category==='labour'?'hour':'each',price:0,cost:null,gst:true}]);
+ const remapCollapsedLines=(removedIndex:number)=>{
+  setCollapsedLines(prev=>{
+   const next:Record<number,boolean>={};
+   for(const [key,value] of Object.entries(prev)){
+    const idx=Number(key);
+    if(!value||idx===removedIndex)continue;
+    next[idx>removedIndex?idx-1:idx]=true;
+   }
+   return next;
+  });
  };
- const removeLine=(i:number)=>set('lines',draft.lines.filter((_,j)=>j!==i));
+ const toggleLineCollapsed=(i:number)=>setCollapsedLines(prev=>({...prev,[i]:!prev[i]}));
+ const addLine=(category='other')=>{
+  const nextLines=[...draft.lines,{description:'',category,quantity:1,unit:category==='labour'?'hour':'each',price:0,cost:null,gst:true}];
+  set('lines',nextLines);
+  setCollapsedLines(prev=>{
+   const next={...prev};
+   // Keep the new row expanded; collapse any previously expanded detailed rows for denser scrolling.
+   for(let i=0;i<draft.lines.length;i++){
+    if(draft.mode==='fixed'?isFixed(draft.lines[i]):!isFixed(draft.lines[i]))next[i]=true;
+   }
+   delete next[nextLines.length-1];
+   return next;
+  });
+ };
+ const removeLine=(i:number)=>{
+  set('lines',draft.lines.filter((_,j)=>j!==i));
+  remapCollapsedLines(i);
+ };
  const parentLocked=Boolean(draft.id);
  const primaryJobId=jobContext?.jobId||associatedJobs[0]?.id||draft.linkedJobIds?.[0]||'';
  const status=initial?.status||'draft';
@@ -1018,83 +1044,119 @@ export default function QuoteEditor({
          <span>Amount</span>
          <span/>
         </div>
-        {lineRows.map(({l,i})=>(
-         <div key={i} className="hq-qw-line-row">
-          <label className="hq-qw-line-desc">
-           <span className="hq-qw-mobile-label">Description</span>
-           <input
-            aria-label={`Item ${i+1} description`}
-            value={l.description}
-            placeholder="Description"
-            onChange={e=>editLine(i,'description',e.target.value)}
-            onKeyDown={e=>{
-             if(e.key==='Enter'){e.preventDefault();(e.currentTarget.closest('.hq-qw-line-row')?.querySelector('.hq-qw-line-qty') as HTMLInputElement|null)?.focus()}
-            }}
-           />
-          </label>
-          <label>
-           <span className="hq-qw-mobile-label">Category</span>
-           <select aria-label={`Item ${i+1} category`} value={l.category} onChange={e=>editLine(i,'category',e.target.value)}>
-            {['labour','material','equipment','subcontractor','other'].map(x=><option key={x} value={x}>{x}</option>)}
-           </select>
-          </label>
-          <label>
-           <span className="hq-qw-mobile-label">Qty</span>
-           <input
-            className="hq-qw-line-qty"
-            aria-label={`Item ${i+1} quantity`}
-            type="number"
-            min="0"
-            step=".001"
-            inputMode="decimal"
-            value={l.quantity===0?'':l.quantity}
-            placeholder="0"
-            onFocus={e=>e.currentTarget.select()}
-            onChange={e=>editLine(i,'quantity',e.target.value===''?0:Number(e.target.value))}
-           />
-          </label>
-          <label>
-           <span className="hq-qw-mobile-label">Unit</span>
-           <input aria-label={`Item ${i+1} unit`} value={l.unit} onChange={e=>editLine(i,'unit',e.target.value)}/>
-          </label>
-          <label>
-           <span className="hq-qw-mobile-label">Unit price</span>
-           <input
-            aria-label={`Item ${i+1} unit price AUD`}
-            type="number"
-            min="0"
-            step=".01"
-            inputMode="decimal"
-            value={l.price===0?'':String(l.price/100)}
-            onFocus={e=>e.currentTarget.select()}
-            onChange={e=>editLine(i,'price',Math.round(Number(e.target.value)*100))}
-           />
-          </label>
-          <label>
-           <span className="hq-qw-mobile-label">Unit cost</span>
-           <input
-            aria-label={`Item ${i+1} internal unit cost AUD`}
-            type="number"
-            min="0"
-            step=".01"
-            inputMode="decimal"
-            placeholder="—"
-            value={l.cost===null||l.cost===0?'':String(l.cost/100)}
-            onFocus={e=>e.currentTarget.select()}
-            onChange={e=>editLine(i,'cost',e.target.value===''?null:Math.round(Number(e.target.value)*100))}
-           />
-          </label>
-          <label className="hq-qw-line-gst">
-           <span className="hq-qw-mobile-label">GST</span>
-           <input aria-label={`Item ${i+1} GST`} type="checkbox" checked={l.gst} onChange={e=>editLine(i,'gst',e.target.checked)}/>
-          </label>
-          <div className="hq-qw-line-amount" aria-live="polite">
-           <span className="hq-qw-mobile-label">Amount</span>
-           <strong>{money(quoteLineExGstCents(l.quantity,l.price))}</strong>
-          </div>
-          <button type="button" className="hq-qw-line-remove" aria-label={`Remove item ${i+1}`} onClick={()=>removeLine(i)}>×</button>
+        {lineRows.map(({l,i})=>{
+         const collapsed=Boolean(collapsedLines[i]);
+         const amount=money(quoteLineExGstCents(l.quantity,l.price));
+         const summaryLabel=l.description.trim()||`Item ${i+1}`;
+         return (
+         <div key={i} className={'hq-qw-line-row'+(collapsed?' is-collapsed':'')}>
+          {collapsed?(
+           <>
+            <button
+             type="button"
+             className="hq-qw-line-summary"
+             aria-expanded={false}
+             aria-label={`Expand item ${i+1}: ${summaryLabel}`}
+             onClick={()=>toggleLineCollapsed(i)}
+            >
+             <span className="hq-qw-line-chevron" aria-hidden="true">›</span>
+             <span className="hq-qw-line-summary-main">
+              <strong>{summaryLabel}</strong>
+              <small>{l.category} · {l.quantity||0} {l.unit||'each'}</small>
+             </span>
+             <span className="hq-qw-line-summary-amount">{amount}</span>
+            </button>
+            <button type="button" className="hq-qw-line-remove" aria-label={`Remove item ${i+1}`} onClick={()=>removeLine(i)}>×</button>
+           </>
+          ):(
+           <>
+            <button
+             type="button"
+             className="hq-qw-line-collapse"
+             aria-expanded={true}
+             aria-label={`Minimize item ${i+1}`}
+             onClick={()=>toggleLineCollapsed(i)}
+            >
+             <span aria-hidden="true">⌃</span>
+            </button>
+            <label className="hq-qw-line-desc">
+             <span className="hq-qw-mobile-label">Description</span>
+             <input
+              aria-label={`Item ${i+1} description`}
+              value={l.description}
+              placeholder="Description"
+              onChange={e=>editLine(i,'description',e.target.value)}
+              onKeyDown={e=>{
+               if(e.key==='Enter'){e.preventDefault();(e.currentTarget.closest('.hq-qw-line-row')?.querySelector('.hq-qw-line-qty') as HTMLInputElement|null)?.focus()}
+              }}
+             />
+            </label>
+            <label>
+             <span className="hq-qw-mobile-label">Category</span>
+             <select aria-label={`Item ${i+1} category`} value={l.category} onChange={e=>editLine(i,'category',e.target.value)}>
+              {['labour','material','equipment','subcontractor','other'].map(x=><option key={x} value={x}>{x}</option>)}
+             </select>
+            </label>
+            <label>
+             <span className="hq-qw-mobile-label">Qty</span>
+             <input
+              className="hq-qw-line-qty"
+              aria-label={`Item ${i+1} quantity`}
+              type="number"
+              min="0"
+              step=".001"
+              inputMode="decimal"
+              value={l.quantity===0?'':l.quantity}
+              placeholder="0"
+              onFocus={e=>e.currentTarget.select()}
+              onChange={e=>editLine(i,'quantity',e.target.value===''?0:Number(e.target.value))}
+             />
+            </label>
+            <label>
+             <span className="hq-qw-mobile-label">Unit</span>
+             <input aria-label={`Item ${i+1} unit`} value={l.unit} onChange={e=>editLine(i,'unit',e.target.value)}/>
+            </label>
+            <label>
+             <span className="hq-qw-mobile-label">Unit price</span>
+             <input
+              aria-label={`Item ${i+1} unit price AUD`}
+              type="number"
+              min="0"
+              step=".01"
+              inputMode="decimal"
+              value={l.price===0?'':String(l.price/100)}
+              onFocus={e=>e.currentTarget.select()}
+              onChange={e=>editLine(i,'price',Math.round(Number(e.target.value)*100))}
+             />
+            </label>
+            <label>
+             <span className="hq-qw-mobile-label">Unit cost</span>
+             <input
+              aria-label={`Item ${i+1} internal unit cost AUD`}
+              type="number"
+              min="0"
+              step=".01"
+              inputMode="decimal"
+              placeholder="—"
+              value={l.cost===null||l.cost===0?'':String(l.cost/100)}
+              onFocus={e=>e.currentTarget.select()}
+              onChange={e=>editLine(i,'cost',e.target.value===''?null:Math.round(Number(e.target.value)*100))}
+             />
+            </label>
+            <label className="hq-qw-line-gst">
+             <span className="hq-qw-mobile-label">GST</span>
+             <input aria-label={`Item ${i+1} GST`} type="checkbox" checked={l.gst} onChange={e=>editLine(i,'gst',e.target.checked)}/>
+            </label>
+            <div className="hq-qw-line-amount" aria-live="polite">
+             <span className="hq-qw-mobile-label">Amount</span>
+             <strong>{amount}</strong>
+            </div>
+            <button type="button" className="hq-qw-line-remove" aria-label={`Remove item ${i+1}`} onClick={()=>removeLine(i)}>×</button>
+           </>
+          )}
          </div>
-        ))}
+         );
+        })}
         {!lineRows.length?<p className="hq-quote-field-hint">No line items yet. Add labour, materials or a custom item.</p>:null}
        </div>
        <div className="hq-quote-add-actions">
