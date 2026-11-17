@@ -2,7 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { dbAdmin, requireOfficeUser } from '@/lib/hq-auth';
 import { parseJobDetailTab } from '@/lib/job-detail-tabs';
-import { JOB_STATUSES, JOB_STATUS_LABELS } from '@/lib/job-statuses';
+import {
+  JOB_STATUSES,
+  JOB_STATUS_LABELS,
+  JOB_STATUS_TONES,
+  isJobStatus,
+} from '@/lib/job-statuses';
+import { staffColor } from '@/lib/staff-color';
 import {
   updateJob,
   updateJobDetails,
@@ -50,6 +56,21 @@ function jobStatusLabel(status: string): string {
 function priorityLabel(priority: string): string {
   if (!priority) return 'Normal';
   return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
+function staffInitials(name: string, initials?: string | null): string {
+  const raw = (initials || '').trim();
+  if (raw) return raw.slice(0, 2).toUpperCase();
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .map((part) => part[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || '?'
+  );
 }
 
 export default async function JobPage({
@@ -151,12 +172,19 @@ export default async function JobPage({
   ]);
 
   const canEdit = true;
+  const staffById = new Map(staff.map((s) => [s.id, s]));
   const staffNameById = new Map(staff.map((s) => [s.id, s.full_name]));
   const staffNames = Object.fromEntries(staffNameById.entries());
-  const assignedNames = (assignments ?? []).map((a) => ({
-    id: a.staff_id as string,
-    name: staffNameById.get(a.staff_id as string) ?? 'Team member',
-  }));
+  const assignedNames = (assignments ?? []).map((a) => {
+    const member = staffById.get(a.staff_id as string);
+    const name = member?.full_name ?? 'Team member';
+    return {
+      id: a.staff_id as string,
+      name,
+      initials: staffInitials(name, member?.initials),
+      avatarColor: member?.avatar_color ?? null,
+    };
+  });
 
   const visitCrewByAppointment = new Map<string, string[]>();
   for (const row of appointmentStaffRows ?? []) {
@@ -242,7 +270,11 @@ export default async function JobPage({
           </div>
           {canEdit ? (
             <JobHeaderActions
+              status={String(job.status)}
               statusLabel={jobStatusLabel(job.status)}
+              statusTone={
+                isJobStatus(String(job.status)) ? JOB_STATUS_TONES[job.status as keyof typeof JOB_STATUS_TONES] : 'neutral'
+              }
               statusForm={
                 <form action={updateJob} className="ee-job-status-form">
                   <input type="hidden" name="id" value={id} />
@@ -272,7 +304,16 @@ export default async function JobPage({
               }
             />
           ) : (
-            <span className="ee-workspace-status">{jobStatusLabel(job.status)}</span>
+            <span
+              className={`ee-workspace-status ee-workspace-status--${
+                isJobStatus(String(job.status))
+                  ? JOB_STATUS_TONES[job.status as keyof typeof JOB_STATUS_TONES]
+                  : 'neutral'
+              }`}
+            >
+              <span className="ee-workspace-status-dot" aria-hidden="true" />
+              <span className="ee-workspace-status-label">{jobStatusLabel(job.status)}</span>
+            </span>
           )}
         </header>
 
@@ -288,9 +329,9 @@ export default async function JobPage({
                       <h2>Job details</h2>
                     </div>
                     {canEdit ? (
-                      <JobTabButton tab="more" className="ee-text-action">
+                      <a href="#edit-job" className="ee-text-action">
                         Edit details
-                      </JobTabButton>
+                      </a>
                     ) : null}
                   </div>
                   {job.description ? <p className="ee-description">{job.description}</p> : null}
@@ -339,110 +380,16 @@ export default async function JobPage({
                       <span className="ee-muted">
                         Default crew · also grows from scheduled visits
                       </span>
-                      <JobTabButton tab="more">Manage team</JobTabButton>
+                      <JobTabButton tab="visits">Manage team</JobTabButton>
                     </div>
                   </div>
                 </section>
 
                 <SuspendedJobAttention jobId={id} appointments={appointmentViews} staffNames={staffNames} />
-              </>
-            ),
-            visits: (
-              <JobFieldActivity
-                jobId={id}
-                appointments={appointmentViews}
-                techReports={[]}
-                timeEntries={[]}
-                notes={[]}
-                photos={[]}
-                section="visits"
-                scheduleForm={canEdit ? <ScheduleAppointmentForm jobId={id} /> : null}
-              />
-            ),
-            time: <SuspendedJobTime jobId={id} appointments={appointmentViews} staffNames={staffNames} />,
-            quotes: (
-              <JobQuotesPanel
-                jobId={id}
-                customerId={(job.customer_id as string | null) ?? null}
-                quotes={jobQuotesResult.quotes}
-                linkableQuotes={linkableQuotes}
-                tableAvailable={jobQuotesResult.tableAvailable}
-                loadError={jobQuotesResult.error}
-                notice={notice}
-                actionError={actionError}
-                canEdit={canEdit}
-              />
-            ),
-            more: (
-              <>
-                <SuspendedJobFiles jobId={id} appointments={appointmentViews} staffNames={staffNames} />
-
-                <section id="team" className="hq-panel ee-compact-panel">
-                  <div className="ee-section-title">
-                    <div>
-                      <span className="ee-eyebrow">TEAM</span>
-                      <h2>Job electricians</h2>
-                    </div>
-                  </div>
-                  <p className="ee-muted" style={{ marginTop: 0 }}>
-                    Default crew for this job. Each visit can have its own assigned electricians
-                    under Visits.
-                  </p>
-                  {assignedNames.length ? (
-                    <div className="ee-team-list">
-                      {assignedNames.map((person) => (
-                        <div key={person.id}>
-                          <span className="ee-avatar">{person.name.charAt(0)}</span>
-                          <strong>{person.name}</strong>
-                          {canEdit ? (
-                            <form action={removeJobStaff}>
-                              <input type="hidden" name="job_id" value={id} />
-                              <input type="hidden" name="staff_id" value={person.id} />
-                              <button type="submit" aria-label={'Remove ' + person.name}>
-                                Remove
-                              </button>
-                            </form>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="ee-muted">No electricians assigned.</p>
-                  )}
-                  {canEdit && staff.some((person) => !assignedNames.some((a) => a.id === person.id)) ? (
-                    <details className="ee-expand">
-                      <summary>
-                        + Assign electrician
-                        <span className="ee-expand-mark" aria-hidden="true">
-                          ＋
-                        </span>
-                      </summary>
-                      <form action={assignJobStaff} className="ee-job-inline">
-                        <input type="hidden" name="job_id" value={id} />
-                        <select name="staff_id" required defaultValue="">
-                          <option value="" disabled>
-                            Choose staff member
-                          </option>
-                          {staff
-                            .filter((person) => !assignedNames.some((a) => a.id === person.id))
-                            .map((person) => (
-                              <option key={person.id} value={person.id}>
-                                {person.full_name}
-                              </option>
-                            ))}
-                        </select>
-                        <button type="submit">Assign</button>
-                      </form>
-                    </details>
-                  ) : null}
-                  {canEdit && !staff.length ? (
-                    <p className="ee-muted">No active scheduling staff available to assign.</p>
-                  ) : null}
-                </section>
 
                 {canEdit ? (
                   <section id="edit-job" className="hq-panel ee-compact-panel">
-                    <details className="ee-expand ee-edit-details" open>
+                    <details className="ee-expand ee-edit-details">
                       <summary>
                         Edit job information{' '}
                         <span className="ee-expand-mark" aria-hidden="true">
@@ -505,46 +452,192 @@ export default async function JobPage({
                     </details>
                   </section>
                 ) : null}
+              </>
+            ),
+            notes: (
+              <SuspendedJobFiles jobId={id} appointments={appointmentViews} staffNames={staffNames} />
+            ),
+            visits: (
+              <>
+                <JobFieldActivity
+                  jobId={id}
+                  appointments={appointmentViews}
+                  techReports={[]}
+                  timeEntries={[]}
+                  notes={[]}
+                  photos={[]}
+                  section="visits"
+                  scheduleForm={canEdit ? <ScheduleAppointmentForm jobId={id} /> : null}
+                />
 
-                <section className="hq-panel ee-compact-panel" id="activity-history">
-                  <details className="ee-expand ee-edit-details">
-                    <summary>
-                      <span>
-                        Activity history
-                        <span className="ee-muted" style={{ marginLeft: 8, fontWeight: 500 }}>
-                          {activity?.length ?? 0} events
-                        </span>
-                      </span>
-                      <span className="ee-expand-mark" aria-hidden="true">
-                        ＋
-                      </span>
-                    </summary>
-                    <div style={{ paddingTop: 8 }}>
-                      {activity?.length ? (
-                        activity.map((item) => {
-                          const presented = presentJobActivityEvent(item.action, item.note);
-                          return (
-                            <div className="ee-event" key={item.id}>
-                              <span className="ee-event-dot" />
-                              <div>
-                                <strong>{presented.title}</strong>
-                                {presented.summary ? <p>{presented.summary}</p> : null}
-                                {presented.expandable && presented.detail ? (
-                                  <details className="ee-activity-detail">
-                                    <summary>Full details</summary>
-                                    <p>{presented.detail}</p>
-                                  </details>
-                                ) : null}
-                                <small>{formatJobActivityWhen(item.created_at)}</small>
-                              </div>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <p className="ee-muted">No activity yet.</p>
-                      )}
+                <section id="team" className="hq-panel ee-compact-panel">
+                  <div className="ee-section-title">
+                    <div>
+                      <span className="ee-eyebrow">TEAM</span>
+                      <h2>Job electricians</h2>
                     </div>
-                  </details>
+                  </div>
+                  {assignedNames.length ? (
+                    <div className="ee-team-list">
+                      {assignedNames.map((person) => (
+                        <div key={person.id}>
+                          <span
+                            className="ee-avatar"
+                            style={{
+                              backgroundColor: staffColor(person.id, person.avatarColor),
+                              color: '#fff',
+                            }}
+                            aria-hidden="true"
+                          >
+                            {person.initials}
+                          </span>
+                          <strong>{person.name}</strong>
+                          {canEdit ? (
+                            <form action={removeJobStaff}>
+                              <input type="hidden" name="job_id" value={id} />
+                              <input type="hidden" name="staff_id" value={person.id} />
+                              <button type="submit" aria-label={'Remove ' + person.name}>
+                                Remove
+                              </button>
+                            </form>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="ee-muted">No electricians assigned.</p>
+                  )}
+                  {canEdit && staff.some((person) => !assignedNames.some((a) => a.id === person.id)) ? (
+                    <details className="ee-expand">
+                      <summary>
+                        + Assign electrician
+                        <span className="ee-expand-mark" aria-hidden="true">
+                          ＋
+                        </span>
+                      </summary>
+                      <form action={assignJobStaff} className="ee-job-inline">
+                        <input type="hidden" name="job_id" value={id} />
+                        <select name="staff_id" required defaultValue="">
+                          <option value="" disabled>
+                            Choose staff member
+                          </option>
+                          {staff
+                            .filter((person) => !assignedNames.some((a) => a.id === person.id))
+                            .map((person) => (
+                              <option key={person.id} value={person.id}>
+                                {person.full_name}
+                              </option>
+                            ))}
+                        </select>
+                        <button type="submit">Assign</button>
+                      </form>
+                    </details>
+                  ) : null}
+                  {canEdit && !staff.length ? (
+                    <p className="ee-muted">No active scheduling staff available to assign.</p>
+                  ) : null}
+                </section>
+              </>
+            ),
+            time: <SuspendedJobTime jobId={id} appointments={appointmentViews} staffNames={staffNames} />,
+            quotes: (
+              <JobQuotesPanel
+                jobId={id}
+                customerId={(job.customer_id as string | null) ?? null}
+                quotes={jobQuotesResult.quotes}
+                linkableQuotes={linkableQuotes}
+                tableAvailable={jobQuotesResult.tableAvailable}
+                loadError={jobQuotesResult.error}
+                notice={notice}
+                actionError={actionError}
+                canEdit={canEdit}
+              />
+            ),
+            invoices: (
+              <section className="hq-panel ee-compact-panel">
+                <div className="ee-section-title">
+                  <div>
+                    <span className="ee-eyebrow">INVOICES</span>
+                    <h2>Billing</h2>
+                  </div>
+                </div>
+                <p className="ee-muted" style={{ marginTop: 0 }}>
+                  Invoice listing and Xero reconciliation will land with C2 billing. Nothing to show
+                  here yet.
+                </p>
+              </section>
+            ),
+            activity: (
+              <section className="hq-panel ee-compact-panel" id="activity-history">
+                <div className="ee-section-title">
+                  <div>
+                    <span className="ee-eyebrow">ACTIVITY</span>
+                    <h2>Activity history</h2>
+                  </div>
+                  <span className="ee-muted">{activity?.length ?? 0} events</span>
+                </div>
+                <div style={{ paddingTop: 8 }}>
+                  {activity?.length ? (
+                    activity.map((item) => {
+                      const presented = presentJobActivityEvent(item.action, item.note);
+                      return (
+                        <div className="ee-event" key={item.id}>
+                          <span className="ee-event-dot" />
+                          <div>
+                            <strong>{presented.title}</strong>
+                            {presented.summary ? <p>{presented.summary}</p> : null}
+                            {presented.expandable && presented.detail ? (
+                              <details className="ee-activity-detail">
+                                <summary>Full details</summary>
+                                <p>{presented.detail}</p>
+                              </details>
+                            ) : null}
+                            <small>{formatJobActivityWhen(item.created_at)}</small>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="ee-muted">No activity yet.</p>
+                  )}
+                </div>
+              </section>
+            ),
+            more: (
+              <>
+                <section className="hq-panel ee-compact-panel">
+                  <div className="ee-section-title">
+                    <div>
+                      <span className="ee-eyebrow">PURCHASE ORDERS</span>
+                      <h2>Purchase orders</h2>
+                    </div>
+                  </div>
+                  <p className="ee-muted" style={{ marginTop: 0 }}>
+                    Coming later with purchasing and inventory. Costs will get its own tab when
+                    materials tracking ships.
+                  </p>
+                </section>
+                <section className="hq-panel ee-compact-panel">
+                  <div className="ee-section-title">
+                    <div>
+                      <span className="ee-eyebrow">BILLS</span>
+                      <h2>Bills</h2>
+                    </div>
+                  </div>
+                  <p className="ee-muted" style={{ marginTop: 0 }}>
+                    Coming later if the office needs supplier bill tracking on the job.
+                  </p>
+                </section>
+                <section className="hq-panel ee-compact-panel">
+                  <div className="ee-section-title">
+                    <div>
+                      <span className="ee-eyebrow">FORMS</span>
+                      <h2>Forms</h2>
+                    </div>
+                  </div>
+                  <p className="ee-muted" style={{ marginTop: 0 }}>
+                    Coming later for certificates, compliance packs, and job service reports.
+                  </p>
                 </section>
               </>
             ),
@@ -563,7 +656,21 @@ export default async function JobPage({
 .ee-job-provenance a{color:#0875c9;font-weight:700;text-decoration:none}
 .ee-job-provenance-sep{color:var(--hq-muted,#738396)}
 .ee-job-header-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
-.ee-workspace-status{display:inline-flex;align-items:center;background:#eaf2fa;color:#18577d;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:700;white-space:nowrap}
+.ee-workspace-status{display:inline-flex;align-items:center;gap:7px;background:#eaf2fa;color:#18577d;border-radius:999px;padding:7px 10px 7px 12px;font-size:13px;font-weight:700;white-space:nowrap;border:1px solid transparent}
+.ee-workspace-status-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.ee-workspace-status-label{line-height:1}
+.ee-workspace-status--neutral{background:#eef2f6;color:#4d677a}
+.ee-workspace-status--info{background:#eaf2fa;color:#18577d}
+.ee-workspace-status--success{background:#e8f7ef;color:#0b6b3a}
+.ee-workspace-status--warning{background:#fff4e5;color:#9a3412}
+.ee-workspace-status--accent{background:#f3eefc;color:#5b2d9b}
+.ee-workspace-status--danger{background:#fdeceb;color:#b42318}
+.ee-job-status-menu{position:relative;flex:0 0 auto}
+.ee-job-status-menu>summary{list-style:none;cursor:pointer}
+.ee-job-status-menu>summary::-webkit-details-marker{display:none}
+.ee-job-status-menu>summary:hover{filter:brightness(0.98)}
+.ee-job-status-menu>summary:focus-visible{outline:2px solid #188af0;outline-offset:2px}
+.ee-job-status-menu[open]>summary{box-shadow:inset 0 0 0 1px currentColor}
 .ee-job-actions-menu{position:relative;flex:0 0 auto}
 .ee-job-actions-menu>summary{list-style:none;cursor:pointer;border:1px solid #c9dae8;border-radius:10px;width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;color:#17669e;background:#fff}
 .ee-job-actions-menu>summary::-webkit-details-marker{display:none}
@@ -573,7 +680,8 @@ export default async function JobPage({
 .ee-job-actions-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:220px;display:grid;gap:2px;padding:6px;border:1px solid #c7dce9;border-radius:10px;background:#fff;box-shadow:0 12px 28px #122b4420}
 .ee-job-actions-panel>button[role=menuitem]{display:block;width:100%;text-align:left;border:0;background:transparent;padding:10px 12px;border-radius:7px;font:inherit;font-size:13px;font-weight:650;color:#17364c;cursor:pointer}
 .ee-job-actions-panel>button[role=menuitem]:hover,.ee-job-actions-panel>button[role=menuitem]:focus-visible{background:#eaf5ff;outline:none}
-.ee-job-status-panel{display:grid;gap:10px;padding:8px;min-width:260px;max-width:min(320px,calc(100vw - 48px));box-sizing:border-box}
+.ee-job-actions-empty{margin:0;padding:10px 12px;font-size:13px;line-height:1.4}
+.ee-job-status-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;display:grid;gap:10px;padding:10px;min-width:260px;max-width:min(320px,calc(100vw - 48px));box-sizing:border-box;border:1px solid #c7dce9;border-radius:10px;background:#fff;box-shadow:0 12px 28px #122b4420}
 .ee-job-status-form-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .ee-job-status-form-head strong{font-size:14px}
 .ee-job-status-form{display:grid;gap:10px}
@@ -731,7 +839,7 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-team-list>div{display:flex;align-items:center;gap:12px}
 .ee-team-list form{margin-left:auto}
 .ee-team-list button{border:0;background:transparent;color:#0875c9;padding:8px}
-.ee-avatar{display:grid;place-items:center;background:#e6f1fd;color:#1165a7;border-radius:50%;width:35px;height:35px;font-weight:800}
+.ee-avatar{display:grid;place-items:center;background:#e6f1fd;color:#fff;border-radius:50%;width:35px;height:35px;font-size:12px;font-weight:800;letter-spacing:.02em}
 .ee-job-inline{display:flex;gap:8px;margin-top:14px}
 .ee-job-inline button{border:0;border-radius:10px;background:#1688e9;color:white;padding:10px 16px}
 .ee-visit{display:grid;gap:5px;border-bottom:1px solid #e1e8f0;padding:12px 0}

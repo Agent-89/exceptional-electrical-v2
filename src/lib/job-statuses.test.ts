@@ -4,17 +4,20 @@ import {
   isJobStatus,
   isSchedulableJobStatus,
   JOB_STATUS_LABELS,
+  JOB_STATUS_TONES,
   JOB_STATUSES,
 } from './job-statuses.ts';
 
 describe('JOB_STATUSES', () => {
-  it('matches the verified production status check', () => {
+  it('matches the HQ status set including to_invoice and tafe', () => {
     assert.deepEqual([...JOB_STATUSES], [
       'unassigned',
       'assigned',
       'scheduled',
       'in_progress',
       'on_hold',
+      'to_invoice',
+      'tafe',
       'completed',
       'cancelled',
     ]);
@@ -25,10 +28,12 @@ describe('JOB_STATUSES', () => {
     assert.equal((JOB_STATUSES as readonly string[]).includes('archived'), false);
   });
 
-  it('provides a label for every status', () => {
+  it('provides a label and tone for every status', () => {
     for (const status of JOB_STATUSES) {
       assert.equal(typeof JOB_STATUS_LABELS[status], 'string');
       assert.ok(JOB_STATUS_LABELS[status].length > 0);
+      assert.equal(typeof JOB_STATUS_TONES[status], 'string');
+      assert.ok(JOB_STATUS_TONES[status].length > 0);
     }
   });
 });
@@ -40,6 +45,8 @@ describe('isJobStatus', () => {
     assert.equal(isJobStatus('scheduled'), true);
     assert.equal(isJobStatus('in_progress'), true);
     assert.equal(isJobStatus('on_hold'), true);
+    assert.equal(isJobStatus('to_invoice'), true);
+    assert.equal(isJobStatus('tafe'), true);
     assert.equal(isJobStatus('completed'), true);
     assert.equal(isJobStatus('cancelled'), true);
     assert.equal(isJobStatus('archived'), false);
@@ -57,9 +64,11 @@ describe('isSchedulableJobStatus', () => {
     assert.equal(isSchedulableJobStatus('on_hold'), true);
   });
 
-  it('blocks completed and cancelled jobs', () => {
+  it('blocks completed, cancelled, to_invoice and tafe jobs', () => {
     assert.equal(isSchedulableJobStatus('completed'), false);
     assert.equal(isSchedulableJobStatus('cancelled'), false);
+    assert.equal(isSchedulableJobStatus('to_invoice'), false);
+    assert.equal(isSchedulableJobStatus('tafe'), false);
   });
 
   it('rejects unknown statuses including archived', () => {
