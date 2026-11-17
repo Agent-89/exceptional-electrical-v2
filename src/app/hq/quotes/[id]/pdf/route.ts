@@ -2,6 +2,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import {businessProfile,documentFooterIdentityLines,letterheadDetailLines} from '@/lib/business-profile';
 import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -24,6 +25,8 @@ export async function GET(_request:NextRequest,{params}:{params:Promise<{id:stri
  const draft=!['approved','sent','accepted','declined','expired','superseded'].includes(q.status);
  const subtotal=items.reduce((n,l)=>n+Math.round(l.quantity*l.unit_price_cents),0);
  const gst=items.reduce((n,l)=>n+(l.gst_applicable?Math.round(l.quantity*l.unit_price_cents*.1):0),0);
+ const letterhead=letterheadDetailLines();
+ const footerIdentity=documentFooterIdentityLines();
  const objects:(string|Buffer)[]=[];
  const add=(s:string|Buffer)=>{objects.push(s);return objects.length};
  const catalog=add('');const pagesRef=add('');const font=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');const bold=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
@@ -37,18 +40,33 @@ export async function GET(_request:NextRequest,{params}:{params:Promise<{id:stri
  const pageRefs:number[]=[];let cmds:string[]=[];let y=0;
  const text=(s:string,x:number,at:number,size=10,isBold=false)=>{cmds.push('BT /F'+(isBold?'2':'1')+' '+size+' Tf '+x+' '+at+' Td ('+esc(s)+') Tj ET')};
  const right=(s:string,edge:number,at:number,size=10,isBold=false)=>text(s,Math.max(40,edge-s.length*size*(isBold ? 0.55 : 0.5)),at,size,isBold);
- const blue=()=>cmds.push('0.035 0.46 0.72 rg');const dark=()=>cmds.push('0.09 0.18 0.26 rg');
+ const blue=()=>cmds.push('0.035 0.46 0.72 rg');const dark=()=>cmds.push('0.09 0.18 0.26 rg');const muted=()=>cmds.push('0.38 0.46 0.54 rg');
  const displayDate=(v:string|null)=>v?new Date(v.slice(0,10)+'T12:00:00Z').toLocaleDateString('en-AU',{timeZone:'UTC'}):'—';
  const rule=(at:number)=>cmds.push('0.75 0.83 0.89 RG 40 '+at+' m 555 '+at+' l S');
- const begin=()=>{cmds=[];y=740;dark();
-  if(logoRef){const width=185;const height=Math.min(80,width*logoSize.height/logoSize.width);cmds.push('q '+width.toFixed(2)+' 0 0 '+height.toFixed(2)+' 40 '+(800-height).toFixed(2)+' cm /Im1 Do Q')}else{text('EXCEPTIONAL ELECTRICAL',40,782,16,true)}
-  right('QUOTATION',555,786,14,true);blue();right(q.quote_number,555,763,15,true);dark();
-  cmds.push('0.035 0.46 0.72 RG 1.7 w 40 737 m 555 737 l S');y=704;
-  if(draft){cmds.push('0.97 0.92 0.80 rg 40 673 515 30 re f');dark();text('DRAFT - NOT APPROVED FOR SENDING',53,684,10,true);y=652;}
+ const begin=()=>{cmds=[];dark();
+  let brandBottom=760;
+  if(logoRef){
+   const width=185;
+   const height=Math.min(72,width*logoSize.height/logoSize.width);
+   const logoBottom=800-height;
+   cmds.push('q '+width.toFixed(2)+' 0 0 '+height.toFixed(2)+' 40 '+logoBottom.toFixed(2)+' cm /Im1 Do Q');
+   brandBottom=logoBottom-8;
+  }else{
+   text('EXCEPTIONAL ELECTRICAL',40,782,16,true);
+   brandBottom=764;
+  }
+  right('QUOTATION',555,786,14,true);blue();right(q.quote_number,555,763,15,true);
+  muted();
+  let letterY=brandBottom-4;
+  for(const line of letterhead){text(line,40,letterY,8);letterY-=12}
+  const ruleY=Math.min(letterY-10,720);
+  cmds.push('0.035 0.46 0.72 RG 1.7 w 40 '+ruleY+' m 555 '+ruleY+' l S');
+  dark();
+  y=ruleY-28;
+  if(draft){cmds.push('0.97 0.92 0.80 rg 40 '+(y-20)+' 515 30 re f');dark();text('DRAFT - NOT APPROVED FOR SENDING',53,y-9,10,true);y-=48;}
  };
  const finish=()=>{const stream=cmds.join('\n');const ref=add('<< /Length '+Buffer.byteLength(stream)+' >>\nstream\n'+stream+'\nendstream');const page=add('<< /Type /Page /Parent '+pagesRef+' 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 '+font+' 0 R /F2 '+bold+' 0 R >> '+(logoRef?'/XObject << /Im1 '+logoRef+' 0 R >>':'')+' >> /Contents '+ref+' 0 R >>');pageRefs.push(page)};
  const need=(height:number)=>{if(y-height<58){finish();begin()}};
- const line=(label:string,value:string)=>{need(18);text(label,40,y,9,true);text(value,160,y,9);y-=18};
  const wrap=(s:string,max=90)=>{const result:string[]=[];for(const paragraph of s.split(/\r?\n/)){let current='';for(const word of paragraph.split(/\s+/)){if((current+' '+word).trim().length>max){if(current)result.push(current);current=word}else current=(current+' '+word).trim()}result.push(current)}return result};
  const section=(title:string,body:string)=>{if(!body.trim())return;need(45);y-=8;text(title.toUpperCase(),40,y,10,true);y-=20;for(const ln of wrap(body)){need(15);text(ln,40,y,9);y-=15}y-=12};
  begin();
@@ -76,7 +94,9 @@ export async function GET(_request:NextRequest,{params}:{params:Promise<{id:stri
  }
  need(105);y-=17;text('Subtotal (ex GST)',365,y,10);right(fmt(subtotal),548,y,10,true);y-=24;text('GST',365,y,10);right(fmt(gst),548,y,10,true);y-=14;cmds.push('0.035 0.46 0.72 RG 1.4 w 365 '+y+' m 555 '+y+' l S');y-=25;text('TOTAL (AUD)',365,y,13,true);right(fmt(subtotal+gst),548,y,13,true);y-=39;
  section('Additional notes',q.customer_notes||'');
- need(65);y-=12;rule(y);y-=21;text('Thank you for considering Exceptional Electrical.',40,y,9);y-=17;text('Quote reference: '+q.quote_number+'. Contact the business to confirm acceptance and applicable terms.',40,y,8);
+ need(120);y-=12;rule(y);y-=18;muted();
+ for(const line of footerIdentity){need(14);text(line,40,y,8);y-=12}
+ dark();y-=6;text('Thank you for considering '+businessProfile.shortName+'.',40,y,9);y-=17;text('Quote reference: '+q.quote_number+'. Contact the business to confirm acceptance and applicable terms.',40,y,8);
  finish();
  objects[catalog-1]='<< /Type /Catalog /Pages '+pagesRef+' 0 R >>';
  objects[pagesRef-1]='<< /Type /Pages /Kids ['+pageRefs.map(x=>x+' 0 R').join(' ')+'] /Count '+pageRefs.length+' >>';
