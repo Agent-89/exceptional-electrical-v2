@@ -16,6 +16,7 @@ import {
 import ScheduleAppointmentForm from './schedule-appointment-form';
 import JobFieldActivity from './job-field-activity';
 import JobDetailTabs, { JobTabButton } from './job-detail-tabs';
+import JobHeaderActions from './job-header-actions';
 import JobQuotesPanel from './job-quotes-panel';
 import {
   listLinkableQuotesForJob,
@@ -194,6 +195,12 @@ export default async function JobPage({
   if (customer?.id) customersById.set(customer.id as string, { id: customer.id, name: customer.name });
   const customers = [...customersById.values()];
 
+  const linkedQuotes = jobQuotesResult.quotes;
+  const primaryQuote =
+    linkedQuotes.find((quote) => quote.isPrimary) ?? linkedQuotes[0] ?? null;
+  const extraQuoteCount = Math.max(0, linkedQuotes.length - (primaryQuote ? 1 : 0));
+  const jobNumberLabel = `JB${String(job.job_number).padStart(5, '0')}`;
+
   return (
     <main className="hq-detail">
       <div className="hq-detail-inner ee-workspace">
@@ -202,20 +209,71 @@ export default async function JobPage({
         </Link>
 
         <header className="ee-workspace-head">
-          <div>
-            <div className="hq-kicker">JOB JB{String(job.job_number).padStart(5, '0')}</div>
-            <h1>{job.title}</h1>
-            <p>{customer?.name ?? 'No customer selected'}</p>
-            {linkedEnquiry ? (
-              <p className="ee-muted" style={{ marginTop: 6 }}>
-                From enquiry ·{' '}
-                <Link href={`/hq/enquiries/${linkedEnquiry.id}`}>
-                  ENQ-{String(linkedEnquiry.reference_number).padStart(4, '0')}
-                </Link>
+          <div className="ee-workspace-head-main">
+            <div className="ee-job-number">JOB {jobNumberLabel}</div>
+            <h1>{customer?.name ?? 'No customer selected'}</h1>
+            {(linkedEnquiry || primaryQuote) ? (
+              <p className="ee-job-provenance">
+                {linkedEnquiry ? (
+                  <span>
+                    From enquiry ·{' '}
+                    <Link href={`/hq/enquiries/${linkedEnquiry.id}`}>
+                      ENQ-{String(linkedEnquiry.reference_number).padStart(4, '0')}
+                    </Link>
+                  </span>
+                ) : null}
+                {linkedEnquiry && primaryQuote ? <span className="ee-job-provenance-sep">·</span> : null}
+                {primaryQuote ? (
+                  <span>
+                    From quote ·{' '}
+                    <Link href={`/hq/quotes/${primaryQuote.id}`}>{primaryQuote.quoteNumber}</Link>
+                    {extraQuoteCount > 0 ? (
+                      <>
+                        {' '}
+                        <Link className="ee-muted" href={`/hq/jobs/${id}?tab=quotes`}>
+                          +{extraQuoteCount} more
+                        </Link>
+                      </>
+                    ) : null}
+                  </span>
+                ) : null}
               </p>
             ) : null}
           </div>
-          <span className="ee-workspace-status">{jobStatusLabel(job.status)}</span>
+          {canEdit ? (
+            <JobHeaderActions
+              statusLabel={jobStatusLabel(job.status)}
+              statusForm={
+                <form action={updateJob} className="ee-job-status-form">
+                  <input type="hidden" name="id" value={id} />
+                  <label>
+                    <span className="ee-eyebrow">STATUS</span>
+                    <select name="status" defaultValue={job.status} aria-label="Job status">
+                      {JOB_STATUSES.map((status) => (
+                        <option value={status} key={status}>
+                          {JOB_STATUS_LABELS[status]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="ee-eyebrow">NOTE (OPTIONAL)</span>
+                    <textarea
+                      name="note"
+                      rows={2}
+                      maxLength={2000}
+                      placeholder="Add context for your team"
+                    />
+                  </label>
+                  <button type="submit" className="hq-detail-action-primary">
+                    Save status
+                  </button>
+                </form>
+              }
+            />
+          ) : (
+            <span className="ee-workspace-status">{jobStatusLabel(job.status)}</span>
+          )}
         </header>
 
         <JobDetailTabs
@@ -278,55 +336,12 @@ export default async function JobPage({
                           ? assignedNames.map((person) => person.name).join(', ')
                           : 'Not assigned'}
                       </strong>
-                      <span className="ee-muted">Job-level default crew</span>
+                      <span className="ee-muted">
+                        Default crew · also grows from scheduled visits
+                      </span>
                       <JobTabButton tab="more">Manage team</JobTabButton>
                     </div>
                   </div>
-                </section>
-
-                <section className="hq-panel ee-compact-panel">
-                  <div className="ee-section-title">
-                    <div>
-                      <span className="ee-eyebrow">WORKFLOW</span>
-                      <h2>Job status</h2>
-                    </div>
-                  </div>
-                  <p className="ee-muted" style={{ marginTop: 0 }}>
-                    {jobStatusLabel(job.status)} · Priority {priorityLabel(job.priority)}
-                  </p>
-                  {canEdit ? (
-                    <details className="ee-expand">
-                      <summary>
-                        Change status{' '}
-                        <span className="ee-expand-mark" aria-hidden="true">
-                          ＋
-                        </span>
-                      </summary>
-                      <form action={updateJob} className="ee-edit-form">
-                        <input type="hidden" name="id" value={id} />
-                        <label>
-                          Status
-                          <select name="status" defaultValue={job.status}>
-                            {JOB_STATUSES.map((status) => (
-                              <option value={status} key={status}>
-                                {JOB_STATUS_LABELS[status]}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label>
-                          Note (optional)
-                          <textarea
-                            name="note"
-                            rows={2}
-                            maxLength={2000}
-                            placeholder="Add context for your team"
-                          />
-                        </label>
-                        <button className="hq-detail-action-primary">Save status</button>
-                      </form>
-                    </details>
-                  ) : null}
                 </section>
 
                 <SuspendedJobAttention jobId={id} appointments={appointmentViews} staffNames={staffNames} />
@@ -539,10 +554,34 @@ export default async function JobPage({
 
       <style>{`
 .ee-workspace{max-width:1000px}
-.ee-workspace-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:20px 0 8px;scroll-margin-top:calc(var(--ee-job-sticky-offset,var(--hq-shell-header-height,76px)) + 8px)}
-.ee-workspace-head h1{margin:8px 0;font-size:clamp(28px,5vw,40px);line-height:1.15}
+.ee-workspace-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin:20px 0 8px;scroll-margin-top:calc(var(--ee-job-sticky-offset,var(--hq-shell-header-height,76px)) + 8px)}
+.ee-workspace-head-main{min-width:0;flex:1 1 auto}
+.ee-job-number{color:#0875c9;font-size:13px;font-weight:850;letter-spacing:.08em}
+.ee-workspace-head h1{margin:6px 0 0;font-size:clamp(28px,5vw,40px);line-height:1.15}
 .ee-workspace-head p,.ee-muted{color:var(--hq-muted,#738396)}
+.ee-job-provenance{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:8px 0 0;font-size:14px}
+.ee-job-provenance a{color:#0875c9;font-weight:700;text-decoration:none}
+.ee-job-provenance-sep{color:var(--hq-muted,#738396)}
+.ee-job-header-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .ee-workspace-status{display:inline-flex;align-items:center;background:#eaf2fa;color:#18577d;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:700;white-space:nowrap}
+.ee-job-actions-menu{position:relative;flex:0 0 auto}
+.ee-job-actions-menu>summary{list-style:none;cursor:pointer;border:1px solid #c9dae8;border-radius:10px;width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;color:#17669e;background:#fff}
+.ee-job-actions-menu>summary::-webkit-details-marker{display:none}
+.ee-job-actions-menu>summary:hover{background:#eaf5ff;border-color:#9ec7e6}
+.ee-job-actions-menu>summary:focus-visible{outline:2px solid #188af0;outline-offset:2px}
+.ee-job-actions-menu[open]>summary{background:#eaf5ff;border-color:#0875bd;color:#0875bd}
+.ee-job-actions-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:220px;display:grid;gap:2px;padding:6px;border:1px solid #c7dce9;border-radius:10px;background:#fff;box-shadow:0 12px 28px #122b4420}
+.ee-job-actions-panel>button[role=menuitem]{display:block;width:100%;text-align:left;border:0;background:transparent;padding:10px 12px;border-radius:7px;font:inherit;font-size:13px;font-weight:650;color:#17364c;cursor:pointer}
+.ee-job-actions-panel>button[role=menuitem]:hover,.ee-job-actions-panel>button[role=menuitem]:focus-visible{background:#eaf5ff;outline:none}
+.ee-job-status-panel{display:grid;gap:10px;padding:8px;min-width:260px;max-width:min(320px,calc(100vw - 48px));box-sizing:border-box}
+.ee-job-status-form-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ee-job-status-form-head strong{font-size:14px}
+.ee-job-status-form{display:grid;gap:10px}
+.ee-job-status-form label{display:grid;gap:5px;min-width:0}
+.ee-job-status-form select,.ee-job-status-form textarea{box-sizing:border-box;width:100%;min-width:0;padding:11px 12px;border:1px solid #cdd9e5;border-radius:10px;background:#fff;color:inherit;font:inherit;font-size:16px}
+.ee-job-status-form select{min-height:44px}
+.ee-job-status-form textarea{resize:vertical;min-height:64px}
+.ee-job-status-form .hq-detail-action-primary{justify-self:start;min-height:44px}
 .ee-workspace{--ee-job-sticky-offset:var(--hq-shell-header-height,76px);--ee-job-tab-height:52px}
 .ee-job-tabs{display:flex;gap:2px;margin:8px 0 16px;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid #d5e2ef;position:sticky;top:var(--ee-job-sticky-offset);z-index:5;background:#f5f8fb;width:100%;max-width:100%;box-sizing:border-box}
 .ee-job-tabs::-webkit-scrollbar{display:none}
@@ -703,13 +742,13 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-event p{margin:5px 0;overflow-wrap:anywhere}
 .ee-event small{display:block;color:var(--hq-muted,#738396);margin-top:5px}
 @media(max-width:600px){
-  .ee-workspace-head{align-items:flex-start}
   .ee-summary,.ee-compact-panel{padding:18px}
   .ee-summary-grid{gap:18px 12px}
   .ee-summary-grid strong{font-size:14px}
   .ee-workspace-status{font-size:12px;padding:6px 9px}
   .ee-summary h2,.ee-section-title h2{font-size:20px}
   .ee-job-stat-grid{grid-template-columns:minmax(0,1fr)}
+  .ee-job-number{font-size:12px}
 }
 .ee-workspace .ee-summary-grid{gap:14px;padding-top:16px}
 .ee-workspace .ee-description{margin:4px 0 16px}
@@ -729,11 +768,12 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
   .ee-workspace .ee-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
 @media(max-width:760px){
+  .ee-workspace-head{align-items:flex-start;gap:12px}
   .ee-workspace .ee-section-title{flex-wrap:wrap;align-items:flex-start}
   .ee-workspace .ee-section-title>.ee-muted{width:100%}
   .ee-workspace .ee-summary,.ee-workspace .ee-compact-panel{padding:17px}
   .ee-workspace .ee-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:15px 10px}
-  .ee-workspace .ee-workspace-head{gap:8px}
+  .ee-workspace .ee-workspace-head{gap:12px}
   .ee-workspace .ee-summary-grid strong{font-size:14px}
   .ee-job-stat-grid{grid-template-columns:minmax(0,1fr)}
   .ee-job-tabs{margin-right:-4px}

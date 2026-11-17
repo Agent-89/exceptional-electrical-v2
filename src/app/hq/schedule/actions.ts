@@ -4,6 +4,7 @@ import {
   formatHqElectricianOverlapMessage,
   hasElectricianOverlap,
 } from '@/lib/hq-electrician-overlaps';
+import {ensureJobAssignments} from '@/lib/job-assignments-sync';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 import type {ScheduleMutationResult} from '@/lib/schedule-mutation-result';
 import {revalidatePath} from 'next/cache';
@@ -159,6 +160,8 @@ export async function updateVisitStaff(formData:FormData):Promise<ScheduleMutati
   // Add before removing existing crew so a failed insert never clears the roster.
   if(toAdd.length){const {error:addError}=await db.from('job_appointment_staff').insert(toAdd.map(staff_id=>({appointment_id:id,staff_id})));if(addError)return asFailure('error','Unable to assign visit staff.');}
   if(toRemove.length){const {error:removeError}=await db.from('job_appointment_staff').delete().eq('appointment_id',id).in('staff_id',toRemove);if(removeError)return asFailure('error','Unable to remove previous visit staff.');}
+  // Grow job team from visit crew; never remove job-team members when a visit shrinks.
+  if(staffIds.length)await ensureJobAssignments(db,{jobId:visit.job_id,staffIds,actorId:user.id});
   await db.from('job_activity').insert({job_id:visit.job_id,actor_id:user.id,action:'visit_staff_updated',note:staffIds.length+' electrician(s) assigned to visit'+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
   revalidatePath('/hq/schedule');revalidatePath('/hq/jobs/'+visit.job_id);
   return {ok:true};

@@ -33,6 +33,7 @@ import {
   getTimeEntry,
   syncAppointmentFieldStatusFromLiveTimers,
 } from '@/lib/tech-time';
+import { applyJobStatusSync } from '@/lib/job-status-sync';
 import {
   formatTimeReviewActivityNote,
   timeReviewActivityAction,
@@ -143,6 +144,12 @@ export async function startWorkAction(formData: FormData): Promise<TechFieldActi
       .eq('id', visit.id)
       .in('field_status', ['scheduled', 'paused']);
   }
+
+  await applyJobStatusSync(db, {
+    jobId: visit.job_id,
+    trigger: 'work_started',
+    actorId: crew.id,
+  });
 
   await db.from('job_activity').insert({
     job_id: visit.job_id,

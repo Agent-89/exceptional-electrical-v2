@@ -5,7 +5,9 @@ import {
  hasElectricianOverlap,
 } from '@/lib/hq-electrician-overlaps';
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
+import {ensureJobAssignments} from '@/lib/job-assignments-sync';
 import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
+import {applyJobStatusSync} from '@/lib/job-status-sync';
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
 import {assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
@@ -63,6 +65,7 @@ export async function createJob(formData:FormData){
   );
   if(assignError)throw new Error('Job was created, but staff could not be assigned.');
   await db.from('job_activity').insert({job_id:data.id,actor_id:user.id,action:'staff_assigned',note:`Assigned ${validatedStaffIds.length} electrician${validatedStaffIds.length===1?'':'s'} at create`});
+  await applyJobStatusSync(db,{jobId:data.id,trigger:'staff_assigned',actorId:user.id});
  }
  if(quoteId){
   const sync=await syncPrimaryJobQuoteAfterCreate({jobId:data.id,quoteId,actorId:user.id});
@@ -126,6 +129,7 @@ export async function assignJobStaff(formData:FormData){
  const {error}=await db.from('job_assignments').upsert({job_id:jobId,staff_id:staff.id},{onConflict:'job_id,staff_id',ignoreDuplicates:true});
  if(error)throw new Error('Could not assign staff.');
  await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'staff_assigned'});
+ await applyJobStatusSync(db,{jobId,trigger:'staff_assigned',actorId:user.id});
  revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');
 }
 export async function removeJobStaff(formData:FormData){
@@ -216,7 +220,9 @@ export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;m
     if(rollbackError)throw new Error('Visit was created but assigning electricians failed. Please review the calendar before retrying.');
     throw new Error('Unable to assign electricians. No appointment was saved.');
    }
+   await ensureJobAssignments(db,{jobId,staffIds,actorId:user.id});
   }
+  await applyJobStatusSync(db,{jobId,trigger:'appointment_created',actorId:user.id});
   await db.from('job_activity').insert({job_id:jobId,actor_id:user.id,action:'appointment_added',note:start+' – '+end+(conflicts.length?' · Neil Google Calendar override by '+user.id:'')});
   revalidatePath('/hq/jobs/'+jobId);revalidatePath('/hq/jobs');revalidatePath('/hq/schedule');revalidatePath('/hq/jobs');
   return {ok:true,message:'Job scheduled successfully'};

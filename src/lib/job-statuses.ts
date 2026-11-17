@@ -29,3 +29,34 @@ export function isJobStatus(value: string): value is JobStatus {
 export function isSchedulableJobStatus(status: string): boolean {
   return isJobStatus(status) && status !== 'completed' && status !== 'cancelled';
 }
+
+export type JobStatusSyncTrigger = 'appointment_created' | 'work_started' | 'staff_assigned';
+
+const AUTO_STATUS_LOCKED: ReadonlySet<JobStatus> = new Set(['on_hold', 'completed', 'cancelled']);
+
+/** Pure next-status rules for automatic job status transitions. Returns null when no change. */
+export function nextJobStatusFromTrigger(
+  current: string,
+  trigger: JobStatusSyncTrigger,
+): JobStatus | null {
+  if (!isJobStatus(current) || AUTO_STATUS_LOCKED.has(current)) return null;
+
+  if (trigger === 'appointment_created') {
+    if (current === 'unassigned' || current === 'assigned') return 'scheduled';
+    return null;
+  }
+
+  if (trigger === 'work_started') {
+    if (current === 'unassigned' || current === 'assigned' || current === 'scheduled') {
+      return 'in_progress';
+    }
+    return null;
+  }
+
+  if (trigger === 'staff_assigned') {
+    if (current === 'unassigned') return 'assigned';
+    return null;
+  }
+
+  return null;
+}
