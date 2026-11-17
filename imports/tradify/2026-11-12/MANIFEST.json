@@ -1,0 +1,23 @@
+{
+  "batch_id": "tradify-2026-11-12",
+  "source_system": "tradify",
+  "frozen_at": "2026-11-15T00:07:01.111037+00:00",
+  "environment": "local-isolated-only",
+  "files": {
+    "customer_export.csv": {
+      "sha256": "d239db19422531e4fb62fcde2baccb5948a891577da0a9d3e3c0e1202abfc398",
+      "bytes": 172377,
+      "rows": 629
+    },
+    "job_export.csv": {
+      "sha256": "3fda77384f9c98429d70c8971662df0ad95d0edd173b04bfd7c37b613491d774",
+      "bytes": 1283835,
+      "rows": 1712
+    },
+    "site_export.csv": {
+      "sha256": "5c20c9cc2846e7c8a37d5a6fbc9a0e32e74c76e1af66637907fa448cf87e8758",
+      "bytes": 120507,
+      "rows": 958
+    }
+  }
+}

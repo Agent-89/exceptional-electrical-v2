@@ -35,8 +35,12 @@ Keep personal information minimal. Do not request card details, passwords, ident
 - category: new_job | existing_job | quote_followup | scheduling | billing | complaint | emergency | other | human_request
 - service_type: residential | commercial | lighting | maintenance | other
 - description
-- urgency: routine | priority | emergency
+- urgency: low | normal | high | emergency | unknown
+  - Align with `enquiries.urgency` check constraint.
+  - Writer aliases (map before insert): `routine` → `normal`; `priority` / `urgent` → `high`.
+  - Do not write free-text `urgent` into the column (rejected → often stored as `unknown`).
 - preferred_window (optional; not a confirmed booking)
+
 - human_requested: boolean
 - transfer_result: not_attempted | completed | failed
 - summary
