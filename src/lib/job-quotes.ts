@@ -238,7 +238,7 @@ export function classifyPrimarySyncOutcome(args: {
 export function orphanDraftRecoveryMessage(quoteId: string): string {
   return (
     `Draft quote ${quoteId} was saved but could not be linked. ` +
-    'Open that quote from Quotes and use Link existing quote on this job.'
+    'Open that quote from Quotes, then re-save it from the job Quotes tab with New quote / New variation if needed.'
   );
 }
 

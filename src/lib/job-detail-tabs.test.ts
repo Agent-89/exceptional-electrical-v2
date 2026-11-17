@@ -122,11 +122,12 @@ describe('job detail tab shell regression', () => {
     assert.match(pageSource, /JobQuotesPanel/);
     assert.match(quotesPanelSource, /No quotes linked to this job yet/);
     assert.match(quotesPanelSource, /Make primary/);
-    assert.match(quotesPanelSource, /Link existing quote/);
+    assert.doesNotMatch(quotesPanelSource, /Link existing quote/);
+    assert.match(quotesPanelSource, /New quote/);
     assert.match(quotesPanelSource, /New variation/);
     assert.match(quotesPanelSource, /quoteBuilderNewHref/);
     assert.match(quotesPanelSource, /UnlinkJobQuoteButton/);
-    assert.match(quotesPanelSource, /Add a customer to this job before linking a quote/);
+    assert.match(quotesPanelSource, /A customer is required before creating a quote/);
     assert.match(unlinkButtonSource, /window\.confirm/);
     assert.match(unlinkButtonSource, /confirm_unlink/);
     assert.match(unlinkButtonSource, /unlinkQuoteConfirmMessage/);
@@ -141,8 +142,11 @@ describe('job detail tab shell regression', () => {
   });
 
   it('keeps Quotes tab presentation compact on mobile and desktop', () => {
-    assert.match(pageSource, /\.ee-job-quote-forms\{display:grid/);
-    assert.match(pageSource, /@media\(max-width:700px\)\{[\s\S]*\.ee-job-quote-create-actions\{flex-direction:column\}/);
+    assert.match(pageSource, /\.ee-section-title \.ee-job-quote-create-actions\{flex:0 1 auto/);
+    assert.match(
+      pageSource,
+      /@media\(max-width:700px\)\{[\s\S]*\.ee-section-title:has\(\.ee-job-quote-create-actions\)/,
+    );
     assert.doesNotMatch(quotesPanelSource, /overflow-y:\s*scroll/);
     assert.match(quotesPanelSource, /Open/);
     assert.match(quotesPanelSource, /Preview/);
