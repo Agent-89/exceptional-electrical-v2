@@ -17,6 +17,7 @@ import {
 } from '@/lib/day-timeline-layout';
 import { JOB_STATUS_LABELS } from '@/lib/job-statuses';
 import TechDayCalendar from './tech-day-calendar';
+import { HydrateTodaySnapshot } from './field-offline-hydrate';
 import TechStyles from './tech-styles';
 import '../hq.css';
 
@@ -63,6 +64,22 @@ export default async function TechTodayPage({
   return (
     <main className="ee-tech">
       <TechStyles />
+      <HydrateTodaySnapshot
+        staffId={crew.staffId}
+        crewName={crew.crewName}
+        dayKey={selectedDay}
+        visits={calendarVisits.map((visit) => ({
+          appointmentId: visit.appointmentId,
+          startsAt: visit.startsAt,
+          endsAt: visit.endsAt,
+          title: visit.title,
+          jobNumber: visit.jobNumber,
+          customerName: visit.customerName ?? '',
+          visitStatus: visit.visitStatus,
+          fieldStatus: visit.fieldStatus,
+          siteAddress: visit.siteAddress ?? '',
+        }))}
+      />
       <header className="ee-tech-head">
         <div className="hq-kicker">TECHNICIAN · TODAY</div>
         <h1>Today</h1>

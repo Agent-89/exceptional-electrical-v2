@@ -50,6 +50,10 @@ import {
   buildVisitReportFormStateForAppointment,
   shouldResetVisitReportForm,
 } from '@/lib/tech-visit-form-state';
+import { enqueueOutboxItem } from '@/lib/field-offline/db';
+import { createOutboxItem, formDataToPayload } from '@/lib/field-offline/outbox';
+import type { FieldOutboxActionType } from '@/lib/field-offline/types';
+import { notifyFieldOutboxChanged } from '../../field-offline-chrome';
 
 /** Soft poll while live timers exist — keeps multi-tech status fresh without Realtime. */
 const LIVE_TIMER_POLL_MS = 20_000;
@@ -88,6 +92,7 @@ type PhotoView = {
 };
 
 type Props = {
+  staffId: string;
   appointmentId: string;
   appointmentDateLabel: string;
   scheduledLabel: string;
@@ -142,6 +147,7 @@ function isNextRedirectError(error: unknown): boolean {
 }
 
 export default function VisitFieldOps({
+  staffId,
   appointmentId,
   appointmentDateLabel,
   scheduledLabel,
@@ -353,6 +359,29 @@ export default function VisitFieldOps({
     });
   }
 
+  async function queueOffline(
+    action: FieldOutboxActionType,
+    formData: FormData,
+    successToast: string,
+  ): Promise<boolean> {
+    try {
+      await enqueueOutboxItem(
+        createOutboxItem({
+          staffId,
+          appointmentId,
+          action,
+          payload: formDataToPayload(formData),
+        }),
+      );
+      notifyFieldOutboxChanged();
+      showToast('success', `${successToast} · saved offline`);
+      return true;
+    } catch {
+      showToast('error', 'Unable to save offline. Try again when you have signal.');
+      return false;
+    }
+  }
+
   async function runAction(
     kind: BusyKind,
     action: (fd: FormData) => Promise<TechFieldActionResult>,
@@ -361,6 +390,7 @@ export default function VisitFieldOps({
       pendingAction?: TimerPrimaryAction;
       successToast?: string;
       onSuccess?: () => void;
+      offlineAction?: FieldOutboxActionType;
     },
   ): Promise<boolean> {
     if (busy) return false;
@@ -368,6 +398,11 @@ export default function VisitFieldOps({
     if (opts?.pendingAction) setTimerPendingAction(opts.pendingAction);
     const started = performance.now();
     try {
+      if (!navigator.onLine && opts?.offlineAction) {
+        const ok = await queueOffline(opts.offlineAction, formData, opts.successToast || 'Saved');
+        opts?.onSuccess?.();
+        return ok;
+      }
       const result = await action(formData);
       const elapsed = Math.round(performance.now() - started);
       if (kind === 'timer') setLastTimerMs(elapsed);
@@ -383,6 +418,11 @@ export default function VisitFieldOps({
       return true;
     } catch (error) {
       if (isNextRedirectError(error)) throw error;
+      if (!navigator.onLine && opts?.offlineAction) {
+        const ok = await queueOffline(opts.offlineAction, formData, opts.successToast || 'Saved');
+        opts?.onSuccess?.();
+        return ok;
+      }
       showToast('error', 'Something went wrong. Please try again.');
       return false;
     } finally {
@@ -420,6 +460,7 @@ export default function VisitFieldOps({
       await runAction('timer', startWorkAction, fd, {
         pendingAction: 'start',
         successToast: 'Work started',
+        offlineAction: 'start_work',
       });
       return;
     }
@@ -433,6 +474,7 @@ export default function VisitFieldOps({
       await runAction('timer', pauseWorkAction, fd, {
         pendingAction: 'take_break',
         successToast: 'Break started',
+        offlineAction: 'pause_work',
       });
       return;
     }
@@ -441,6 +483,7 @@ export default function VisitFieldOps({
       await runAction('timer', resumeWorkAction, fd, {
         pendingAction: 'resume',
         successToast: 'Work resumed',
+        offlineAction: 'resume_work',
       });
       return;
     }
@@ -450,10 +493,22 @@ export default function VisitFieldOps({
     setTimerPendingAction('finish');
     const started = performance.now();
     try {
+      if (!navigator.onLine) {
+        await queueOffline('finish_work', fd, 'Work finished');
+        setBusy(null);
+        setTimerPendingAction(null);
+        return;
+      }
       await finishWorkAction(fd);
       setLastTimerMs(Math.round(performance.now() - started));
     } catch (error) {
       if (isNextRedirectError(error)) throw error;
+      if (!navigator.onLine) {
+        await queueOffline('finish_work', fd, 'Work finished');
+        setBusy(null);
+        setTimerPendingAction(null);
+        return;
+      }
       showToast('error', 'Unable to finish work timer.');
       setBusy(null);
       setTimerPendingAction(null);
@@ -480,6 +535,12 @@ export default function VisitFieldOps({
     if (expectedTechUpdatedAt) fd.set('expected_tech_report_updated_at', expectedTechUpdatedAt);
 
     try {
+      if (!navigator.onLine) {
+        await queueOffline('update_progress', fd, 'Progress saved');
+        reportDirty.current = false;
+        setReportSavedFlash(true);
+        return;
+      }
       const result = await updateVisitProgressAction(fd);
       if (result.techReportUpdatedAt) {
         setExpectedTechUpdatedAt(result.techReportUpdatedAt);
@@ -521,6 +582,7 @@ export default function VisitFieldOps({
     fd.set('body', noteBody);
     const ok = await runAction('note', addTechnicianNoteAction, fd, {
       successToast: 'Note saved',
+      offlineAction: 'add_note',
       onSuccess: () => {
         noteDirty.current = false;
         setNoteBody('');
@@ -552,6 +614,10 @@ export default function VisitFieldOps({
   async function onUploadPhoto(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    if (!navigator.onLine) {
+      showToast('error', 'Photos need a signal. Upload when you’re back online.');
+      return;
+    }
     if (!photoFile) {
       showToast('error', 'Choose a photo first.');
       return;

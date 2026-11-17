@@ -132,6 +132,23 @@ If `auth_user_id` is null for the intended crew row, set it with **owner-approve
 
 Helpers: `src/lib/hq-roles.ts` (`canAccessFieldPortal`). Prefer server-side gates; do not trust client-only checks.
 
+### Field + HQ PWAs (separate installs, same login)
+
+| App | Manifest | `id` | `start_url` | Who |
+|-----|----------|------|-------------|-----|
+| Office HQ | `/hq/manifest.webmanifest` | `/hq` | `/hq` | owner / admin / office |
+| Exceptional Field | `/hq/tech/manifest.webmanifest` | `/hq/tech` | `/hq/tech` | technicians + crew-linked office |
+
+Both use `scope: '/hq/'` so `/hq/login` and session refresh stay inside the installed app. Cookies `ee_hq_access` / `ee_hq_refresh` (`path: '/'`) are shared. Install Field from Account (“Install Field app”) or the browser install UI while on `/hq/tech`; install HQ from office pages.
+
+**Offline Field MVP** (`src/lib/field-offline/`, Field SW shell cache):
+
+- Caches Field shell assets; **never** caches office HQ pages.
+- IndexedDB snapshots of Today + opened visit briefs (assigned only).
+- Outbox for timer start/pause/resume/finish, notes, and visit progress text; flushes when back online.
+- Photos and first login remain **online-only**.
+- Not full Tradify offline parity; deeper conflict UI / offline photos / payroll export remain later roadmap items.
+
 ## 7. External integrations
 
 | Integration | Status | Notes |
@@ -188,7 +205,7 @@ npm run build
 - Quote/invoice letterhead (ABN, electrical licence, phone, address) reads from `src/lib/business-profile.ts`; reuse that module for C2 invoice PDFs rather than hardcoding seller identity again.
 - Job header status is a colored-dot chevron dropdown (statuses in `src/lib/job-statuses.ts`). The three-dot menu is reserved for future job actions.
 - Pending hosted migration (do **not** apply until owner approves): `20261117092844_jobs_status_to_invoice_tafe` adds `to_invoice` and `tafe` to `jobs_status_check`. Until applied, selecting those statuses in the UI will fail at the database.
-- Inventory, purchasing, reports, payroll export, and tech offline mode are not built.
+- Inventory, purchasing, reports, and payroll export are not built. Field offline MVP (shell + outbox) is shipped; full offline/photos/payroll remain open.
 
 ## 11. Remaining development roadmap (post-Production)
 
@@ -213,7 +230,7 @@ Prioritised against fully replacing Tradify.
 9. Inventory, purchasing/POs, price catalogues.
 10. Client portal authentication and ownership boundaries.
 11. Reports/analytics, payments UI, certificates/compliance workflows, recurring/maintenance jobs.
-12. Technician offline / payroll export.
+12. Field offline beyond MVP (photos, richer conflict UI) / payroll export.
 13. Greenfield migration reconciliation so `supabase db reset` matches hosted.
 
 ### Active milestone (owner-approved lean scope)

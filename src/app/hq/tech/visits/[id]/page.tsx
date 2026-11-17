@@ -24,6 +24,7 @@ import {
   getTechWorkReportForTechnician,
 } from '@/lib/tech-work-reports';
 import { seedTechWorkReportFromShared } from '@/lib/tech-visit-report';
+import { HydrateVisitSnapshot } from '../../field-offline-hydrate';
 import TechStyles from '../../tech-styles';
 import VisitFieldOps from './visit-field-ops';
 import '../../../hq.css';
@@ -117,6 +118,22 @@ export default async function TechVisitPage({
   return (
     <main className="ee-tech ee-tech-visit-page">
       <TechStyles />
+      <HydrateVisitSnapshot
+        staffId={crew.staffId}
+        snapshot={{
+          staffId: crew.staffId,
+          appointmentId: visit.appointmentId,
+          summary: {
+            title: visit.title,
+            jobNumber,
+            customerName: visit.customerName ?? '',
+            siteAddress: visit.siteAddress ?? '',
+            scheduledLabel: `${formatPerthDateLong(visit.startsAt)} · ${appointmentTime}`,
+            fieldStatus,
+            electricianNames: visit.electricianNames,
+          },
+        }}
+      />
       <Link className="hq-back" href="/hq/tech">
         ← Today
       </Link>
@@ -173,6 +190,7 @@ export default async function TechVisitPage({
 
       <VisitFieldOps
         key={visit.appointmentId}
+        staffId={crew.staffId}
         appointmentId={visit.appointmentId}
         appointmentDateLabel={formatPerthDateLong(visit.startsAt)}
         scheduledLabel={appointmentTime}

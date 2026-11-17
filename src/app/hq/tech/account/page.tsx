@@ -2,6 +2,7 @@ import { requireHqUser, resolveSchedulingStaff } from '@/lib/hq-auth';
 import { canAccessFieldPortal, hqHomePath } from '@/lib/hq-roles';
 import { redirect } from 'next/navigation';
 import { logoutAction } from '../../actions';
+import InstallFieldApp from '../install-field-app';
 import TechStyles from '../tech-styles';
 import '../../hq.css';
 
@@ -70,6 +71,8 @@ export default async function TechAccountPage({
           </p>
         ) : null}
       </section>
+
+      <InstallFieldApp />
 
       <form action={logoutAction} className="ee-tech-logout">
         <button type="submit">Log out</button>

@@ -60,6 +60,8 @@ The following was the pre-merge plan and remains for audit only:
 - [ ] Notes, photos, attachments on job
 - [ ] Light/dark if supported; desktop + mobile nav
 - [ ] Dual surface: office user with crew link → Field → assigned visit stamp; unassigned denied; unlinked → account setup; pure technician still blocked from `/hq`
+- [ ] Separate PWAs: install Field from `/hq/tech` (opens Today) and HQ from `/hq` (opens Operations); shared login; Field Account install guidance
+- [ ] Field offline MVP: banner when offline; timer/notes/progress queue and sync; photos blocked offline; office pages not cached
 
 Some extended items may have been exercised earlier on Preview or prior releases, but they were **not** re-confirmed as independent Production smoke categories for PR #15.
 
