@@ -183,18 +183,6 @@ export default function JobHeaderActions({
           ) : null}
         </div>
       </details>
-      <style jsx>{`
-        .ee-job-actions-danger {
-          color: #ad3b3b !important;
-        }
-        .ee-job-actions-error {
-          margin: 4px 0 0;
-          padding: 8px 12px;
-          font-size: 12px;
-          line-height: 1.4;
-          color: #b42318;
-        }
-      `}</style>
     </div>
   );
 }

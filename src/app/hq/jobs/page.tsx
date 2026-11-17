@@ -22,8 +22,8 @@ type JobRow={
 const PAGE_SIZE=80;
 
 const SORT_OPTIONS=[
-  {id:'updated_at',label:'Updated'},
   {id:'job_number',label:'Job number'},
+  {id:'updated_at',label:'Updated'},
   {id:'priority',label:'Priority'},
   {id:'next_visit',label:'Next visit'},
 ] as const;
@@ -54,7 +54,7 @@ export default async function JobsPage({searchParams}:{searchParams:Promise<{q?:
   const qRaw=(params.q??'').trim();
   const q=sanitizeSearch(qRaw);
   const filter=params.status&&isJobStatus(params.status)?params.status:'all';
-  const sort=isSortId(params.sort??'')?(params.sort as SortId):'updated_at';
+  const sort=isSortId(params.sort??'')?(params.sort as SortId):'job_number';
   const page=Math.max(1,Number.parseInt(params.page??'1',10)||1);
   const from=(page-1)*PAGE_SIZE;
   const to=from+PAGE_SIZE-1;
@@ -135,7 +135,7 @@ export default async function JobsPage({searchParams}:{searchParams:Promise<{q?:
     const sp=new URLSearchParams();
     if(qRaw)sp.set('q',qRaw);
     if(filter&&filter!=='all')sp.set('status',filter);
-    if(sort&&sort!=='updated_at')sp.set('sort',sort);
+    if(sort&&sort!=='job_number')sp.set('sort',sort);
     for(const [k,v] of Object.entries(extra))if(v)sp.set(k,v);
     const s=sp.toString();
     return s?'?'+s:'';
@@ -147,13 +147,19 @@ export default async function JobsPage({searchParams}:{searchParams:Promise<{q?:
  <form method="get" className="ee-jobs-filters">
   <input name="q" defaultValue={qRaw} placeholder="Search jobs, job number, or customer" aria-label="Search jobs"/>
   <div className="ee-jobs-filter-row">
-   <select name="status" defaultValue={filter} aria-label="Filter by status">
-    <option value="all">All jobs</option>
-    {JOB_STATUSES.map(v=><option key={v} value={v}>{JOB_STATUS_LABELS[v]}</option>)}
-   </select>
-   <select name="sort" defaultValue={sort} aria-label="Sort jobs">
-    {SORT_OPTIONS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
-   </select>
+   <label className="ee-jobs-field">
+    <span className="ee-jobs-field-label">Filter</span>
+    <select name="status" defaultValue={filter} aria-label="Filter by status">
+     <option value="all">All jobs</option>
+     {JOB_STATUSES.map(v=><option key={v} value={v}>{JOB_STATUS_LABELS[v]}</option>)}
+    </select>
+   </label>
+   <label className="ee-jobs-field">
+    <span className="ee-jobs-field-label">Sort by</span>
+    <select name="sort" defaultValue={sort} aria-label="Sort jobs">
+     {SORT_OPTIONS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
+    </select>
+   </label>
    <button type="submit">Apply</button>
   </div>
  </form>
@@ -164,6 +170,6 @@ export default async function JobsPage({searchParams}:{searchParams:Promise<{q?:
   {from+list.length<total&&<Link href={'/hq/jobs'+qs({page:String(page+1)})}>Next →</Link>}
  </div>}
  </section></div><style>{`
-.ee-jobs-page{max-width:1240px}.ee-jobs-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:12px 0 22px}.ee-jobs-heading-actions{display:flex;align-items:center;gap:12px}.ee-jobs-schedule-link{color:#0875c9;font-weight:700;text-decoration:none}.ee-jobs-heading h1{margin:5px 0;font-size:clamp(30px,5vw,40px)}.ee-jobs-register{padding:20px}.ee-jobs-register-heading{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-height:20px}.ee-jobs-register-count{color:var(--hq-muted,#718398);font-size:13px}.ee-jobs-filters{display:flex;flex-direction:column;gap:8px;margin:12px 0 16px;max-width:960px}.ee-jobs-filter-row{display:flex;align-items:stretch;gap:8px}.ee-jobs-filters input[name="q"]{width:100%;height:46px;box-sizing:border-box}.ee-jobs-filters select{flex:1 1 0;min-width:0;height:46px;box-sizing:border-box}.ee-jobs-filters button{flex:0 0 auto;height:46px;display:inline-flex;align-items:center;justify-content:center}.ee-jobs-filters input,.ee-jobs-filters select,.ee-jobs-filters button{margin:0;line-height:22px;vertical-align:middle;appearance:auto;border:1px solid #cdd9e5;border-radius:10px;padding:11px;font-size:16px;background:var(--hq-card,#fff);color:inherit}.ee-jobs-list>a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 2px;border-bottom:1px solid var(--hq-border,#dce5ee);text-decoration:none;color:inherit}.ee-jobs-list>a>div:first-child{display:grid;gap:5px}.ee-jobs-list strong{font-size:15px}.ee-jobs-list small,.ee-jobs-list span{font-size:12px;color:var(--hq-muted,#718398)}.ee-job-trailing{display:grid;align-content:center;justify-items:end;gap:6px}.ee-job-status{padding:6px 9px;border-radius:20px;background:#e8f0fa;color:#194f7d!important;white-space:nowrap}.ee-status-completed{background:#e4f6eb;color:#17633b!important}.ee-status-unassigned,.ee-status-on_hold{background:#fff1db;color:#8c520b!important}.ee-status-assigned{background:#efe9fb;color:#58379a!important}.ee-status-scheduled{background:#e3f1ff;color:#0b5fa8!important}.ee-status-in_progress{background:#dff5f2;color:#0d6b62!important}.ee-status-to_invoice{background:#efe9fb;color:#58379a!important}.ee-status-tafe{background:#edf0f4;color:#596b7c!important}.ee-status-cancelled{background:#edf0f4;color:#596b7c!important;text-decoration:line-through}.ee-jobs-empty{text-align:center;padding:38px 10px}.ee-jobs-empty p{color:var(--hq-muted,#718398)}@media(min-width:1000px){.ee-jobs-register{padding:26px 30px}.ee-jobs-list>a{padding:17px 8px}}@media(max-width:700px){.ee-jobs-heading{align-items:flex-start}.ee-jobs-heading-actions{gap:8px}.ee-jobs-schedule-link{font-size:13px}.ee-jobs-heading .hq-detail-action-primary{white-space:nowrap;font-size:13px;padding:11px}.ee-jobs-register{padding:16px}.ee-jobs-filter-row{flex-wrap:wrap}.ee-jobs-filters select{flex:1 1 calc(50% - 4px)}.ee-jobs-filters button{flex:1 1 100%}}
+.ee-jobs-page{max-width:1240px}.ee-jobs-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:12px 0 22px}.ee-jobs-heading-actions{display:flex;align-items:center;gap:12px}.ee-jobs-schedule-link{color:#0875c9;font-weight:700;text-decoration:none}.ee-jobs-heading h1{margin:5px 0;font-size:clamp(30px,5vw,40px)}.ee-jobs-register{padding:20px}.ee-jobs-register-heading{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-height:20px}.ee-jobs-register-count{color:var(--hq-muted,#718398);font-size:13px}.ee-jobs-filters{display:flex;flex-direction:column;gap:8px;margin:12px 0 16px;max-width:960px}.ee-jobs-filter-row{display:flex;align-items:flex-end;gap:8px}.ee-jobs-field{display:grid;gap:5px;flex:1 1 0;min-width:0}.ee-jobs-field-label{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--hq-muted,#718398)}.ee-jobs-filters input[name="q"]{width:100%;height:46px;box-sizing:border-box}.ee-jobs-filters select{width:100%;min-width:0;height:46px;box-sizing:border-box}.ee-jobs-filters button{flex:0 0 auto;height:46px;display:inline-flex;align-items:center;justify-content:center}.ee-jobs-filters input,.ee-jobs-filters select,.ee-jobs-filters button{margin:0;line-height:22px;vertical-align:middle;appearance:auto;border:1px solid #cdd9e5;border-radius:10px;padding:11px;font-size:16px;background:var(--hq-card,#fff);color:inherit}.ee-jobs-list>a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 2px;border-bottom:1px solid var(--hq-border,#dce5ee);text-decoration:none;color:inherit}.ee-jobs-list>a>div:first-child{display:grid;gap:5px}.ee-jobs-list strong{font-size:15px}.ee-jobs-list small,.ee-jobs-list span{font-size:12px;color:var(--hq-muted,#718398)}.ee-job-trailing{display:grid;align-content:center;justify-items:end;gap:6px}.ee-job-status{padding:6px 9px;border-radius:20px;background:#e8f0fa;color:#194f7d!important;white-space:nowrap}.ee-status-completed{background:#e4f6eb;color:#17633b!important}.ee-status-unassigned,.ee-status-on_hold{background:#fff1db;color:#8c520b!important}.ee-status-assigned{background:#efe9fb;color:#58379a!important}.ee-status-scheduled{background:#e3f1ff;color:#0b5fa8!important}.ee-status-in_progress{background:#dff5f2;color:#0d6b62!important}.ee-status-to_invoice{background:#efe9fb;color:#58379a!important}.ee-status-tafe{background:#edf0f4;color:#596b7c!important}.ee-status-cancelled{background:#edf0f4;color:#596b7c!important;text-decoration:line-through}.ee-jobs-empty{text-align:center;padding:38px 10px}.ee-jobs-empty p{color:var(--hq-muted,#718398)}@media(min-width:1000px){.ee-jobs-register{padding:26px 30px}.ee-jobs-list>a{padding:17px 8px}}@media(max-width:700px){.ee-jobs-heading{align-items:flex-start}.ee-jobs-heading-actions{gap:8px}.ee-jobs-schedule-link{font-size:13px}.ee-jobs-heading .hq-detail-action-primary{white-space:nowrap;font-size:13px;padding:11px}.ee-jobs-register{padding:16px}.ee-jobs-filter-row{flex-wrap:wrap}.ee-jobs-field{flex:1 1 calc(50% - 4px)}.ee-jobs-filters button{flex:1 1 100%}}
 `}</style></main>;
 }
