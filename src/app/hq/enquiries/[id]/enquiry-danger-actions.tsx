@@ -1,5 +1,6 @@
 'use client';
 
+import { formatEmptyDeleteBlockers } from '@/lib/hq-empty-delete';
 import { deleteEmptyEnquiry } from '../../actions';
 import RecordDangerActions from '../../record-danger-actions';
 
@@ -27,7 +28,7 @@ export default function EnquiryDangerActions({
           disabled: !deleteEligible,
           title: deleteEligible
             ? 'Permanently delete this unused enquiry'
-            : deleteBlockers.join('; ') || 'Not eligible for delete',
+            : formatEmptyDeleteBlockers(deleteBlockers),
           redirectTo: '/hq/enquiries',
           run: () => deleteEmptyEnquiry(enquiryId),
         },

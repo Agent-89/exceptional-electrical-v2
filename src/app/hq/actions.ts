@@ -233,9 +233,12 @@ export async function deleteEmptyEnquiry(enquiryId:string):Promise<{ok:boolean;m
   if(!enquiry)return {ok:false,message:'Enquiry not found'};
   const verdict=await assessEnquiryEmptyDelete(db,enquiryId);
   if(!verdict.eligible)return {ok:false,message:formatEmptyDeleteBlockers(verdict.blockers)};
+  // Keep Vapi intake audit rows; unlink so NO ACTION FK does not block hard-delete.
+  const {error:unlinkError}=await db.from('vapi_call_intake').update({enquiry_id:null}).eq('enquiry_id',enquiryId);
+  if(unlinkError)return {ok:false,message:unlinkError.message||'Unable to unlink call intake'};
   await db.from('enquiry_activity').delete().eq('enquiry_id',enquiryId);
   const {error}=await db.from('enquiries').delete().eq('id',enquiryId);
-  if(error)return {ok:false,message:'Unable to delete enquiry'};
+  if(error)return {ok:false,message:error.message||'Unable to delete enquiry'};
   revalidatePath('/hq');
   revalidatePath('/hq/enquiries');
   return {

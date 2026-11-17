@@ -299,7 +299,9 @@
 .hq-record-actions-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:220px;display:grid;gap:2px;padding:6px;border:1px solid #c7dce9;border-radius:10px;background:#fff;box-shadow:0 12px 28px #122b4420}
 .hq-record-actions-panel>button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:10px 12px;border-radius:7px;font:inherit;font-size:13px;font-weight:650;cursor:pointer}
 .hq-record-actions-danger{color:#ad3b3b}
-.hq-record-actions-danger:hover,.hq-record-actions-danger:focus-visible{background:#fdecec;outline:none}
+.hq-record-actions-danger:hover:not(:disabled),.hq-record-actions-danger:focus-visible:not(:disabled){background:#fdecec;outline:none}
+.hq-record-actions-danger:disabled{color:#c48a8a;opacity:.7;cursor:not-allowed}
+.hq-record-actions-hint{margin:4px 0 0;padding:8px 12px;font-size:12px;line-height:1.4;color:#718294}
 .hq-record-actions-error{margin:4px 0 0;padding:8px 12px;font-size:12px;line-height:1.4;color:#b42318}
 .hq-qw-feedback{margin:0;font-size:13px;color:#355468}
 .hq-qw-fieldset{border:0;padding:0;margin:0;min-width:0}
