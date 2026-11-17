@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  canAccessFieldPortal,
   canManageAdminOps,
   canManageOfficeOps,
   hqHomePath,
@@ -41,5 +42,13 @@ describe('hq roles', () => {
     assert.equal(hqHomePath('admin'), '/hq');
     assert.equal(isTechnicianRole('technician'), true);
     assert.equal(isTechnicianRole('office'), false);
+  });
+
+  it('allows technicians and office roles into the field portal', () => {
+    assert.equal(canAccessFieldPortal('technician'), true);
+    assert.equal(canAccessFieldPortal('owner'), true);
+    assert.equal(canAccessFieldPortal('admin'), true);
+    assert.equal(canAccessFieldPortal('office'), true);
+    assert.equal(canAccessFieldPortal('electrician'), false);
   });
 });

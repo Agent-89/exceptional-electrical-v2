@@ -59,6 +59,7 @@ The following was the pre-merge plan and remains for audit only:
 - [ ] Quote PDF + preview
 - [ ] Notes, photos, attachments on job
 - [ ] Light/dark if supported; desktop + mobile nav
+- [ ] Dual surface: office user with crew link → Field → assigned visit stamp; unassigned denied; unlinked → account setup; pure technician still blocked from `/hq`
 
 Some extended items may have been exercised earlier on Preview or prior releases, but they were **not** re-confirmed as independent Production smoke categories for PR #15.
 
