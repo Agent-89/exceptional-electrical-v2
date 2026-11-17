@@ -371,6 +371,8 @@ export default function DispatchTimeline({canEdit,canDelete=false,enableSlotCrea
 @media(max-width:760px){
 .ee-timeline-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:6px!important;align-items:center!important}
 .ee-timeline-toolbar>.ee-timeline-tabs{grid-column:1!important;grid-row:1!important;flex:none!important;width:100%!important}
+.ee-timeline-toolbar>.ee-timeline-tabs+.ee-timeline-density-shortcut{grid-column:2!important;grid-row:1!important;align-self:stretch!important;min-height:34px!important}
+.ee-timeline-toolbar>.ee-timeline-density-shortcut+.ee-timeline-density-shortcut{grid-column:1/-1!important;grid-row:2!important;width:100%!important;min-height:34px!important}
 .ee-timeline-toolbar>.ee-timeline-mobile-filters{grid-column:2!important;grid-row:1!important;flex:none!important}
 .ee-timeline-toolbar>.ee-timeline-mobile-filters[open]{grid-column:1/-1!important;grid-row:2!important;width:100%!important}
 .ee-timeline-mobile-filters[open]>.ee-timeline-filter-body{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important;padding:10px!important;align-items:stretch!important}
