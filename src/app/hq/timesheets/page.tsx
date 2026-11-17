@@ -109,7 +109,6 @@ export default async function TimesheetsPage({
           <div>
             <div className="hq-kicker">OFFICE · TIME</div>
             <h1>Timesheets</h1>
-            <p>Review submitted field time. Worked minutes stay separate from billable minutes.</p>
           </div>
         </header>
 

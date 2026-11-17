@@ -7,5 +7,5 @@ export default async function EnquiriesPage(){
  await requireOfficeUser();
  const {data,error}=await dbAdmin().from('enquiries').select('id,reference_number,name,service,service_category,enquiry_type,issue_tags,urgency,requested_date,status,suburb,created_at,email,message').order('created_at',{ascending:false}).limit(100);
  const enquiries=(data??[]) as Enquiry[];
- return <main className="hq-detail hq-enquiries-page"><div className="hq-detail-inner hq-enquiries-inner"><div className="hq-detail-head hq-enquiries-heading"><div><div className="hq-kicker">CUSTOMER ENQUIRIES</div><h1>Enquiries</h1><p>Review requests and calls needing a response.</p></div></div><section className="hq-panel hq-enquiries-panel">{error?<p role="alert">Enquiries could not be loaded.</p>:<EnquiryInbox enquiries={enquiries}/>}</section></div></main>;
+ return <main className="hq-detail hq-enquiries-page"><div className="hq-detail-inner hq-enquiries-inner"><div className="hq-detail-head hq-enquiries-heading"><div><div className="hq-kicker">CUSTOMER ENQUIRIES</div><h1>Enquiries</h1></div></div><section className="hq-panel hq-enquiries-panel">{error?<p role="alert">Enquiries could not be loaded.</p>:<EnquiryInbox enquiries={enquiries}/>}</section></div></main>;
 }

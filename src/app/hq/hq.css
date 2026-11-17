@@ -127,6 +127,7 @@
 .hq-detail-head h1{margin:8px 0 5px;font-size:36px}
 .hq-detail-head p{margin:0;color:#718294;font-size:13px}
 .hq-detail-head>.hq-status{flex-shrink:0}
+.hq-detail-head-trail{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .hq-detail-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:23px 0}
 .hq-detail-action-primary,.hq-detail-action-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:10px 17px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:800}
 .hq-detail-action-primary{background:#1689ed;color:#fff}
@@ -287,6 +288,8 @@
 .hq-qw-actions-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:220px;display:grid;gap:2px;padding:6px;border:1px solid #c7dce9;border-radius:10px;background:var(--hq-input-bg,#fff);box-shadow:0 12px 28px #122b4420}
 .hq-qw-actions-panel a,.hq-qw-actions-panel button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:10px 12px;border-radius:7px;font:inherit;font-size:13px;font-weight:650;color:#17364c;text-decoration:none;cursor:pointer}
 .hq-qw-actions-panel a:hover,.hq-qw-actions-panel button:hover,.hq-qw-actions-panel a:focus-visible,.hq-qw-actions-panel button:focus-visible{background:#eaf5ff;outline:none}
+.hq-qw-actions-panel button.hq-qw-actions-danger{color:#ad3b3b}
+.hq-qw-actions-panel button.hq-qw-actions-danger:hover,.hq-qw-actions-panel button.hq-qw-actions-danger:focus-visible{background:#fdecec}
 .hq-qw-feedback{margin:0;font-size:13px;color:#355468}
 .hq-qw-fieldset{border:0;padding:0;margin:0;min-width:0}
 .hq-qw-fieldset.is-locked input:not([type=hidden]),

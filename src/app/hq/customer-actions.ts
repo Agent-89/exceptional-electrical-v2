@@ -1,6 +1,6 @@
 'use server';
 import {revalidatePath} from 'next/cache';
-import {dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {assertAdminOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
 import {canManageOfficeOps} from '@/lib/hq-roles';
 import {
   findCustomerMatches,
@@ -8,6 +8,10 @@ import {
   type CustomerMatchRecord,
 } from '@/lib/customer-match';
 import {loadCustomersForMatch} from '@/lib/load-customers-for-match';
+import {
+  assessCustomerEmptyDelete,
+  formatEmptyDeleteBlockers,
+} from '@/lib/hq-empty-delete-assess';
 
 export type CustomerMutationResult={
  ok:boolean;
@@ -163,4 +167,25 @@ export async function addCustomerNote(id:string,note:string):Promise<Result>{
  const {error}=await dbAdmin().from('customer_notes').insert({customer_id:id,actor_id:user.id,note:note.trim()});
  if(error)return {ok:false,message:'Unable to add note'};
  revalidatePath('/hq/customers/'+id);return {ok:true,message:'Note added'};
+}
+
+/** Hard-delete only customers with no jobs/quotes/enquiries/notes. Addresses are removed with the customer. */
+export async function deleteEmptyCustomer(customerId:string):Promise<Result>{
+ try{
+  const user=await requireHqUser();
+  assertAdminOps(user);
+  if(!uuid(customerId))return {ok:false,message:'Invalid customer'};
+  const db=dbAdmin();
+  const {data:customer}=await db.from('customers').select('id,name').eq('id',customerId).maybeSingle();
+  if(!customer)return {ok:false,message:'Customer not found'};
+  const verdict=await assessCustomerEmptyDelete(db,customerId);
+  if(!verdict.eligible)return {ok:false,message:formatEmptyDeleteBlockers(verdict.blockers)};
+  await db.from('customer_addresses').delete().eq('customer_id',customerId);
+  const {error}=await db.from('customers').delete().eq('id',customerId);
+  if(error)return {ok:false,message:'Unable to delete customer'};
+  revalidatePath('/hq/customers');
+  return {ok:true,message:`Customer “${customer.name}” deleted.`};
+ }catch(error){
+  return {ok:false,message:error instanceof Error?error.message:'Unable to delete customer'};
+ }
 }

@@ -1,23 +1,38 @@
 'use client';
 
 import { ChevronDown, MoreHorizontal } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { cancelJob, deleteEmptyJob } from '../actions';
 
 export default function JobHeaderActions({
+  jobId,
   status,
   statusLabel,
   statusTone = 'neutral',
   statusForm,
+  canCancel = false,
+  canDelete = false,
+  deleteEligible = false,
+  deleteBlockers = [],
 }: {
+  jobId: string;
   status: string;
   statusLabel: string;
   statusTone?: string;
   statusForm: ReactNode;
+  canCancel?: boolean;
+  canDelete?: boolean;
+  deleteEligible?: boolean;
+  deleteBlockers?: string[];
 }) {
+  const router = useRouter();
   const statusRef = useRef<HTMLDetailsElement | null>(null);
   const menuRef = useRef<HTMLDetailsElement | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [busy, setBusy] = useState<'cancel' | 'delete' | null>(null);
+  const [error, setError] = useState('');
   const statusPanelId = useId();
 
   useEffect(() => {
@@ -43,6 +58,60 @@ export default function JobHeaderActions({
       document.removeEventListener('keydown', onKey);
     };
   }, [menuOpen, statusOpen]);
+
+  const runCancel = async () => {
+    if (
+      !window.confirm(
+        'Cancel this job? It will stay in the list as Cancelled and the job number will not be reused.',
+      )
+    ) {
+      return;
+    }
+    setBusy('cancel');
+    setError('');
+    try {
+      const result = await cancelJob(jobId);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      if (menuRef.current) menuRef.current.open = false;
+      router.refresh();
+    } catch {
+      setError('Unable to cancel job.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runDelete = async () => {
+    if (!deleteEligible) {
+      setError(deleteBlockers.length ? `Cannot delete: ${deleteBlockers.join('; ')}.` : 'This job cannot be deleted.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Permanently delete this empty job? This cannot be undone. The job number will not be reused.',
+      )
+    ) {
+      return;
+    }
+    setBusy('delete');
+    setError('');
+    try {
+      const result = await deleteEmptyJob(jobId);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      router.push('/hq/jobs');
+      router.refresh();
+    } catch {
+      setError('Unable to delete job.');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <div className="ee-job-header-actions">
@@ -87,9 +156,45 @@ export default function JobHeaderActions({
         </summary>
 
         <div className="ee-job-actions-panel" role="menu">
-          <p className="ee-job-actions-empty ee-muted">More job actions will appear here.</p>
+          {canCancel && status !== 'cancelled' && status !== 'completed' ? (
+            <button type="button" role="menuitem" disabled={busy !== null} onClick={runCancel}>
+              {busy === 'cancel' ? 'Cancelling…' : 'Cancel job'}
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="ee-job-actions-danger"
+              disabled={busy !== null || !deleteEligible}
+              title={deleteEligible ? 'Permanently delete this empty job' : deleteBlockers.join('; ') || 'Not eligible for delete'}
+              onClick={runDelete}
+            >
+              {busy === 'delete' ? 'Deleting…' : 'Delete job'}
+            </button>
+          ) : null}
+          {!canCancel && !canDelete ? (
+            <p className="ee-job-actions-empty ee-muted">No additional actions available.</p>
+          ) : null}
+          {error ? (
+            <p className="ee-job-actions-error" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
       </details>
+      <style jsx>{`
+        .ee-job-actions-danger {
+          color: #ad3b3b !important;
+        }
+        .ee-job-actions-error {
+          margin: 4px 0 0;
+          padding: 8px 12px;
+          font-size: 12px;
+          line-height: 1.4;
+          color: #b42318;
+        }
+      `}</style>
     </div>
   );
 }

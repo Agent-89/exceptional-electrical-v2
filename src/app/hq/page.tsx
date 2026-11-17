@@ -6,7 +6,7 @@ export const dynamic='force-dynamic';
 type Enquiry={id:string;name:string|null;service:string|null;status:string;created_at:string;suburb:string|null};
 type Quote={id:string;quote_number:string;title:string|null;status:string;updated_at:string};
 export default async function HQ(){
- const user=await requireOfficeUser();
+ await requireOfficeUser();
  const db=dbAdmin();
  const [enquiryResult,quoteResult,newCount,pendingCount]=await Promise.all([
   db.from('enquiries').select('id,name,service,status,created_at,suburb').order('created_at',{ascending:false}).limit(30),
@@ -25,7 +25,7 @@ export default async function HQ(){
  ].filter(item=>{if(seen.has(item.id))return false;seen.add(item.id);return true}).slice(0,6);
  const hasErrors=Boolean(enquiryResult.error||quoteResult.error||newCount.error||pendingCount.error);
  return <main className="hq-dashboard"><div className="hq-dashboard-inner">
-  <div className="hq-dashboard-heading"><div className="hq-kicker">EXCEPTIONAL ELECTRICAL HQ · OPERATIONS</div><h1>Home</h1><p>Welcome back, {user.name}. Here’s what needs attention.</p></div>
+  <div className="hq-dashboard-heading"><div className="hq-kicker">EXCEPTIONAL ELECTRICAL HQ · OPERATIONS</div><h1>Home</h1></div>
   {hasErrors&&<p className="hq-dashboard-alert" role="alert">Some dashboard data could not be loaded. Counts may be incomplete.</p>}
   <section className="hq-dashboard-section" aria-labelledby="attention-title">
    <div className="hq-dashboard-section-head"><div><div className="hq-kicker">YOUR PRIORITIES</div><h2 id="attention-title">Needs attention</h2></div><Link href="/hq/enquiries">Open inbox →</Link></div>

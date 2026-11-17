@@ -22,6 +22,10 @@ import {
 } from '@/lib/quote-commercial';
 import {canLinkQuoteToJob,interpretJobQuoteAtomicResult} from '@/lib/job-quotes';
 import {isMissingJobQuotesRelation} from '@/lib/job-quotes-store';
+import {
+  assessQuoteEmptyDelete,
+  formatEmptyDeleteBlockers,
+} from '@/lib/hq-empty-delete-assess';
 
 type Line={description:string;category:string;quantity:number;unit:string;price:number;cost:number|null;gst:boolean};
 export type QuoteDraft={
@@ -675,6 +679,31 @@ export async function markQuoteAccepted(id:string):Promise<{ok:boolean;message:s
 /** Records that the office issued the quote. Does not send email. */
 export async function markQuoteSent(id:string){return advanceQuoteStatus(id,'sent')}
 export async function markQuoteDeclined(id:string){return advanceQuoteStatus(id,'declined')}
+
+/** Hard-delete only empty draft quotes. Admin/owner only; quote numbers are never reused. */
+export async function deleteEmptyQuote(quoteId:string):Promise<{ok:boolean;message:string}>{
+  try{
+    const user=await requireHqUser();
+    if(!canManageAdminOps(user.role))return {ok:false,message:'Only owners and admins can permanently delete quotes.'};
+    if(!validId(quoteId))return {ok:false,message:'Invalid quote reference'};
+    const db=dbAdmin();
+    const {data:quote}=await db.from('quotes').select('id,quote_number').eq('id',quoteId).maybeSingle();
+    if(!quote)return {ok:false,message:'Quote not found.'};
+    const verdict=await assessQuoteEmptyDelete(db,quoteId);
+    if(!verdict.eligible)return {ok:false,message:formatEmptyDeleteBlockers(verdict.blockers)};
+    await db.from('quote_items').delete().eq('quote_id',quoteId);
+    await db.from('quote_activity').delete().eq('quote_id',quoteId);
+    const {error}=await db.from('quotes').delete().eq('id',quoteId);
+    if(error)return {ok:false,message:error.message||'Unable to delete quote.'};
+    revalidatePath('/hq/quotes');
+    return {
+      ok:true,
+      message:`Quote ${quote.quote_number||quoteId} deleted. That number will not be reused.`,
+    };
+  }catch(error){
+    return {ok:false,message:error instanceof Error?error.message:'Unable to delete quote.'};
+  }
+}
 
 /** Immediate-parent commercial snapshot for variation prefill (deep-copied lines; no ids/status). */
 export async function getParentQuotePrefill(parentId:string,expectedCustomerId?:string):Promise<{

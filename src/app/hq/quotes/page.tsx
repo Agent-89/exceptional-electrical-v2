@@ -154,7 +154,6 @@ export default async function QuotesPage({searchParams}:{searchParams:Promise<{q
       <div>
         <div className="hq-kicker">EXCEPTIONAL ELECTRICAL HQ</div>
         <h1>Quotes</h1>
-        <p>Create and manage quotations.</p>
       </div>
       <Link className="hq-detail-action-primary" href="/hq/quotes/new">+ New quote</Link>
     </div>

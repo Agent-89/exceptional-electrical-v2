@@ -1,6 +1,7 @@
 import {notFound} from 'next/navigation';
 import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
-import {canManageOfficeOps} from '@/lib/hq-roles';
+import {canManageAdminOps,canManageOfficeOps} from '@/lib/hq-roles';
+import {assessQuoteEmptyDelete} from '@/lib/hq-empty-delete-assess';
 import {quoteTypeFromParent} from '@/lib/quote-commercial';
 import {isMissingJobQuotesRelation} from '@/lib/job-quotes-store';
 import {loadCustomerJobs,loadLinkedJobsForQuote,loadParentQuoteOptions,type ParentOptionsDb} from '@/lib/quote-parent-options';
@@ -124,10 +125,15 @@ export default async function QuoteDetail({
   if(selectedCustomer)customersById.set(selectedCustomer.id,selectedCustomer);
   const customers=[...customersById.values()];
 
+  const emptyDelete=await assessQuoteEmptyDelete(db,id);
+
   return (
     <QuoteEditor
       canApprove={['owner','admin'].includes(user.role)}
       canMakeCurrent={canManageOfficeOps(user.role)}
+      canDelete={canManageAdminOps(user.role)}
+      deleteEligible={emptyDelete.eligible}
+      deleteBlockers={emptyDelete.blockers}
       customers={customers}
       enquiries={enquiries||[]}
       addresses={(addresses||[]).map(a=>({
