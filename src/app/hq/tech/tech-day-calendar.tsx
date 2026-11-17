@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   computeVisibleWindow,
   hourLabel,
@@ -104,7 +105,7 @@ export default function TechDayCalendar({
     <section className="ee-tech-cal" aria-label="Daily schedule">
       <div className="ee-tech-cal-nav">
         <Link className="ee-tech-cal-arrow" href={prevHref} aria-label="Previous day">
-          ‹
+          <ChevronLeft size={18} strokeWidth={2.2} aria-hidden="true" />
         </Link>
         <div className="ee-tech-cal-day">
           <strong>{dayLabel}</strong>
@@ -113,7 +114,7 @@ export default function TechDayCalendar({
           </span>
         </div>
         <Link className="ee-tech-cal-arrow" href={nextHref} aria-label="Next day">
-          ›
+          <ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" />
         </Link>
         {!isToday ? (
           <Link className="ee-tech-cal-today" href={todayHref}>

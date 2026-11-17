@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {useEffect,useId,useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
+import {ChevronDown,ChevronRight,ChevronUp,MoreHorizontal} from 'lucide-react';
 import {
   saveQuoteDraft,
   saveAndApproveQuote,
@@ -92,7 +93,7 @@ function SearchPicker({value,placeholder,choices,onSelect,optional=false,disable
      if(e.key==='Enter'&&open&&filtered[active]){e.preventDefault();pick(filtered[active].id)}
     }}
    />
-   <button type="button" aria-label="Show choices" disabled={disabled} onClick={()=>{setOpen(v=>!v);setQuery('');if(!open)onQuery?.('')}}>⌄</button>
+   <button type="button" aria-label="Show choices" disabled={disabled} onClick={()=>{setOpen(v=>!v);setQuery('');if(!open)onQuery?.('')}}><ChevronDown size={18} strokeWidth={2.2} aria-hidden="true"/></button>
   </div>
   {open&&!disabled&&<div className="hq-search-picker-menu" role="listbox" id={listId}>{optional&&<button type="button" className="hq-search-picker-option" onMouseDown={e=>e.preventDefault()} onClick={()=>pick('')}>No linked enquiry (standalone)</button>}{filtered.length?filtered.map((c,i)=><button type="button" role="option" aria-selected={c.id===value} key={c.id} className={'hq-search-picker-option'+(i===active?' is-active':'')} onMouseDown={e=>e.preventDefault()} onClick={()=>pick(c.id)}><strong>{c.label}</strong>{c.detail?<small>{c.detail}</small>:null}</button>):<p className="hq-search-picker-empty">No matches found</p>}</div>}
  </div>;
@@ -206,6 +207,7 @@ export default function QuoteEditor({
  const [jobSearchId,setJobSearchId]=useState('');
  const [menuOpen,setMenuOpen]=useState(false);
  const [collapsedLines,setCollapsedLines]=useState<Record<number,boolean>>({});
+ const [collapseEnabled,setCollapseEnabled]=useState(false);
  const parents=normalizeParentOptions(parentOptions as ParentQuoteOption[]);
  const markDirty=()=>setDirty(true);
  const set=(key:keyof QuoteDraft,value:unknown)=>{markDirty();setDraft(d=>({...d,[key]:value}));};
@@ -218,6 +220,14 @@ export default function QuoteEditor({
  const hasMissingCosts=visibleLines.some(l=>l.cost===null);
  const hasInvalidLines=draft.lines.some(l=>!l.description.trim()||!Number.isFinite(l.quantity)||l.quantity<=0||!Number.isFinite(l.price)||l.price<0);
  const [fixedIncludesGst,setFixedIncludesGst]=useState(false);
+ useEffect(()=>{
+  if(typeof window==='undefined'||!window.matchMedia)return;
+  const mq=window.matchMedia('(max-width:900px)');
+  const sync=()=>setCollapseEnabled(mq.matches);
+  sync();
+  mq.addEventListener('change',sync);
+  return()=>mq.removeEventListener('change',sync);
+ },[]);
  const remapCollapsedLines=(removedIndex:number)=>{
   setCollapsedLines(prev=>{
    const next:Record<number,boolean>={};
@@ -229,13 +239,17 @@ export default function QuoteEditor({
    return next;
   });
  };
- const toggleLineCollapsed=(i:number)=>setCollapsedLines(prev=>({...prev,[i]:!prev[i]}));
+ const toggleLineCollapsed=(i:number)=>{
+  if(!collapseEnabled)return;
+  setCollapsedLines(prev=>({...prev,[i]:!prev[i]}));
+ };
  const addLine=(category='other')=>{
   const nextLines=[...draft.lines,{description:'',category,quantity:1,unit:category==='labour'?'hour':'each',price:0,cost:null,gst:true}];
   set('lines',nextLines);
+  if(!collapseEnabled)return;
   setCollapsedLines(prev=>{
    const next={...prev};
-   // Keep the new row expanded; collapse any previously expanded detailed rows for denser scrolling.
+   // Keep the new row expanded; collapse earlier rows for denser mobile scrolling.
    for(let i=0;i<draft.lines.length;i++){
     if(draft.mode==='fixed'?isFixed(draft.lines[i]):!isFixed(draft.lines[i]))next[i]=true;
    }
@@ -648,15 +662,6 @@ export default function QuoteEditor({
   if(existing)return existing.slice(0,200);
   return 'Quote';
  };
- const primaryLifecycle=
-  canApproveNow&&locked
-   ?{label:busyAction==='approve-saved'?'Approving…':'Approve',run:()=>runLifecycle('approve-saved',()=>approveQuote(draft.id!,draft.validityDays||30),'Approve this quote?')}
-   :status==='approved'
-    ?{label:busyAction==='sent'?'Saving…':'Mark as sent',run:()=>runLifecycle('sent',()=>markQuoteSent(draft.id!))}
-    :status==='sent'
-     ?{label:busyAction==='accepted'?'Saving…':'Mark as accepted',run:()=>runLifecycle('accepted',()=>markQuoteAccepted(draft.id!),'Mark this quote as accepted?')}
-     :null;
-
  const saving=pending&&(busyAction==='save'||busyAction==='approve');
  const displayJobs=associatedJobs.length
   ?associatedJobs
@@ -664,6 +669,20 @@ export default function QuoteEditor({
    const job=customerJobs.find(j=>j.id===id);
    return job||{id,jobNumber:null,title:'Pending link'};
   });
+ const createJobHref=draft.id?`/hq/jobs/new?quote=${draft.id}`:'';
+ const createJobLabel=displayJobs.length?'Create another job':'Create job';
+ const canCreateVariation=Boolean(draft.id)&&['approved','sent','accepted'].includes(status);
+ const showCreateJobInActions=Boolean(draft.id)&&['approved','sent'].includes(status);
+ const primaryAction=
+  canApproveNow&&locked
+   ?{kind:'button' as const,label:busyAction==='approve-saved'?'Approving…':'Approve',run:()=>runLifecycle('approve-saved',()=>approveQuote(draft.id!,draft.validityDays||30),'Approve this quote?')}
+   :status==='approved'
+    ?{kind:'button' as const,label:busyAction==='sent'?'Saving…':'Mark as sent',run:()=>runLifecycle('sent',()=>markQuoteSent(draft.id!))}
+    :status==='sent'
+     ?{kind:'button' as const,label:busyAction==='accepted'?'Saving…':'Mark as accepted',run:()=>runLifecycle('accepted',()=>markQuoteAccepted(draft.id!),'Mark this quote as accepted?')}
+     :status==='accepted'&&draft.id
+      ?{kind:'link' as const,label:createJobLabel,href:createJobHref}
+      :null;
 
  const lineRows=draft.lines
   .map((l,i)=>({l,i}))
@@ -704,11 +723,72 @@ export default function QuoteEditor({
       {commercial?.isCommercialCurrent?<span className="hq-quote-current-chip">Current commercial</span>:null}
      </div>
     </div>
+    {draft.id?(
+     <details
+      className="hq-qw-actions-menu"
+      ref={actionsRef}
+      onToggle={e=>setMenuOpen((e.target as HTMLDetailsElement).open)}
+     >
+      <summary aria-label="More quote actions" title="More actions">
+       <MoreHorizontal size={20} strokeWidth={2.2} aria-hidden="true"/>
+      </summary>
+      <div className="hq-qw-actions-panel" role="menu">
+       <Link role="menuitem" href={`/hq/quotes/${draft.id}/preview`} target="_blank" rel="noopener noreferrer">PDF preview</Link>
+       <a role="menuitem" href={`/hq/quotes/${draft.id}/pdf`} download>Download PDF</a>
+       {customerEmail?(
+        <a role="menuitem" href={mailtoHref}>Email customer (mailto)</a>
+       ):(
+        <button type="button" role="menuitem" disabled title="Add a customer email first">Email customer (mailto)</button>
+       )}
+       {displayJobs.length===1?(
+        <Link role="menuitem" href={`/hq/jobs/${displayJobs[0].id}`}>View job</Link>
+       ):displayJobs.length>1?(
+        <button type="button" role="menuitem" onClick={()=>document.getElementById('qw-jobs')?.scrollIntoView({behavior:'smooth',block:'start'})}>Linked jobs</button>
+       ):null}
+       {showCreateJobInActions?(
+        <Link role="menuitem" href={createJobHref}>{createJobLabel}</Link>
+       ):null}
+       {canCreateVariation?(
+        <Link role="menuitem" href={`/hq/quotes/new?type=variation&parent=${draft.id}`}>Create variation</Link>
+       ):null}
+       {canApproveNow&&locked?(
+        <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('approve-saved',()=>approveQuote(draft.id!,draft.validityDays||30),'Approve this quote?')}>
+         {busyAction==='approve-saved'?'Approving…':'Approve saved quote'}
+        </button>
+       ):null}
+       {status==='approved'?(
+        <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('sent',()=>markQuoteSent(draft.id!))}>
+         {busyAction==='sent'?'Saving…':'Mark as sent'}
+        </button>
+       ):null}
+       {(status==='approved'||status==='sent')?(
+        <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('accepted',()=>markQuoteAccepted(draft.id!),'Mark this quote as accepted?')}>
+         {busyAction==='accepted'?'Saving…':'Mark as accepted'}
+        </button>
+       ):null}
+       {(status==='approved'||status==='sent')?(
+        <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('declined',()=>markQuoteDeclined(draft.id!),'Mark this quote as declined?')}>
+         {busyAction==='declined'?'Saving…':'Mark as declined'}
+        </button>
+       ):null}
+       {canOfferMakeCurrent?(
+        <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('current',()=>makeQuoteCommercialCurrent(draft.id!),'Make this the current commercial quote?')}>
+         {busyAction==='current'?'Updating…':'Make current commercial'}
+        </button>
+       ):null}
+      </div>
+     </details>
+    ):null}
+   </div>
+   {(primaryAction||draft.id)?(
     <div className="hq-qw-header-actions">
-     {primaryLifecycle?(
-      <button type="button" className="hq-detail-action-primary" disabled={pending} onClick={primaryLifecycle.run} style={{border:0,cursor:'pointer'}}>
-       {primaryLifecycle.label}
+     {primaryAction?.kind==='button'?(
+      <button type="button" className="hq-detail-action-primary" disabled={pending} onClick={primaryAction.run} style={{border:0,cursor:'pointer'}}>
+       {primaryAction.label}
       </button>
+     ):null}
+     {primaryAction?.kind==='link'?(
+      <Link href={primaryAction.href} className="hq-detail-action-primary">{primaryAction.label}</Link>
      ):null}
      {draft.id?(
       <div className="hq-qw-view-switch" role="navigation" aria-label="Quote views">
@@ -716,64 +796,12 @@ export default function QuoteEditor({
        <Link href={`/hq/quotes/${draft.id}/preview`} target="_blank" rel="noopener noreferrer">PDF preview</Link>
       </div>
      ):null}
-     {draft.id?(
-      <details
-       className="hq-qw-actions-menu"
-       ref={actionsRef}
-       onToggle={e=>setMenuOpen((e.target as HTMLDetailsElement).open)}
-      >
-       <summary aria-label="More quote actions">Actions</summary>
-       <div className="hq-qw-actions-panel" role="menu">
-        <Link role="menuitem" href={`/hq/quotes/${draft.id}/preview`} target="_blank" rel="noopener noreferrer">PDF preview</Link>
-        <a role="menuitem" href={`/hq/quotes/${draft.id}/pdf`} download>Download PDF</a>
-        {customerEmail?(
-         <a role="menuitem" href={mailtoHref}>Email customer (mailto)</a>
-        ):(
-         <button type="button" role="menuitem" disabled title="Add a customer email first">Email customer (mailto)</button>
-        )}
-        {displayJobs.length===1?(
-         <Link role="menuitem" href={`/hq/jobs/${displayJobs[0].id}`}>View job</Link>
-        ):displayJobs.length>1?(
-         <button type="button" role="menuitem" onClick={()=>document.getElementById('qw-jobs')?.scrollIntoView({behavior:'smooth',block:'start'})}>Linked jobs</button>
-        ):null}
-        {['approved','sent','accepted'].includes(status)?(
-         <Link role="menuitem" href={'/hq/jobs/new?quote='+draft.id}>{displayJobs.length?'Create another job':'Create job'}</Link>
-        ):null}
-        {canApproveNow&&locked?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('approve-saved',()=>approveQuote(draft.id!,draft.validityDays||30),'Approve this quote?')}>
-          {busyAction==='approve-saved'?'Approving…':'Approve saved quote'}
-         </button>
-        ):null}
-        {status==='approved'?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('sent',()=>markQuoteSent(draft.id!))}>
-          {busyAction==='sent'?'Saving…':'Mark as sent'}
-         </button>
-        ):null}
-        {(status==='approved'||status==='sent')?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('accepted',()=>markQuoteAccepted(draft.id!),'Mark this quote as accepted?')}>
-          {busyAction==='accepted'?'Saving…':'Mark as accepted'}
-         </button>
-        ):null}
-        {(status==='approved'||status==='sent')?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('declined',()=>markQuoteDeclined(draft.id!),'Mark this quote as declined?')}>
-          {busyAction==='declined'?'Saving…':'Mark as declined'}
-         </button>
-        ):null}
-        {canOfferMakeCurrent?(
-         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('current',()=>makeQuoteCommercialCurrent(draft.id!),'Make this the current commercial quote?')}>
-          {busyAction==='current'?'Updating…':'Make current commercial'}
-         </button>
-        ):null}
-       </div>
-      </details>
-     ):null}
     </div>
-   </div>
+   ):null}
    {feedback&&draft.id&&locked?<p className="hq-qw-feedback" role="status">{feedback}</p>:null}
-   {status==='approved'&&!feedback?<p className="hq-quote-lifecycle-hint">“Mark as sent” records that the quote was issued. It does not email the customer — use Email customer (mailto) or Download PDF.</p>:null}
   </header>
 
-  <fieldset disabled={locked||pending} className="hq-qw-fieldset">
+  <div className={'hq-qw-fieldset'+(locked?' is-locked':'')}>
    <div className="hq-quote-editor hq-qw-editor">
 
     <section className="hq-qw-section" aria-labelledby="qw-customer-heading">
@@ -1040,13 +1068,16 @@ export default function QuoteEditor({
          <span>Unit</span>
          <span>Price</span>
          <span>Cost</span>
-         <span>GST</span>
+         <span className="hq-qw-head-gst">GST</span>
          <span>Amount</span>
          <span/>
         </div>
         {lineRows.map(({l,i})=>{
-         const collapsed=Boolean(collapsedLines[i]);
-         const amount=money(quoteLineExGstCents(l.quantity,l.price));
+         const collapsed=collapseEnabled&&Boolean(collapsedLines[i]);
+         const amountEx=quoteLineExGstCents(l.quantity,l.price);
+         const amountInc=amountEx+quoteLineGstCents(l.quantity,l.price,l.gst);
+         const amount=money(amountEx);
+         const customerPrice=money(amountInc);
          const summaryLabel=l.description.trim()||`Item ${i+1}`;
          return (
          <div key={i} className={'hq-qw-line-row'+(collapsed?' is-collapsed':'')}>
@@ -1057,101 +1088,110 @@ export default function QuoteEditor({
              className="hq-qw-line-summary"
              aria-expanded={false}
              aria-label={`Expand item ${i+1}: ${summaryLabel}`}
-             onClick={()=>toggleLineCollapsed(i)}
+             onClick={e=>{e.preventDefault();e.stopPropagation();toggleLineCollapsed(i)}}
             >
-             <span className="hq-qw-line-chevron" aria-hidden="true">›</span>
+             <span className="hq-qw-line-chevron" aria-hidden="true"><ChevronRight size={18} strokeWidth={2.2}/></span>
              <span className="hq-qw-line-summary-main">
               <strong>{summaryLabel}</strong>
-              <small>{l.category} · {l.quantity||0} {l.unit||'each'}</small>
              </span>
-             <span className="hq-qw-line-summary-amount">{amount}</span>
+             <span className="hq-qw-line-summary-amount">{customerPrice}</span>
             </button>
-            <button type="button" className="hq-qw-line-remove" aria-label={`Remove item ${i+1}`} onClick={()=>removeLine(i)}>×</button>
+            {!locked?(
+             <button type="button" className="hq-qw-line-remove" aria-label={`Remove item ${i+1}`} onClick={()=>removeLine(i)}>×</button>
+            ):null}
            </>
           ):(
            <>
-            <button
-             type="button"
-             className="hq-qw-line-collapse"
-             aria-expanded={true}
-             aria-label={`Minimize item ${i+1}`}
-             onClick={()=>toggleLineCollapsed(i)}
-            >
-             <span aria-hidden="true">⌃</span>
-            </button>
-            <label className="hq-qw-line-desc">
-             <span className="hq-qw-mobile-label">Description</span>
-             <input
-              aria-label={`Item ${i+1} description`}
-              value={l.description}
-              placeholder="Description"
-              onChange={e=>editLine(i,'description',e.target.value)}
-              onKeyDown={e=>{
-               if(e.key==='Enter'){e.preventDefault();(e.currentTarget.closest('.hq-qw-line-row')?.querySelector('.hq-qw-line-qty') as HTMLInputElement|null)?.focus()}
-              }}
-             />
-            </label>
-            <label>
+            <div className="hq-qw-line-top">
+             <button
+              type="button"
+              className="hq-qw-line-collapse"
+              aria-expanded={true}
+              aria-label={`Minimize item ${i+1}`}
+              onClick={e=>{e.preventDefault();e.stopPropagation();toggleLineCollapsed(i)}}
+             >
+              <ChevronUp size={18} strokeWidth={2.2} aria-hidden="true"/>
+             </button>
+             <label className="hq-qw-line-desc">
+              <span className="hq-qw-mobile-label">Description</span>
+              <input
+               aria-label={`Item ${i+1} description`}
+               value={l.description}
+               placeholder="Description"
+               onChange={e=>editLine(i,'description',e.target.value)}
+               onKeyDown={e=>{
+                if(e.key==='Enter'){e.preventDefault();(e.currentTarget.closest('.hq-qw-line-row')?.querySelector('.hq-qw-line-qty') as HTMLInputElement|null)?.focus()}
+               }}
+              />
+             </label>
+             <button type="button" className="hq-qw-line-remove" aria-label={`Remove item ${i+1}`} onClick={()=>removeLine(i)}>×</button>
+            </div>
+            <label className="hq-qw-line-cat">
              <span className="hq-qw-mobile-label">Category</span>
              <select aria-label={`Item ${i+1} category`} value={l.category} onChange={e=>editLine(i,'category',e.target.value)}>
               {['labour','material','equipment','subcontractor','other'].map(x=><option key={x} value={x}>{x}</option>)}
              </select>
             </label>
-            <label>
-             <span className="hq-qw-mobile-label">Qty</span>
-             <input
-              className="hq-qw-line-qty"
-              aria-label={`Item ${i+1} quantity`}
-              type="number"
-              min="0"
-              step=".001"
-              inputMode="decimal"
-              value={l.quantity===0?'':l.quantity}
-              placeholder="0"
-              onFocus={e=>e.currentTarget.select()}
-              onChange={e=>editLine(i,'quantity',e.target.value===''?0:Number(e.target.value))}
-             />
-            </label>
-            <label>
-             <span className="hq-qw-mobile-label">Unit</span>
-             <input aria-label={`Item ${i+1} unit`} value={l.unit} onChange={e=>editLine(i,'unit',e.target.value)}/>
-            </label>
-            <label>
-             <span className="hq-qw-mobile-label">Unit price</span>
-             <input
-              aria-label={`Item ${i+1} unit price AUD`}
-              type="number"
-              min="0"
-              step=".01"
-              inputMode="decimal"
-              value={l.price===0?'':String(l.price/100)}
-              onFocus={e=>e.currentTarget.select()}
-              onChange={e=>editLine(i,'price',Math.round(Number(e.target.value)*100))}
-             />
-            </label>
-            <label>
-             <span className="hq-qw-mobile-label">Unit cost</span>
-             <input
-              aria-label={`Item ${i+1} internal unit cost AUD`}
-              type="number"
-              min="0"
-              step=".01"
-              inputMode="decimal"
-              placeholder="—"
-              value={l.cost===null||l.cost===0?'':String(l.cost/100)}
-              onFocus={e=>e.currentTarget.select()}
-              onChange={e=>editLine(i,'cost',e.target.value===''?null:Math.round(Number(e.target.value)*100))}
-             />
-            </label>
-            <label className="hq-qw-line-gst">
-             <span className="hq-qw-mobile-label">GST</span>
-             <input aria-label={`Item ${i+1} GST`} type="checkbox" checked={l.gst} onChange={e=>editLine(i,'gst',e.target.checked)}/>
-            </label>
-            <div className="hq-qw-line-amount" aria-live="polite">
-             <span className="hq-qw-mobile-label">Amount</span>
-             <strong>{amount}</strong>
+            <div className="hq-qw-line-pair hq-qw-line-pair-qty">
+             <label className="hq-qw-line-qty-field">
+              <span className="hq-qw-mobile-label">Qty</span>
+              <input
+               className="hq-qw-line-qty"
+               aria-label={`Item ${i+1} quantity`}
+               type="number"
+               min="0"
+               step=".001"
+               inputMode="decimal"
+               value={l.quantity===0?'':l.quantity}
+               placeholder="0"
+               onFocus={e=>e.currentTarget.select()}
+               onChange={e=>editLine(i,'quantity',e.target.value===''?0:Number(e.target.value))}
+              />
+             </label>
+             <label className="hq-qw-line-unit">
+              <span className="hq-qw-mobile-label">Unit</span>
+              <input aria-label={`Item ${i+1} unit`} value={l.unit} onChange={e=>editLine(i,'unit',e.target.value)}/>
+             </label>
             </div>
-            <button type="button" className="hq-qw-line-remove" aria-label={`Remove item ${i+1}`} onClick={()=>removeLine(i)}>×</button>
+            <div className="hq-qw-line-pair hq-qw-line-pair-money">
+             <label className="hq-qw-line-price">
+              <span className="hq-qw-mobile-label">Unit price</span>
+              <input
+               aria-label={`Item ${i+1} unit price AUD`}
+               type="number"
+               min="0"
+               step=".01"
+               inputMode="decimal"
+               value={l.price===0?'':String(l.price/100)}
+               onFocus={e=>e.currentTarget.select()}
+               onChange={e=>editLine(i,'price',Math.round(Number(e.target.value)*100))}
+              />
+             </label>
+             <label className="hq-qw-line-cost">
+              <span className="hq-qw-mobile-label">Unit cost</span>
+              <input
+               aria-label={`Item ${i+1} internal unit cost AUD`}
+               type="number"
+               min="0"
+               step=".01"
+               inputMode="decimal"
+               placeholder="—"
+               value={l.cost===null||l.cost===0?'':String(l.cost/100)}
+               onFocus={e=>e.currentTarget.select()}
+               onChange={e=>editLine(i,'cost',e.target.value===''?null:Math.round(Number(e.target.value)*100))}
+              />
+             </label>
+            </div>
+            <div className="hq-qw-line-footer">
+             <label className="hq-qw-line-gst">
+              <input aria-label={`Item ${i+1} GST`} type="checkbox" checked={l.gst} onChange={e=>editLine(i,'gst',e.target.checked)}/>
+              <span>GST</span>
+             </label>
+             <div className="hq-qw-line-amount" aria-live="polite">
+              <span className="hq-qw-mobile-label">Amount</span>
+              <strong>{amount}</strong>
+             </div>
+            </div>
            </>
           )}
          </div>
@@ -1204,7 +1244,7 @@ export default function QuoteEditor({
      </div>
     </section>
    </div>
-  </fieldset>
+  </div>
 
   {!locked&&(
    <div className="hq-quote-save hq-qw-footer" aria-busy={saving}>

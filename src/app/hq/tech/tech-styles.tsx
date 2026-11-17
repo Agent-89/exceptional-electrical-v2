@@ -74,7 +74,7 @@ export default function TechStyles() {
 .ee-tech-card-compact{padding:14px}
 .ee-tech-cal{margin:0 0 18px}
 .ee-tech-cal-nav{display:grid;grid-template-columns:44px minmax(0,1fr) 44px auto;gap:8px;align-items:center;margin-bottom:10px}
-.ee-tech-cal-arrow{display:grid;place-items:center;min-height:44px;border:1px solid var(--ee-border);border-radius:10px;background:var(--ee-surface);color:var(--ee-accent-strong);font-size:28px;line-height:1;text-decoration:none}
+.ee-tech-cal-arrow{display:inline-flex;align-items:center;justify-content:center;min-height:44px;border:1px solid var(--ee-border);border-radius:10px;background:var(--ee-surface);color:var(--ee-accent-strong);line-height:1;text-decoration:none}
 .ee-tech-cal-day{min-width:0;text-align:center}
 .ee-tech-cal-day strong{display:block;font-size:15px;color:var(--ee-text)}
 .ee-tech-cal-day span{display:block;font-size:12px;color:var(--ee-muted);margin-top:2px}
