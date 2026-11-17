@@ -22,7 +22,7 @@ Version-controlled project handover for continuing development in Cursor after t
 
 - Merged: PR #15 (release cutover), PR #12 (commercial foundations; also recorded merged with the cutover).
 - Closed as superseded: PRs #13, #14, #4.
-- Historical feature branches **preserved** — do not delete without explicit approval.
+- Historical feature branches **cleaned** — only `main` remains on origin. Obsolete PR #4 tip archived as tag `archive/pr-4-conflict-soft-confirm` (`4d8e631`).
 
 Treat `main` at the Production merge SHA as the single source of truth. Do not re-merge obsolete tips of #13/#14/#4.
 
@@ -62,7 +62,7 @@ Repository: `Agent-89/exceptional-electrical-v2`
 - Prefer stacking dependent work; avoid squash/cherry-pick that drops required behaviour across stacked PRs.
 - Historical merges often used squash; branch tips of superseded PRs may **not** be ancestors of `main`. Do not re-merge obsolete tips.
 - Never delete branches, merge, deploy, or apply hosted migrations without explicit owner approval.
-- Do not merge obsolete Draft PR #4 (`feature/release-b-conflict-warnings-20261111`) wholesale; reimplement any missing soft-override behaviour on current `main` if owners request it.
+- Do not merge obsolete Draft PR #4 wholesale; tip is recoverable from tag `archive/pr-4-conflict-soft-confirm`. Reimplement any missing soft-override behaviour on current `main` if owners request it.
 
 ## 4. Supabase development and migrations
 
@@ -206,5 +206,5 @@ See `docs/RELEASE_CANDIDATE.md` § “Next milestone proposal”. Summary:
 
 - Production commercial cutover: PR #15 → `main` at `ffd7e09` (validated tip `91b0e23`).
 - Included: C1 multi-job quote associations, C1.1 variations/commercial-current, quote workspace UX, HQ electrician overlap hard-blocks, Preview defect fixes, initial Cursor handover docs.
-- Superseded stacked Drafts #13/#14 and obsolete #4 closed; historical branches retained.
+- Superseded stacked Drafts #13/#14 and obsolete #4 closed; historical branches cleaned from origin; PR #4 tip archived as `archive/pr-4-conflict-soft-confirm`.
 - No new hosted migrations required for the cutover.

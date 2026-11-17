@@ -27,7 +27,7 @@ Production commercial cutover completed via PR #15 (16 Nov 2026).
 
 - Merged: #15 (release), #12 (commercial foundations)
 - Closed superseded: #13, #14, #4
-- Historical branches preserved
+- Historical branches cleaned — origin keeps `main` only; PR #4 tip archived as `archive/pr-4-conflict-soft-confirm`
 
 Do **not** reapply the six hosted commercial migrations. Do **not** treat superseded PR tips as merge candidates.
 
@@ -100,8 +100,12 @@ Keep the Production commercial baseline stable while making HQ ready to **rehear
 - Live Vapi cutover or Telstra number forward
 - Client portal auth
 - Inventory / purchasing / reports
-- Deleting historical branches
 - Mutating Production data or external integrations without approval
+
+### GitHub branch state (post-cleanup)
+
+- Origin keeps **`main` only**. Historical feature branches removed after owner approval.
+- Obsolete PR #4 soft-confirm tip archived as tag `archive/pr-4-conflict-soft-confirm` (`4d8e631`) — do not merge wholesale; reimplement on `main` if soft-override is required.
 
 ### Acceptance criteria
 

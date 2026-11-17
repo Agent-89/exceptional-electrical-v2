@@ -13,7 +13,7 @@ alwaysApply: true
 - Keep secrets out of Git. Document env **names** only (see `.env.example`, `docs/CURSOR_HANDOVER.md`).
 - Authorization belongs in server actions/route handlers via `hq-auth` / `hq-roles`. Do not conflate `staff_profiles.user_id` with `scheduling_staff.id`.
 - Scheduling: preserve conflict detection. Appointment create and schedule edit paths hard-block HQ electrician overlaps; Neil Google Calendar remains a separate override path for owner/admin.
-- Do not merge obsolete Draft PR #4 wholesale; reimplement any missing behaviour on the current baseline. Historical branches are preserved.
+- Do not merge obsolete Draft PR #4 wholesale; tip archived as tag `archive/pr-4-conflict-soft-confirm`. Reimplement any missing behaviour on the current baseline. Origin keeps `main` only.
 - Before claiming ready: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
 - Prefer stacked PRs for dependent work. Avoid squash/cherry-pick that drops required behaviour. Do not start the next milestone until the owner approves scope in `docs/RELEASE_CANDIDATE.md`.
 - Prefer focused diffs; no unrelated UI redesigns during release fixes.
