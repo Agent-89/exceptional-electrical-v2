@@ -43,7 +43,7 @@ Treat `main` at the Production merge SHA as the single source of truth. Do not r
 | Enquiries | `src/app/hq/enquiries` | Live (public intake needs rate-limit/bot protection before domain cutover) |
 | Customers | `src/app/hq/customers` | Live |
 | Quotes / commercial | `src/app/hq/quotes`, `src/lib/quote-commercial.ts`, `src/lib/job-quotes.ts` | Live (C1 + C1.1 + workspace UX) |
-| Jobs | `src/app/hq/jobs` | Live |
+| Jobs | `src/app/hq/jobs` | Live — detail tabs: Overview · Notes · Visits · Time · Quotes · Invoices · Activity · More |
 | Schedule | `src/app/hq/schedule` | Live (HQ electrician overlap hard-block) |
 | Technician field | `src/app/hq/tech` | Live |
 | Timesheets / time review | `src/app/hq/timesheets`, job detail time tab | Live |
@@ -167,7 +167,9 @@ npm run build
 - Enquiry marketing launch still needs rate limiting / bot protection before public domain cutover.
 - Race-safe DB exclusion constraints for electrician overlaps are not yet present; app-layer hard-blocks cover create + schedule edit paths.
 - Quotes can be marked sent but do not email customers yet.
-- Job Costs / Invoices tabs are placeholders pending Xero (C2).
+- Job detail **Invoices** tab is an empty placeholder pending Xero (C2). **More** holds stubs for Purchase orders, Bills, and Forms. Costs is not a top-level tab yet — it should graduate when materials tracking lands.
+- Job header status is a colored-dot chevron dropdown (statuses in `src/lib/job-statuses.ts`). The three-dot menu is reserved for future job actions.
+- Pending hosted migration (do **not** apply until owner approves): `20261117092844_jobs_status_to_invoice_tafe` adds `to_invoice` and `tafe` to `jobs_status_check`. Until applied, selecting those statuses in the UI will fail at the database.
 - Inventory, purchasing, reports, payroll export, and tech offline mode are not built.
 
 ## 11. Remaining development roadmap (post-Production)

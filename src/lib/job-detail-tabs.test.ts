@@ -36,11 +36,11 @@ describe('job detail tab registry', () => {
   it('lists the office tabs in navigation order', () => {
     assert.deepEqual(
       JOB_DETAIL_TABS.map((tab) => tab.label),
-      ['Overview', 'Visits', 'Time', 'Quotes', 'More'],
+      ['Overview', 'Notes', 'Visits', 'Time', 'Quotes', 'Invoices', 'Activity', 'More'],
     );
     assert.deepEqual(
       JOB_DETAIL_TABS.map((tab) => tab.id),
-      ['overview', 'visits', 'time', 'quotes', 'more'],
+      ['overview', 'notes', 'visits', 'time', 'quotes', 'invoices', 'activity', 'more'],
     );
   });
 
@@ -48,7 +48,9 @@ describe('job detail tab registry', () => {
     assert.equal(parseJobDetailTab('visits'), 'visits');
     assert.equal(parseJobDetailTab(' TIME '), 'time');
     assert.equal(parseJobDetailTab('Quotes'), 'quotes');
-    assert.equal(parseJobDetailTab('Invoices'), 'overview');
+    assert.equal(parseJobDetailTab('notes'), 'notes');
+    assert.equal(parseJobDetailTab('Invoices'), 'invoices');
+    assert.equal(parseJobDetailTab('activity'), 'activity');
     assert.equal(parseJobDetailTab('costs'), 'overview');
     assert.equal(parseJobDetailTab(null), 'overview');
     assert.equal(parseJobDetailTab(''), 'overview');
@@ -59,7 +61,9 @@ describe('job detail tab registry', () => {
   it('builds a shareable href and omits the query on overview', () => {
     assert.equal(jobDetailTabHref('job-1', 'overview'), '/hq/jobs/job-1');
     assert.equal(jobDetailTabHref('job-1', 'quotes'), '/hq/jobs/job-1?tab=quotes');
+    assert.equal(jobDetailTabHref('job-1', 'notes'), '/hq/jobs/job-1?tab=notes');
     assert.equal(isJobDetailTabId('more'), true);
+    assert.equal(isJobDetailTabId('invoices'), true);
     assert.equal(isJobDetailTabId('schedule'), false);
   });
 });
@@ -68,6 +72,8 @@ describe('job detail tab keyboard navigation', () => {
   it('moves horizontally and wraps at the ends', () => {
     assert.equal(jobDetailTabFromKey('overview', 'ArrowLeft'), 'more');
     assert.equal(jobDetailTabFromKey('more', 'ArrowRight'), 'overview');
+    assert.equal(jobDetailTabFromKey('overview', 'ArrowRight'), 'notes');
+    assert.equal(jobDetailTabFromKey('notes', 'ArrowRight'), 'visits');
     assert.equal(jobDetailTabFromKey('visits', 'ArrowRight'), 'time');
     assert.equal(jobDetailTabFromKey('time', 'ArrowLeft'), 'visits');
     assert.equal(jobDetailTabFromKey('quotes', 'Home'), 'overview');
@@ -75,15 +81,17 @@ describe('job detail tab keyboard navigation', () => {
     assert.equal(jobDetailTabFromKey('time', 'ArrowUp'), null);
     assert.equal(jobDetailTabFromKey('time', 'ArrowDown'), null);
     assert.equal(jobDetailTabFromKey('time', 'Enter'), null);
-    assert.equal(adjacentJobDetailTab('quotes', 1), 'more');
+    assert.equal(adjacentJobDetailTab('quotes', 1), 'invoices');
     assert.equal(adjacentJobDetailTab('quotes', -1), 'time');
+    assert.equal(adjacentJobDetailTab('invoices', 1), 'activity');
+    assert.equal(adjacentJobDetailTab('activity', 1), 'more');
   });
 
   it('shows only the selected panel', () => {
     for (const tab of JOB_DETAIL_TABS) {
       const visible = visibleJobDetailPanels(tab.id);
       assert.deepEqual(visible, [tab.id]);
-      assert.equal(JOB_DETAIL_TABS.length - visible.length, 4);
+      assert.equal(JOB_DETAIL_TABS.length - visible.length, 7);
     }
   });
 });
@@ -105,10 +113,12 @@ describe('job detail tab shell regression', () => {
 
   it('keeps each concern on one tab', () => {
     assert.match(pageSource, /panels=\{\{[\s\S]*overview:/);
+    assert.match(pageSource, /notes:/);
     assert.match(pageSource, /visits:/);
+    assert.match(pageSource, /invoices:/);
+    assert.match(pageSource, /activity:/);
     assert.match(pageSource, /quotes:/);
     assert.doesNotMatch(pageSource, /^\s+costs:/m);
-    assert.doesNotMatch(pageSource, /^\s+invoices:/m);
     assert.match(pageSource, /JobQuotesPanel/);
     assert.match(quotesPanelSource, /No quotes linked to this job yet/);
     assert.match(quotesPanelSource, /Make primary/);

@@ -1,14 +1,17 @@
 /**
  * Office job detail tabs. UI navigation only — no schema or permission changes.
- * Costs and Invoices are intentionally absent until they have real content; old
- * `?tab=costs` / `?tab=invoices` links fall back to Overview.
+ * Invoices is a placeholder until C2/Xero. Costs stays out of the top bar until
+ * materials tracking lands; old `?tab=costs` links fall back to Overview.
  */
 
 export const JOB_DETAIL_TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'notes', label: 'Notes' },
   { id: 'visits', label: 'Visits' },
   { id: 'time', label: 'Time' },
   { id: 'quotes', label: 'Quotes' },
+  { id: 'invoices', label: 'Invoices' },
+  { id: 'activity', label: 'Activity' },
   { id: 'more', label: 'More' },
 ] as const;
 

@@ -12,6 +12,8 @@ describe('nextJobStatusFromTrigger', () => {
     assert.equal(nextJobStatusFromTrigger('scheduled', 'appointment_created'), null);
     assert.equal(nextJobStatusFromTrigger('in_progress', 'appointment_created'), null);
     assert.equal(nextJobStatusFromTrigger('on_hold', 'appointment_created'), null);
+    assert.equal(nextJobStatusFromTrigger('to_invoice', 'appointment_created'), null);
+    assert.equal(nextJobStatusFromTrigger('tafe', 'appointment_created'), null);
     assert.equal(nextJobStatusFromTrigger('completed', 'appointment_created'), null);
     assert.equal(nextJobStatusFromTrigger('cancelled', 'appointment_created'), null);
   });
@@ -22,9 +24,11 @@ describe('nextJobStatusFromTrigger', () => {
     assert.equal(nextJobStatusFromTrigger('scheduled', 'work_started'), 'in_progress');
   });
 
-  it('preserves hold and terminal statuses on work start', () => {
+  it('preserves hold, invoice, tafe and terminal statuses on work start', () => {
     assert.equal(nextJobStatusFromTrigger('in_progress', 'work_started'), null);
     assert.equal(nextJobStatusFromTrigger('on_hold', 'work_started'), null);
+    assert.equal(nextJobStatusFromTrigger('to_invoice', 'work_started'), null);
+    assert.equal(nextJobStatusFromTrigger('tafe', 'work_started'), null);
     assert.equal(nextJobStatusFromTrigger('completed', 'work_started'), null);
     assert.equal(nextJobStatusFromTrigger('cancelled', 'work_started'), null);
   });
@@ -34,6 +38,8 @@ describe('nextJobStatusFromTrigger', () => {
     assert.equal(nextJobStatusFromTrigger('assigned', 'staff_assigned'), null);
     assert.equal(nextJobStatusFromTrigger('scheduled', 'staff_assigned'), null);
     assert.equal(nextJobStatusFromTrigger('on_hold', 'staff_assigned'), null);
+    assert.equal(nextJobStatusFromTrigger('to_invoice', 'staff_assigned'), null);
+    assert.equal(nextJobStatusFromTrigger('tafe', 'staff_assigned'), null);
   });
 
   it('rejects unknown current statuses', () => {
