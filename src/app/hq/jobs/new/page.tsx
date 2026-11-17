@@ -92,7 +92,6 @@ export default async function NewJobPage({searchParams}:{searchParams:Promise<{c
   <div className="hq-detail-head"><div>
    <div className="hq-kicker">NEW WORK ORDER</div>
    <h1>Create job</h1>
-   <p>Capture customer and scope. Assign crew when you schedule the first visit.</p>
   </div></div>
   {canEdit?(
    <section className="hq-panel">

@@ -7,7 +7,11 @@ import {
 import {requireNeilAvailability} from '@/lib/neil-calendar-conflicts';
 import type {ScheduleMutationResult} from '@/lib/schedule-mutation-result';
 import {revalidatePath} from 'next/cache';
-import {assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {assertAdminOps,assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {
+  assessVisitEmptyDelete,
+  formatEmptyDeleteBlockers,
+} from '@/lib/hq-empty-delete-assess';
 
 const parsePerth=(s:string)=>/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)?new Date(s+':00+08:00'):new Date(NaN);
 
@@ -207,4 +211,26 @@ export async function moveScheduledVisit(id:string,day:string,startMinutes:numbe
  if(!Number.isFinite(start.getTime()))return asFailure('validation','Invalid date.');
  const next=new Date(start.getTime()+startMinutes*60000);
  return setScheduledVisitTimes(id,next.toISOString(),new Date(next.getTime()+new Date(v.ends_at).getTime()-new Date(v.starts_at).getTime()).toISOString(),v.starts_at);
+}
+
+/** Hard-delete an unused visit (no time/field work). Admin/owner only. Prefer cancel for history. */
+export async function deleteEmptyVisit(appointmentId:string):Promise<ScheduleMutationResult>{
+ try{
+  const user=await requireHqUser();
+  assertAdminOps(user);
+  if(!/^[0-9a-f-]{36}$/i.test(appointmentId))return asFailure('validation','Invalid appointment.');
+  const db=dbAdmin();
+  const verdict=await assessVisitEmptyDelete(db,appointmentId);
+  if(!verdict.eligible)return asFailure('validation',formatEmptyDeleteBlockers(verdict.blockers));
+  const jobId=verdict.jobId;
+  await db.from('job_appointment_staff').delete().eq('appointment_id',appointmentId);
+  const {error}=await db.from('job_appointments').delete().eq('id',appointmentId);
+  if(error)return asFailure('error','Unable to delete visit.');
+  if(jobId)revalidatePath('/hq/jobs/'+jobId);
+  revalidatePath('/hq/schedule');
+  revalidatePath('/hq/jobs');
+  return {ok:true};
+ }catch(error){
+  return asFailure('error',error instanceof Error?error.message:'Unable to delete visit.');
+ }
 }

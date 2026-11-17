@@ -2,11 +2,15 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { assertOfficeOps,dbAdmin,requireHqUser } from '@/lib/hq-auth';
+import { assertAdminOps,assertOfficeOps,dbAdmin,requireHqUser } from '@/lib/hq-auth';
 import { canManageOfficeOps, hqHomePath } from '@/lib/hq-roles';
 import { isEnquiryStatus } from '@/lib/enquiry-status';
 import { findCustomerMatches } from '@/lib/customer-match';
 import { loadCustomersForMatch } from '@/lib/load-customers-for-match';
+import {
+  assessEnquiryEmptyDelete,
+  formatEmptyDeleteBlockers,
+} from '@/lib/hq-empty-delete-assess';
 
 export async function loginAction(form:FormData){
  const email=String(form.get('email')??'').trim().toLowerCase();
@@ -216,5 +220,30 @@ export async function convertEnquiryToCustomer(enquiryId:string,form:FormData):P
  if(!outcome.ok||!outcome.customerId)return {ok:false,message:outcome.message||'Could not convert enquiry'};
  revalidatePath('/hq');revalidatePath('/hq/customers');revalidatePath('/hq/customers/'+outcome.customerId);revalidatePath('/hq/enquiries/'+enquiryId);
  return {ok:true,message:outcome.message,customerId:outcome.customerId};
+}
+
+/** Hard-delete only unused enquiries. Admin/owner only. Prefer close/spam for anything with history. */
+export async function deleteEmptyEnquiry(enquiryId:string):Promise<{ok:boolean;message:string}>{
+ try{
+  const user=await requireHqUser();
+  assertAdminOps(user);
+  if(!/^[0-9a-f-]{36}$/i.test(enquiryId))return {ok:false,message:'Invalid enquiry'};
+  const db=dbAdmin();
+  const {data:enquiry}=await db.from('enquiries').select('id,reference_number').eq('id',enquiryId).maybeSingle();
+  if(!enquiry)return {ok:false,message:'Enquiry not found'};
+  const verdict=await assessEnquiryEmptyDelete(db,enquiryId);
+  if(!verdict.eligible)return {ok:false,message:formatEmptyDeleteBlockers(verdict.blockers)};
+  await db.from('enquiry_activity').delete().eq('enquiry_id',enquiryId);
+  const {error}=await db.from('enquiries').delete().eq('id',enquiryId);
+  if(error)return {ok:false,message:'Unable to delete enquiry'};
+  revalidatePath('/hq');
+  revalidatePath('/hq/enquiries');
+  return {
+   ok:true,
+   message:`Enquiry ENQ-${String(enquiry.reference_number).padStart(4,'0')} deleted. That number will not be reused.`,
+  };
+ }catch(error){
+  return {ok:false,message:error instanceof Error?error.message:'Unable to delete enquiry'};
+ }
 }
 

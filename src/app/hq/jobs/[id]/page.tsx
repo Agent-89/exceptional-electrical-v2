@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { dbAdmin, requireOfficeUser } from '@/lib/hq-auth';
+import { canManageAdminOps, canManageOfficeOps } from '@/lib/hq-roles';
+import { assessJobEmptyDelete } from '@/lib/hq-empty-delete-assess';
 import { parseJobDetailTab } from '@/lib/job-detail-tabs';
 import {
   JOB_STATUSES,
@@ -76,7 +78,7 @@ export default async function JobPage({
     error?: string | string[];
   }>;
 }) {
-  await requireOfficeUser();
+  const user = await requireOfficeUser();
   const { id } = await params;
   const query = await searchParams;
   const initialTab = parseJobDetailTab(Array.isArray(query.tab) ? query.tab[0] : query.tab);
@@ -86,6 +88,7 @@ export default async function JobPage({
 
   const { data: job } = await db.from('jobs').select(JOB_DETAIL_COLUMNS).eq('id', id).maybeSingle();
   if (!job) notFound();
+  const emptyDelete = await assessJobEmptyDelete(db, id);
 
   const appointmentSelectWithResolution =
     'id,starts_at,ends_at,notes,status,field_status,field_follow_up_required,field_follow_up_resolved_at,field_follow_up_resolution,field_follow_up_linked_appointment_id,field_follow_up_resolution_note,field_completion_note,field_outstanding_work,field_issues';
@@ -155,7 +158,9 @@ export default async function JobPage({
         .in('appointment_id', appointmentIds)
     : { data: [] as { appointment_id: string; staff_id: string }[] };
 
-  const canEdit = true;
+  const canEdit = canManageOfficeOps(user.role);
+  const canCancel = canEdit;
+  const canDelete = canManageAdminOps(user.role);
   const staffById = new Map(staff.map((s) => [s.id, s]));
   const staffNameById = new Map(staff.map((s) => [s.id, s.full_name]));
   const staffNames = Object.fromEntries(staffNameById.entries());
@@ -280,11 +285,16 @@ export default async function JobPage({
           </div>
           {canEdit ? (
             <JobHeaderActions
+              jobId={id}
               status={String(job.status)}
               statusLabel={jobStatusLabel(job.status)}
               statusTone={
                 isJobStatus(String(job.status)) ? JOB_STATUS_TONES[job.status as keyof typeof JOB_STATUS_TONES] : 'neutral'
               }
+              canCancel={canCancel}
+              canDelete={canDelete}
+              deleteEligible={emptyDelete.eligible}
+              deleteBlockers={emptyDelete.blockers}
               statusForm={
                 <form action={updateJob} className="ee-job-status-form">
                   <input type="hidden" name="id" value={id} />

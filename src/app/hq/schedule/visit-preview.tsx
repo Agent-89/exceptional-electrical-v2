@@ -6,9 +6,9 @@ import VisitEditor from './visit-editor';
 import {staffColor as resolveStaffColor} from '@/lib/staff-color';
 import {suppressGridInteraction} from './suppress-grid-interaction';
 
-type Props={appointmentId?:string;startIso?:string;endIso?:string;canEdit?:boolean;staff?:{id:string;name:string;avatar_color?:string|null}[];title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds?:string[];address?:string|null;notes?:string|null;status?:string|null;conflict?:string|null;compact?:boolean;onOpenChange?:(open:boolean)=>void};
+type Props={appointmentId?:string;startIso?:string;endIso?:string;canEdit?:boolean;canDelete?:boolean;staff?:{id:string;name:string;avatar_color?:string|null}[];title:string;jobNumber:string;jobHref:string;time:string;customer:string;electricians:string[];staffIds?:string[];address?:string|null;notes?:string|null;status?:string|null;conflict?:string|null;compact?:boolean;onOpenChange?:(open:boolean)=>void};
 
-export default function VisitPreview({appointmentId,startIso,endIso,canEdit=false,staff=[],title,jobNumber,jobHref,time,customer,electricians,staffIds=[],address,notes,status,conflict,compact=false,onOpenChange}:Props){
+export default function VisitPreview({appointmentId,startIso,endIso,canEdit=false,canDelete=false,staff=[],title,jobNumber,jobHref,time,customer,electricians,staffIds=[],address,notes,status,conflict,compact=false,onOpenChange}:Props){
  const [editing,setEditing]=useState(false);
  const [open,setOpen]=useState(false);
  const setDetailsOpen=(next:boolean)=>{
@@ -49,7 +49,7 @@ export default function VisitPreview({appointmentId,startIso,endIso,canEdit=fals
    <section className={"ee-visit-modal"+(editing?" is-editing":"")} role="dialog" aria-modal="true" aria-label={`Appointment details: ${title}`}>
     <header><div><small>APPOINTMENT · {jobNumber}</small><h2>{title}</h2></div><button type="button" className="ee-visit-close" aria-label="Close appointment details" onClick={()=>setDetailsOpen(false)}>×</button></header>
     {!editing&&<div className="ee-visit-modal-body"><div><small>TIME</small><strong>{time}</strong></div><div><small>CUSTOMER</small><strong>{customer}</strong></div><div><small>ELECTRICIANS</small><div className="ee-visit-modal-crew">{electricians.length?electricians.map((name,i)=><span key={i}><b style={{backgroundColor:staffColor(i),color:"#fff"}}>{initials(name)}</b>{name}</span>):'Unassigned'}</div></div>{address&&<div><small>WORKSITE</small><span>{address}</span></div>}{status&&<div><small>STATUS</small><strong style={{textTransform:'capitalize'}}>{status.replaceAll('_',' ')}</strong></div>}{notes&&<div><small>INSTRUCTIONS</small><span>{notes}</span></div>}{conflict&&<div className="ee-visit-modal-warning"><small>CONFLICT</small><span>{conflict}</span></div>}</div>}
-    {editing&&appointmentId&&startIso&&endIso&&<VisitEditor id={appointmentId} start={startIso} end={endIso} notes={notes} staffIds={staffIds} staff={staff} onClose={()=>setDetailsOpen(false)}/>}
+    {editing&&appointmentId&&startIso&&endIso&&<VisitEditor id={appointmentId} start={startIso} end={endIso} notes={notes} staffIds={staffIds} staff={staff} canDelete={canDelete} onClose={()=>setDetailsOpen(false)}/>}
     <footer>{canEdit&&appointmentId&&<button type="button" onClick={()=>setEditing(v=>!v)}>{editing?'Hide editor':'Edit visit'}</button>}<Link href={jobHref}>Open job details</Link><button type="button" onClick={()=>setDetailsOpen(false)}>Back to schedule</button></footer>
    </section>
   </div>,document.body)}

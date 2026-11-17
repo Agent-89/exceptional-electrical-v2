@@ -11,6 +11,7 @@ import {
   markQuoteAccepted,
   markQuoteDeclined,
   makeQuoteCommercialCurrent,
+  deleteEmptyQuote,
   associateQuoteWithJob,
   unlinkQuoteFromJob,
   getParentQuotePrefill,
@@ -145,6 +146,7 @@ function normalizeParentOptions(raw:ParentQuoteOption[]|LegacyParent[]):ParentQu
 export default function QuoteEditor({
   customers,enquiries,addresses,initial,locked=false,canApprove=false,
   jobContext=null,parentOptions=[],linkedJobOptions=[],linkedJobs=[],commercial=null,canMakeCurrent=false,
+  canDelete=false,deleteEligible=false,deleteBlockers=[],
 }:{
   customers:Customer[];
   enquiries:Enquiry[];
@@ -162,6 +164,9 @@ export default function QuoteEditor({
   linkedJobs?:JobOption[];
   commercial?:CommercialMeta|null;
   canMakeCurrent?:boolean;
+  canDelete?:boolean;
+  deleteEligible?:boolean;
+  deleteBlockers?:string[];
 }){
  const router=useRouter();
  const saveLock=useRef(false);
@@ -804,6 +809,25 @@ export default function QuoteEditor({
        {canOfferMakeCurrent?(
         <button type="button" role="menuitem" disabled={pending} onClick={()=>runLifecycle('current',()=>makeQuoteCommercialCurrent(draft.id!),'Make this the current commercial quote?')}>
          {busyAction==='current'?'Updating…':'Make current commercial'}
+        </button>
+       ):null}
+       {canDelete?(
+        <button
+         type="button"
+         role="menuitem"
+         className="hq-qw-actions-danger"
+         disabled={pending||!deleteEligible}
+         title={deleteEligible?'Permanently delete this empty draft':(deleteBlockers.join('; ')||'Not eligible for delete')}
+         onClick={()=>runLifecycle('delete',async()=>{
+          const result=await deleteEmptyQuote(draft.id!);
+          if(result.ok){
+           router.push('/hq/quotes');
+           router.refresh();
+          }
+          return result;
+         },'Permanently delete this empty draft quote? The quote number will not be reused.')}
+        >
+         {busyAction==='delete'?'Deleting…':'Delete quote'}
         </button>
        ):null}
       </div>

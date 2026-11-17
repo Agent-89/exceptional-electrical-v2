@@ -22,7 +22,6 @@ export default async function TechJobsPage() {
       <header className="ee-tech-head">
         <div className="hq-kicker">TECHNICIAN · MY JOBS</div>
         <h1>My Jobs</h1>
-        <p>Jobs with visits assigned to you.</p>
       </header>
 
       <section aria-label="Assigned jobs">

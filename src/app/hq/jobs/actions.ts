@@ -9,9 +9,16 @@ import {isJobStatus,isSchedulableJobStatus} from '@/lib/job-statuses';
 import {applyJobStatusSync} from '@/lib/job-status-sync';
 import {revalidatePath} from 'next/cache';
 import {redirect} from 'next/navigation';
-import {assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {assertAdminOps,assertOfficeOps,dbAdmin,requireHqUser} from '@/lib/hq-auth';
+import {
+  assessJobEmptyDelete,
+  formatEmptyDeleteBlockers,
+} from '@/lib/hq-empty-delete-assess';
 import {jobTitleFromDescription} from '@/lib/job-title-from-description';
 import {syncPrimaryJobQuoteAfterCreate} from './job-quote-actions';
+
+export type JobMutationResult={ok:boolean;message:string};
+
 export async function createJob(formData:FormData){
  const user=await requireHqUser();
  assertOfficeOps(user);
@@ -98,6 +105,60 @@ export async function updateJobDetails(formData:FormData){
  await db.from('job_activity').insert({job_id:id,actor_id:user.id,action:'details_updated'});
  revalidatePath('/hq/jobs');revalidatePath('/hq/jobs/'+id);
 }
+
+/** Soft-close a job as cancelled. Job number is retained and never reused. */
+export async function cancelJob(jobId:string):Promise<JobMutationResult>{
+ try{
+  const user=await requireHqUser();
+  assertOfficeOps(user);
+  if(!/^[0-9a-f-]{36}$/i.test(jobId))return {ok:false,message:'Invalid job.'};
+  const db=dbAdmin();
+  const {data:before}=await db.from('jobs').select('id,status,job_number').eq('id',jobId).maybeSingle();
+  if(!before)return {ok:false,message:'Job not found.'};
+  if(before.status==='cancelled')return {ok:true,message:'Job is already cancelled.'};
+  if(before.status==='completed')return {ok:false,message:'Completed jobs cannot be cancelled.'};
+  const {error}=await db.from('jobs').update({status:'cancelled',updated_at:new Date().toISOString(),completed_at:null}).eq('id',jobId);
+  if(error)return {ok:false,message:'Unable to cancel job.'};
+  await db.from('job_activity').insert({
+   job_id:jobId,
+   actor_id:user.id,
+   action:'status_changed',
+   note:`Status: ${before.status} → cancelled`,
+  });
+  revalidatePath('/hq/jobs');
+  revalidatePath('/hq/jobs/'+jobId);
+  revalidatePath('/hq/schedule');
+  return {ok:true,message:'Job cancelled. The job number is retained and will not be reused.'};
+ }catch(error){
+  return {ok:false,message:error instanceof Error?error.message:'Unable to cancel job.'};
+ }
+}
+
+/** Hard-delete only empty / no-merit jobs. Admin/owner only; numbers are never reused. */
+export async function deleteEmptyJob(jobId:string):Promise<JobMutationResult>{
+ try{
+  const user=await requireHqUser();
+  assertAdminOps(user);
+  if(!/^[0-9a-f-]{36}$/i.test(jobId))return {ok:false,message:'Invalid job.'};
+  const db=dbAdmin();
+  const {data:job}=await db.from('jobs').select('id,job_number').eq('id',jobId).maybeSingle();
+  if(!job)return {ok:false,message:'Job not found.'};
+  const verdict=await assessJobEmptyDelete(db,jobId);
+  if(!verdict.eligible)return {ok:false,message:formatEmptyDeleteBlockers(verdict.blockers)};
+  await db.from('job_activity').delete().eq('job_id',jobId);
+  const {error}=await db.from('jobs').delete().eq('id',jobId);
+  if(error)return {ok:false,message:'Unable to delete job.'};
+  revalidatePath('/hq/jobs');
+  revalidatePath('/hq/schedule');
+  return {
+   ok:true,
+   message:`Job JB${String(job.job_number).padStart(5,'0')} deleted. That number will not be reused.`,
+  };
+ }catch(error){
+  return {ok:false,message:error instanceof Error?error.message:'Unable to delete job.'};
+ }
+}
+
 export async function addJobAppointment(formData:FormData):Promise<{ok:boolean;message:string}>{
  try{
   const user=await requireHqUser();assertOfficeOps(user);

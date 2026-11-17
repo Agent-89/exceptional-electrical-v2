@@ -31,7 +31,6 @@ export default async function TechAccountPage({
       <header className="ee-tech-head">
         <div className="hq-kicker">TECHNICIAN · ACCOUNT</div>
         <h1>Account</h1>
-        <p>Signed in to Exceptional Electrical HQ.</p>
       </header>
 
       {setup && SETUP_MESSAGES[setup] ? (
