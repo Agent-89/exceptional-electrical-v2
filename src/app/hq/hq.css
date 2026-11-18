@@ -245,6 +245,7 @@
 .hq-quote-row-number{font-size:15px;line-height:1.25;color:#102b40}
 .hq-quote-row-customer{font-size:13px;font-weight:650;color:#17364b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hq-quote-row-meta{display:grid;justify-items:end;align-content:start;gap:5px;flex-shrink:0}
+.hq-quote-row-status-group{display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:5px}
 .hq-quote-row-price{font-size:16px;line-height:1.2;color:#102b40;white-space:nowrap}
 .hq-quote-row-secondary{margin:0;font-size:12px;color:#687989;line-height:1.4}
 .hq-quote-row .hq-status{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:#e8f0fa;color:#194f7d;font-size:11px;font-weight:750;text-transform:capitalize;white-space:nowrap}
@@ -818,10 +819,10 @@ html{scroll-padding-top:calc(var(--hq-shell-header-height,76px) + 16px);scroll-p
 @keyframes hq-wordmark-in{to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.hq-startup{display:none}}
 
-/* Field PWA startup: inverse of HQ (dark blue + white logo). */
+/* Field PWA startup: dark blue + true white logo asset (no CSS invert). */
 .field-startup{background:#071625;color:#fff}
-.field-startup .hq-startup-mark .hq-startup-outline{filter:brightness(0) invert(1);opacity:.22}
-.field-startup .hq-startup-fill img{filter:brightness(0) invert(1)}
+.field-startup .hq-startup-mark .hq-startup-outline{filter:none;opacity:.22}
+.field-startup .hq-startup-fill img{filter:none;animation:none;opacity:1}
 .field-startup .hq-startup-charge{background:#fff;box-shadow:0 0 12px #ffffff88}
 .field-startup .hq-startup-spark{color:#fff}
 .field-startup .hq-startup-brand>span{color:#9ec9e8}

@@ -10,6 +10,7 @@ import type { HqRole } from '@/lib/hq-roles';
 import FieldOfflineChrome from './field-offline-chrome';
 
 const HQ_LOGO = '/exceptional-electrical-logo-hq.webp';
+const FIELD_STARTUP_LOGO = '/exceptional-electrical-logo-white.webp';
 
 const fieldItems = [
   { href: '/field', label: 'Today', icon: CalendarCheck2 },
@@ -68,9 +69,9 @@ export default function FieldShell({
         >
           <div className="hq-startup-brand">
             <div className="hq-startup-mark">
-              <Image className="hq-startup-outline" src={HQ_LOGO} alt="" width={240} height={80} priority />
+              <Image className="hq-startup-outline" src={FIELD_STARTUP_LOGO} alt="" width={240} height={80} priority />
               <div className="hq-startup-fill" aria-hidden="true">
-                <Image src={HQ_LOGO} alt="" width={240} height={80} priority />
+                <Image src={FIELD_STARTUP_LOGO} alt="" width={240} height={80} priority />
               </div>
             </div>
             <strong>EXCEPTIONAL ELECTRICAL</strong>

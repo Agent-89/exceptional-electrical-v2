@@ -11,6 +11,25 @@ export const INVOICE_STATUSES = [
 
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
+/** Statuses that can appear in the overdue register / dashboard count. */
+export const INVOICE_OVERDUE_STATUSES = ['approved', 'sent', 'part_paid'] as const;
+
+export type InvoiceOverdueStatus = (typeof INVOICE_OVERDUE_STATUSES)[number];
+
+export function isInvoiceOverdueStatus(status: string): status is InvoiceOverdueStatus {
+  return (INVOICE_OVERDUE_STATUSES as readonly string[]).includes(status);
+}
+
+/** Past-due check for open invoices (due today is not overdue). */
+export function isInvoiceOverdue(args: {
+  status: string;
+  dueDate: string | null | undefined;
+  todayKey: string;
+}) {
+  if (!args.dueDate || !isInvoiceOverdueStatus(args.status)) return false;
+  return args.dueDate < args.todayKey;
+}
+
 export const INVOICE_PAYMENT_METHODS = [
   'bank_transfer',
   'card',

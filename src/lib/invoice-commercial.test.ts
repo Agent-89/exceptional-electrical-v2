@@ -12,6 +12,7 @@ import {
   invoicePaidCents,
   invoiceTotalsCents,
   isEditableInvoiceStatus,
+  isInvoiceOverdue,
   isInvoiceStatus,
   isPrintableInvoiceStatus,
 } from './invoice-commercial.ts';
@@ -32,6 +33,19 @@ describe('invoice-commercial', () => {
     assert.equal(canRecordInvoicePayment('draft'), false);
     assert.equal(canVoidInvoice('sent'), true);
     assert.equal(canVoidInvoice('paid'), false);
+  });
+
+  it('detects overdue only for open invoices past due', () => {
+    const today = '2026-11-19';
+    assert.equal(isInvoiceOverdue({status: 'approved', dueDate: '2026-11-18', todayKey: today}), true);
+    assert.equal(isInvoiceOverdue({status: 'sent', dueDate: '2026-11-18', todayKey: today}), true);
+    assert.equal(isInvoiceOverdue({status: 'part_paid', dueDate: '2026-11-01', todayKey: today}), true);
+    assert.equal(isInvoiceOverdue({status: 'approved', dueDate: '2026-11-19', todayKey: today}), false);
+    assert.equal(isInvoiceOverdue({status: 'sent', dueDate: '2026-11-20', todayKey: today}), false);
+    assert.equal(isInvoiceOverdue({status: 'draft', dueDate: '2026-11-01', todayKey: today}), false);
+    assert.equal(isInvoiceOverdue({status: 'paid', dueDate: '2026-11-01', todayKey: today}), false);
+    assert.equal(isInvoiceOverdue({status: 'void', dueDate: '2026-11-01', todayKey: today}), false);
+    assert.equal(isInvoiceOverdue({status: 'sent', dueDate: null, todayKey: today}), false);
   });
 
   it('totals detailed lines with GST', () => {
