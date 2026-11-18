@@ -102,15 +102,27 @@ Keep the Production commercial baseline stable while making HQ ready to **rehear
 - DB-level overlap exclusion / advisory-lock migration.
 - Upstash / Vercel edge rate-limit vendor wiring.
 
-### Out of scope
+### Out of scope (until separately approved)
 
-- Live Tradify import into Production
 - Reapplying the six commercial migrations
-- Xero invoice writes (HQ-native invoice UI is a separate branch: `feature/hq-invoices-c2`; do not apply its migration without owner approval)
+- Xero invoice writes
 - Live Vapi cutover or Telstra number forward
 - Client portal auth
 - Inventory / purchasing / reports
-- Mutating Production data or external integrations without approval
+- Mutating Production data without explicit owner phrases (`wipe now` / `apply migration` / `apply now`)
+
+### Tradify apply (branch `feature/tradify-import-apply`)
+
+Apply tooling + migration are implemented on this branch. Hosted writes remain **owner-gated**.
+
+```bash
+npm run tradify:dry-run -- --batch imports/tradify/2026-11-18
+npm run tradify:apply -- --batch imports/tradify/2026-11-18 --dry-run-only
+# after migration applied + owner approval:
+npm run tradify:apply -- --batch imports/tradify/2026-11-18 --i-understand-hosted-write
+```
+
+Candidate batch `imports/tradify/2026-11-18`: customers, sites, jobs, quotes, invoices, one-week timesheets. Crew links use `scheduling_staff` only (no Auth creation). In Progress → `in_progress` only with a future Schedule window; otherwise `on_hold`.
 
 ### How to run the dry-run
 

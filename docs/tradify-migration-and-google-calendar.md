@@ -49,26 +49,37 @@ Customer addresses have no Tradify source key. Staff profiles are keyed to auth.
 - Overlaps with Neil's HQ visits hard-block scheduling when Neil is on the visit crew; there is no override path.
 - Sync with bounded refresh, pagination, retry, and a stale-data indicator. No write-back to Google in v1.
 
-## Dry-run tooling (shipped)
+## Dry-run + apply tooling
 
 ```bash
 npm run tradify:dry-run
+npm run tradify:dry-run -- --batch imports/tradify/2026-11-18
 npm run tradify:dry-run -- --local-db   # read-only local Supabase only
+# Hosted apply — owner gated; migration must be applied first:
+npm run tradify:apply -- --batch imports/tradify/2026-11-18 --dry-run-only
+npm run tradify:apply -- --batch imports/tradify/2026-11-18 --i-understand-hosted-write
 ```
 
 - Pure helpers: `src/lib/tradify-import/`
-- CLI: `scripts/tradify-dry-run.ts`
-- Frozen batch example: `imports/tradify/2026-11-12/` (`MANIFEST.json` + CSVs)
-- Report outputs (`dry-run-report.json` / `.md`) are gitignored local artefacts
-- Never writes to any database; `--local-db` refuses hosted Supabase URLs
+- CLIs: `scripts/tradify-dry-run.ts`, `scripts/tradify-apply.ts`
+- Additive migration: `supabase/migrations/20261118064235_tradify_import_apply_foundation.sql` (hosted apply only with owner approval)
+- Current cutover candidate batch: `imports/tradify/2026-11-18/` (customers, sites, jobs, quotes, invoices, one-week timesheets)
+- Older rehearsal batch: `imports/tradify/2026-11-12/`
+- Report / apply-summary outputs are gitignored local artefacts
+- Dry-run never writes DB; `--local-db` refuses hosted URLs
+- Apply creates missing `scheduling_staff` by name with `auth_user_id` null — **never** creates Auth / `staff_profiles`
+- In Progress mapping: future Schedule window → `in_progress`; else → `on_hold` (review). Raw Tradify status kept on `jobs.tradify_status`
+- Schedule: past + future windows → `job_appointments` + `job_appointment_staff` (overlaps reported, not hard-blocked on import)
+- Wipe / rollback helpers: `scripts/wipe-hosted-sample-ops.sql`, `scripts/tradify-rollback-batch.sql` (owner phrases only)
 
 Scheduling overlap enforcement posture (app-layer vs deferred DB locks): `docs/scheduling-overlap-posture.md`.
 
 ## Implementation order
-1. ~~Source-mapping/staging and dry-run validation.~~ (dry-run tooling live; apply path not built)
-2. Sites and staff directory schema plus controlled RLS.
-3. Jobs workspace integration and reviewed operational statuses.
-4. Google OAuth and event ingestion; Neil-only conflict integration.
-5. Pilot import and reconciliation; owner approval before full cutover.
+1. ~~Source-mapping/staging and dry-run validation.~~
+2. ~~Apply path + import batch map + crew-only timesheets.~~ (code on `feature/tradify-import-apply`; hosted write owner-gated)
+3. Sites and staff directory schema plus controlled RLS (crew rows created on apply as needed).
+4. Jobs workspace integration and reviewed operational statuses (`on_hold` review queue for stale In Progress).
+5. Google OAuth and event ingestion; Neil-only conflict integration.
+6. Owner-approved wipe → migration → apply → Preview reconciliation; then day-to-day HQ use.
 
-Do not treat 873 Tradify In Progress jobs as currently active without owner review.
+Do not treat Tradify In Progress jobs as currently active without owner review — import lands many as `on_hold` when no future visit remains.

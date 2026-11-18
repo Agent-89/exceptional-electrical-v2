@@ -38,6 +38,33 @@ export function formatDryRunMarkdown(report: DryRunReport): string {
   lines.push(`- Unique names: ${report.counts.staff.uniqueNames}`);
   lines.push(`- Matched scheduling_staff: ${report.counts.staff.matchedSchedulingStaff}`);
   lines.push(`- Unmatched names: ${report.counts.staff.unmatchedNames}`);
+  lines.push(
+    `- Will create scheduling_staff (no Auth): ${report.counts.staff.willCreateSchedulingStaff}`,
+  );
+  lines.push('');
+  lines.push('### Appointments (from job Schedule)');
+  lines.push(`- Jobs with Schedule text: ${report.counts.appointments.jobsWithSchedule}`);
+  lines.push(`- Parse failures: ${report.counts.appointments.parseFailures}`);
+  lines.push(`- Visit windows: ${report.counts.appointments.windows}`);
+  lines.push(`- Future: ${report.counts.appointments.future}`);
+  lines.push(`- Past: ${report.counts.appointments.past}`);
+  lines.push(`- Staff overlap pairs (reported only): ${report.counts.appointments.staffOverlapPairs}`);
+  lines.push('');
+  lines.push('### Quotes');
+  lines.push(`- Source line rows: ${report.counts.quotes.sourceLines}`);
+  lines.push(`- Unique quotes: ${report.counts.quotes.uniqueQuotes}`);
+  lines.push(`- Unmatched customer: ${report.counts.quotes.unmatchedCustomer}`);
+  lines.push('');
+  lines.push('### Invoices');
+  lines.push(`- Source line rows: ${report.counts.invoices.sourceLines}`);
+  lines.push(`- Unique invoices: ${report.counts.invoices.uniqueInvoices}`);
+  lines.push(`- Unmatched customer: ${report.counts.invoices.unmatchedCustomer}`);
+  lines.push('');
+  lines.push('### Timesheets');
+  lines.push(`- Source rows: ${report.counts.timesheets.source}`);
+  lines.push(`- Parse OK: ${report.counts.timesheets.parseOk}`);
+  lines.push(`- Unmatched job: ${report.counts.timesheets.unmatchedJob}`);
+  lines.push(`- Unmatched staff (vs HQ snapshot): ${report.counts.timesheets.unmatchedStaff}`);
   lines.push('');
   lines.push('## Status inventory');
   lines.push('');
@@ -45,10 +72,19 @@ export function formatDryRunMarkdown(report: DryRunReport): string {
     lines.push(`- ${status}: ${report.statusInventory[status]}`);
   }
   lines.push('');
+  lines.push('## In Progress mapping split');
+  lines.push('');
+  lines.push(
+    `- → HQ \`in_progress\` (has future schedule): ${report.inProgressSplit.toInProgress}`,
+  );
+  lines.push(
+    `- → HQ \`on_hold\` (review placeholder): ${report.inProgressSplit.toOnHold}`,
+  );
+  lines.push('');
   lines.push(`## In Progress jobs (owner review — ${report.inProgressJobs.length})`);
   lines.push('');
   lines.push(
-    'Do **not** treat these as currently active HQ jobs without owner review.',
+    'Mapped to `in_progress` only when a future Schedule window exists; otherwise `on_hold` for status review.',
   );
   lines.push('');
   if (report.inProgressJobs.length === 0) {

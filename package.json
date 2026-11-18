@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/lib/*.test.ts",
-    "tradify:dry-run": "node --experimental-strip-types scripts/tradify-dry-run.ts"
+    "tradify:dry-run": "node --experimental-strip-types scripts/tradify-dry-run.ts",
+    "tradify:apply": "node --experimental-strip-types scripts/tradify-apply.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.81.1",
