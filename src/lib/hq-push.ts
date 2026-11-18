@@ -98,6 +98,58 @@ async function deleteSubscription(id: string) {
   }
 }
 
+function pushErrorMeta(error: unknown): { statusCode: number; body: string } {
+  if (!error || typeof error !== 'object') return { statusCode: 0, body: '' };
+  const statusCode =
+    'statusCode' in error ? Number((error as { statusCode?: number }).statusCode) || 0 : 0;
+  const body =
+    'body' in error && typeof (error as { body?: unknown }).body === 'string'
+      ? String((error as { body: string }).body).slice(0, 240)
+      : '';
+  return { statusCode, body };
+}
+
+async function sendToSubscriptions(
+  subscriptions: StoredSubscription[],
+  notification: ReturnType<typeof buildNotification>,
+): Promise<{ sent: number; failed: number; pruned: number }> {
+  let sent = 0;
+  let failed = 0;
+  let pruned = 0;
+  const payload = JSON.stringify(notification);
+
+  await Promise.all(
+    subscriptions.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth },
+          },
+          payload,
+          {
+            TTL: 60 * 60,
+            urgency: 'high',
+          },
+        );
+        sent += 1;
+      } catch (error) {
+        const { statusCode, body } = pushErrorMeta(error);
+        if (statusCode === 404 || statusCode === 410) {
+          await deleteSubscription(sub.id);
+          pruned += 1;
+          console.info('hq_push pruned stale endpoint', statusCode);
+          return;
+        }
+        failed += 1;
+        console.error('hq_push send failed', statusCode || 'unknown', body || '');
+      }
+    }),
+  );
+
+  return { sent, failed, pruned };
+}
+
 /**
  * Best-effort fan-out to opted-in office HQ PWA subscriptions.
  * Never throws to callers — intake must succeed even if push fails.
@@ -121,31 +173,81 @@ export async function bestEffortNotifyNewEnquiry(payload: EnquiryPushPayload): P
       return;
     }
 
-    await Promise.all(
-      subscriptions.map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.p256dh, auth: sub.auth },
-            },
-            JSON.stringify(notification),
-          );
-        } catch (error) {
-          const statusCode =
-            error && typeof error === 'object' && 'statusCode' in error
-              ? Number((error as { statusCode?: number }).statusCode)
-              : 0;
-          if (statusCode === 404 || statusCode === 410) {
-            await deleteSubscription(sub.id);
-            return;
-          }
-          console.error('hq_push send failed', statusCode || 'unknown');
-        }
-      }),
+    const result = await sendToSubscriptions(subscriptions, notification);
+    console.info(
+      'hq_push enquiry fan-out',
+      `subs=${subscriptions.length}`,
+      `sent=${result.sent}`,
+      `failed=${result.failed}`,
+      `pruned=${result.pruned}`,
     );
   } catch (error) {
     console.error('hq_push notify failed', error);
+  }
+}
+
+/**
+ * Send a one-off test alert to a single office user's stored endpoints.
+ */
+export async function sendHqPushTestToUser(userId: string): Promise<{
+  ok: boolean;
+  error?: string;
+  sent?: number;
+  failed?: number;
+}> {
+  try {
+    if (!pushEnabled()) {
+      return { ok: false, error: 'Push alerts are not enabled on this environment yet.' };
+    }
+    if (!configureVapid()) {
+      return { ok: false, error: 'Push alerts are not configured on this environment yet.' };
+    }
+
+    const { data: subs, error } = await dbAdmin()
+      .from('hq_push_subscriptions')
+      .select('id,endpoint,p256dh,auth')
+      .eq('user_id', userId);
+    if (error) {
+      console.error('hq_push test lookup failed', error.code);
+      return { ok: false, error: 'Could not load notification subscriptions.' };
+    }
+    const subscriptions = (subs || []) as StoredSubscription[];
+    if (subscriptions.length === 0) {
+      return {
+        ok: false,
+        error: 'No push subscription is saved for this account. Enable alerts on this device first.',
+      };
+    }
+
+    const notification = {
+      title: 'HQ test alert',
+      body: 'If you see this, enquiry push is working on this device.',
+      url: '/hq/enquiries',
+      tag: `hq-push-test-${Date.now()}`,
+    };
+    const result = await sendToSubscriptions(subscriptions, notification);
+    console.info(
+      'hq_push test fan-out',
+      `user=${userId}`,
+      `sent=${result.sent}`,
+      `failed=${result.failed}`,
+      `pruned=${result.pruned}`,
+    );
+    if (result.sent === 0) {
+      return {
+        ok: false,
+        error:
+          result.pruned > 0
+            ? 'Saved subscription was stale. Enable alerts on this device again.'
+            : 'Push provider rejected the test alert. Try re-enabling on this device.',
+        sent: 0,
+        failed: result.failed,
+      };
+    }
+    return { ok: true, sent: result.sent, failed: result.failed };
+  } catch (error) {
+    console.error('hq_push test failed', error);
+    return { ok: false, error: 'Could not send a test alert.' };
   }
 }
 

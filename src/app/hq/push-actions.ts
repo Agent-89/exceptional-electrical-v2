@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { assertOfficeOps, dbAdmin, requireHqUser } from '@/lib/hq-auth';
+import { sendHqPushTestToUser } from '@/lib/hq-push';
 
 const subscriptionSchema = z.object({
   endpoint: z.string().url().min(20).max(2048),
@@ -25,6 +26,17 @@ export async function saveHqPushSubscription(
 
   const db = dbAdmin();
   const now = new Date().toISOString();
+  // Drop older endpoints for this user so zombie Apple subscriptions cannot
+  // keep accepting sends that never reach the current Home Screen install.
+  const { error: clearError } = await db
+    .from('hq_push_subscriptions')
+    .delete()
+    .eq('user_id', user.id)
+    .neq('endpoint', parsed.data.endpoint);
+  if (clearError) {
+    console.error('hq_push clear prior failed', clearError.code);
+  }
+
   const { error } = await db.from('hq_push_subscriptions').upsert(
     {
       user_id: user.id,
@@ -89,4 +101,12 @@ export async function getHqPushSubscriptionStatus(): Promise<{
     .eq('user_id', user.id);
 
   return { enabled, configured, subscribed: (count ?? 0) > 0 };
+}
+
+export async function sendHqPushTestAlert(): Promise<PushActionResult & { sent?: number }> {
+  const user = await requireHqUser();
+  assertOfficeOps(user);
+  const result = await sendHqPushTestToUser(user.id);
+  if (!result.ok) return { ok: false, error: result.error || 'Could not send a test alert.' };
+  return { ok: true, sent: result.sent };
 }

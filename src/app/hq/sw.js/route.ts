@@ -1,5 +1,5 @@
 export function GET() {
-  const js = `const VERSION='exceptional-hq-v3';
+  const js = `const VERSION='exceptional-hq-v4';
 self.addEventListener('install',event=>{self.skipWaiting()});
 self.addEventListener('activate',event=>{event.waitUntil(self.clients.claim())});
 self.addEventListener('fetch',event=>{
