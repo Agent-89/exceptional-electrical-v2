@@ -5,11 +5,14 @@ import {
   formatWeekCellMinutes,
   formatWeekRangeLabel,
   isTimesheetPendingHintStatus,
+  matchesTimesheetStatusFilter,
   perthWeekBounds,
   perthWeekDateKeys,
   perthWeekMonday,
+  resolveTimesheetStatusFilter,
   resolveTimesheetWeekMonday,
   shiftPerthDayKey,
+  sortTimesheetEntriesForReview,
   staffInitials,
 } from './timesheet-week.ts';
 
@@ -187,9 +190,40 @@ describe('formatting helpers', () => {
     assert.equal(staffInitials('Billy Hicks'), 'BH');
     assert.equal(staffInitials('Neil'), 'NE');
     assert.equal(staffInitials('  '), '?');
+    assert.equal(staffInitials('Billy Hicks', 'bh'), 'BH');
   });
 
   it('formats week range labels', () => {
     assert.equal(formatWeekRangeLabel('2026-11-16'), '16 – 22 November 2026');
+  });
+});
+
+describe('entries status filter and sort', () => {
+  it('resolves status filter defaults and legacy values', () => {
+    assert.equal(resolveTimesheetStatusFilter(undefined), 'all');
+    assert.equal(resolveTimesheetStatusFilter('pending'), 'pending');
+    assert.equal(resolveTimesheetStatusFilter('submitted'), 'pending');
+    assert.equal(resolveTimesheetStatusFilter('nope'), 'all');
+  });
+
+  it('matches pending as submitted + corrected', () => {
+    assert.equal(matchesTimesheetStatusFilter('submitted', 'pending'), true);
+    assert.equal(matchesTimesheetStatusFilter('corrected', 'pending'), true);
+    assert.equal(matchesTimesheetStatusFilter('rejected', 'pending'), false);
+    assert.equal(matchesTimesheetStatusFilter('approved', 'approved'), true);
+  });
+
+  it('sorts needs review then approved then rejected', () => {
+    const sorted = sortTimesheetEntriesForReview([
+      { id: '1', status: 'rejected', startedAt: '2026-11-18T10:00:00.000Z' },
+      { id: '2', status: 'approved', startedAt: '2026-11-18T11:00:00.000Z' },
+      { id: '3', status: 'submitted', startedAt: '2026-11-18T09:00:00.000Z' },
+      { id: '4', status: 'corrected', startedAt: '2026-11-18T12:00:00.000Z' },
+      { id: '5', status: 'approved', startedAt: '2026-11-18T08:00:00.000Z' },
+    ]);
+    assert.deepEqual(
+      sorted.map((row) => row.id),
+      ['4', '3', '2', '5', '1'],
+    );
   });
 });

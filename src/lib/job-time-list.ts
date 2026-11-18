@@ -63,17 +63,36 @@ export function canReviewJobTimeEntry(status: string): boolean {
   return ['submitted', 'rejected', 'corrected', 'approved'].includes(status);
 }
 
+export type TimeEntryStatusTone = 'pending' | 'approved' | 'rejected' | 'live' | 'neutral';
+
+/** Visual tone for status chips (approved green, rejected red, needs-approval amber). */
+export function timeEntryStatusTone(status: string): TimeEntryStatusTone {
+  if (status === 'submitted' || status === 'corrected') return 'pending';
+  if (status === 'approved') return 'approved';
+  if (status === 'rejected') return 'rejected';
+  if (status === 'active' || status === 'on_break') return 'live';
+  return 'neutral';
+}
+
+/** Quick Approve is only for entries still awaiting a first accept — not rejected/approved. */
+export function canQuickApproveTimeEntry(status: string): boolean {
+  return status === 'submitted' || status === 'corrected';
+}
+
 /** Office-facing status labels for the unified Time table. */
-export function jobTimeStatusLabel(status: string): string {
+export function jobTimeStatusLabel(
+  status: string,
+  extras?: { correctionNote?: string | null },
+): string {
   switch (status) {
     case 'submitted':
-      return 'Pending';
+      return 'Needs approval';
     case 'corrected':
       return 'Corrected';
     case 'rejected':
       return 'Rejected';
     case 'approved':
-      return 'Approved';
+      return extras?.correctionNote?.trim() ? 'Approved · corrected' : 'Approved';
     case 'active':
       return 'Live';
     case 'on_break':
@@ -83,6 +102,28 @@ export function jobTimeStatusLabel(status: string): string {
     default:
       return status.replaceAll('_', ' ');
   }
+}
+
+export function timeEntryReviewNotes(entry: {
+  note?: string | null;
+  rejectionReason?: string | null;
+  correctionNote?: string | null;
+  status?: string;
+}): { kind: 'tech' | 'rejection' | 'correction'; label: string; text: string }[] {
+  const notes: { kind: 'tech' | 'rejection' | 'correction'; label: string; text: string }[] = [];
+  const tech = entry.note?.trim();
+  if (tech) notes.push({ kind: 'tech', label: 'Tech note', text: tech });
+  const rejection = entry.rejectionReason?.trim();
+  if (rejection) notes.push({ kind: 'rejection', label: 'Rejection reason', text: rejection });
+  const correction = entry.correctionNote?.trim();
+  if (correction) {
+    notes.push({
+      kind: 'correction',
+      label: entry.status === 'approved' ? 'Correction note' : 'Correction note',
+      text: correction,
+    });
+  }
+  return notes;
 }
 
 /** Unique entry ids in display order — used by regression checks. */

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { staffColor } from '@/lib/staff-color';
 import {
   WEEKDAY_LABELS,
   formatWeekCellMinutes,
@@ -7,25 +8,6 @@ import {
   type TimesheetStaffWeekRow,
 } from '@/lib/timesheet-week';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
-
-const AVATAR_COLORS = [
-  '#0b6bcb',
-  '#0f766e',
-  '#b45309',
-  '#be123c',
-  '#4338ca',
-  '#047857',
-  '#a16207',
-  '#0369a1',
-];
-
-function avatarColor(staffId: string): string {
-  let hash = 0;
-  for (let i = 0; i < staffId.length; i += 1) {
-    hash = (hash * 31 + staffId.charCodeAt(i)) >>> 0;
-  }
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
 
 function buildHref(params: {
   week: string;
@@ -38,7 +20,7 @@ function buildHref(params: {
   qs.set('week', params.week);
   if (params.staff) qs.set('staff', params.staff);
   if (params.job) qs.set('job', params.job);
-  qs.set('status', params.status ?? 'all');
+  if (params.status && params.status !== 'all') qs.set('status', params.status);
   if (params.day) qs.set('day', params.day);
   return `/hq/timesheets?${qs.toString()}`;
 }
@@ -81,13 +63,9 @@ export default function TimesheetWeekGrid({
             ‹
           </Link>
           <Link
-            href={buildHref({
-              week: mondayKey,
-              job: jobFilter,
-              status: statusFilter,
-            })}
+            href={buildHref({ week: mondayKey })}
             className="ee-timesheet-week-nav-btn"
-            aria-label="Current selected week"
+            aria-label="This week unfiltered"
           >
             Week
           </Link>
@@ -109,7 +87,9 @@ export default function TimesheetWeekGrid({
         <table className="ee-job-table ee-timesheet-week-table">
           <thead>
             <tr>
-              <th scope="col">Staff</th>
+              <th scope="col" className="ee-timesheet-sticky-col">
+                Staff
+              </th>
               {WEEKDAY_LABELS.map((label, i) => (
                 <th scope="col" key={label}>
                   <span className="ee-timesheet-day-label">{label}</span>
@@ -132,24 +112,24 @@ export default function TimesheetWeekGrid({
             ) : (
               rows.map((row) => (
                 <tr key={row.staffId}>
-                  <th scope="row">
+                  <th scope="row" className="ee-timesheet-sticky-col">
                     <Link
                       href={buildHref({
                         week: mondayKey,
                         staff: row.staffId,
                         job: jobFilter,
-                        status: statusFilter ?? 'all',
+                        status: statusFilter,
                       })}
                       className="ee-timesheet-staff"
                     >
                       <span
                         className="ee-timesheet-avatar"
-                        style={{ background: avatarColor(row.staffId) }}
+                        style={{ background: staffColor(row.staffId, row.avatarColor) }}
                         aria-hidden
                       >
                         {row.initials}
                       </span>
-                      <span>{row.fullName}</span>
+                      <span className="ee-timesheet-staff-name">{row.fullName}</span>
                     </Link>
                   </th>
                   {row.days.map((day) => {
