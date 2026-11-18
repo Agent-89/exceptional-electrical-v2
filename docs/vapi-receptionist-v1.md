@@ -46,11 +46,21 @@ Keep personal information minimal. Do not request card details, passwords, ident
 - summary
 - transcript/recording reference: optional, restricted to authorised staff
 
-## Required before live activation
+## HQ webhook (live)
+
+Hosted Edge Function: `receive-vapi-enquiry` on project `udwdurnknweavmksotii` (Git path: `supabase/functions/receive-vapi-enquiry`).
+
+- Auth: `x-vapi-webhook-secret` compared to `VAPI_WEBHOOK_SECRET` (SHA-256 length-safe compare).
+- On `end-of-call-report`: idempotent `vapi_call_intake` reserve by `vapi_call_id`, insert `enquiries` with `source: 'vapi'`, audit `enquiry_received`.
+- After create: best-effort `POST {HQ_ORIGIN}/api/internal/hq-push/enquiry` with `x-hq-push-secret: HQ_PUSH_INTERNAL_SECRET` so opted-in HQ PWA devices get the same enquiry push as website intake. Push is gated by Vercel `HQ_PUSH_ENABLED`.
+
+Redeploy the function only with owner approval after changing source or secrets.
+
+## Required before business-number forward
 1. Confirm Telstra/Toshiba call forwarding and rollback procedure.
 2. Obtain the actual transfer destination and staffed hours from the business.
 3. Confirm emergency escalation, callback ownership, and service area.
 4. Confirm recording disclosure, retention, and access policy.
-5. Build and verify authenticated, idempotent HQ webhook; avoid exposing a service-role key.
-6. Test routine enquiries, missing details, duplicates, complaints, emergencies, failed transfer, and failed webhook.
+5. Keep webhook secret rotation + Git-tracked function source aligned with hosted.
+6. Test routine enquiries, missing details, duplicates, complaints, emergencies, failed transfer, failed webhook, and HQ push callback.
 7. Use a temporary number for testing; only then forward the business number.

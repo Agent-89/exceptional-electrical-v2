@@ -156,7 +156,8 @@ Cookies `ee_hq_access` / `ee_hq_refresh` (`path: '/'`) are shared. Field login i
 | Supabase Auth + DB | Live | Shared Preview/Production DB |
 | Google Calendar | Neil-only (see below) | Read-only; no write-back |
 | Xero | Not integrated | Job UI placeholder copy only |
-| Vapi receptionist | Draft / disconnected | `docs/vapi-receptionist-v1.md` |
+| Vapi receptionist | Live Edge Function (not Git-tracked until HQ push work) | Hosted `receive-vapi-enquiry` on `udwdurnknweavmksotii`; source now under `supabase/functions/receive-vapi-enquiry`. Docs: `docs/vapi-receptionist-v1.md` |
+| HQ Web Push | Code shipped; off until enabled | Opt-in on installed HQ PWA; `HQ_PUSH_ENABLED=0` by default. Migration `hq_push_subscriptions` — apply hosted only with owner approval. Redeploy Edge Function only with approval. |
 | Tradify import | Dry-run tooling live | `npm run tradify:dry-run` against `imports/tradify/`; no live import without approval |
 
 ### Neil Google Calendar rules
@@ -167,7 +168,7 @@ Cookies `ee_hq_access` / `ee_hq_refresh` (`path: '/'`) are shared. Field login i
 - **Independent of HQ overlaps:** HQ electrician overlap hard-blocks (`hq_overlap`) remain separate and also non-bypassable.
 - **Connect/disconnect:** OAuth connect/disconnect is an admin-ops action (owner/admin).
 
-**Never** trigger real customer SMS/email, Xero writes, Tradify writes, or live Vapi cutover during Preview testing. Do not mutate Production data or external integrations without approval.
+**Never** trigger real customer SMS/email, Xero writes, Tradify writes, or business-number Vapi forward during Preview testing. Do not mutate Production data or external integrations without approval. Keep `HQ_PUSH_ENABLED=0` on Preview so shared-DB test enquiries do not wake Production devices.
 
 ## 8. Testing and verification commands
 
@@ -224,7 +225,7 @@ Prioritised against fully replacing Tradify.
 5. **C2 billing** — HQ invoice surface is in progress on `feature/hq-invoices-c2` (manual invoices + payments + PDF; no Xero yet). Remaining: apply hosted migration after approval, then Xero reconciliation against commercial-current quotes.
 6. **Outbound email/SMS** — quote send, appointment reminders (gated; never from Preview against real customers).
 7. **Job materials / costing** (even before full inventory).
-8. **Vapi webhook** + signature verification behind staging; no live number forward until approved.
+8. **Vapi ops hardening** — Edge Function `receive-vapi-enquiry` is already live and creates `source: 'vapi'` enquiries; keep Git + secrets aligned, harden signature/ops as needed; no business-number forward until approved.
 
 ### P2 — Full field-service parity
 

@@ -4,6 +4,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   // Parent folder has a stray package-lock.json; pin tracing/root to this app.
   outputFileTracingRoot: path.join(__dirname),
+  // Optional separate build output so `next build` can run while `next dev` holds `.next`.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   reactStrictMode: true,
   async redirects() {
     return [

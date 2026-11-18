@@ -6,6 +6,8 @@ import {usePathname} from 'next/navigation';
 import {useEffect,useRef,useState} from 'react';
 import {House,Inbox,UsersRound,FileText,Receipt,BriefcaseBusiness,CalendarDays,Menu,X,LogOut,PanelLeftClose,PanelLeftOpen,CalendarCheck2,Ellipsis} from 'lucide-react';
 import type {HqRole} from '@/lib/hq-roles';
+import {isOfficeRole} from '@/lib/hq-roles';
+import HqPushOptIn from './push-opt-in';
 
 type HqShellProps={
   children:React.ReactNode;
@@ -40,6 +42,7 @@ function formatNavBadge(count:number){
 /** Office HQ chrome only — Field is a separate app under /field. */
 export default function HqShell({
   children,
+  role=null,
   newEnquiryCount=0,
 }:HqShellProps){
  const pathname=usePathname();
@@ -76,9 +79,9 @@ export default function HqShell({
   <><button className={`hq-shell-scrim${menu?' is-open':''}`} aria-label="Close navigation menu" tabIndex={menu?0:-1} aria-hidden={!menu} onClick={()=>setMenu(false)}/><aside id="hq-more-menu" className={`hq-shell-drawer${menu?' is-open':''}`} aria-label="HQ menu" aria-hidden={!menu} inert={!menu}>
    <div className="hq-shell-drawer-heading"><Link href={homeHref} className="hq-shell-drawer-brand" aria-label="Exceptional Electrical HQ home"><Image src={HQ_LOGO} alt="Exceptional Electrical" width={180} height={60}/><span>HQ</span></Link><button onClick={()=>setMenu(false)} aria-label="Close menu"><X size={20}/></button></div>
    <nav>{drawerItems.map(item=><Link key={item.href} href={item.href} aria-current={active(item.href)?'page':undefined}><item.icon size={19} strokeWidth={1.9} aria-hidden="true"/><span>{item.label}</span>{item.href==='/hq/enquiries'&&enquiryBadge?<span className="hq-shell-drawer-badge" aria-label={`${newEnquiryCount} new enquiries`}>{enquiryBadge}</span>:null}</Link>)}</nav>
-   <div className="hq-shell-drawer-future"><span>Coming later</span><p>Inventory · Purchasing · Reports</p></div><form action={logoutAction} className="hq-shell-logout-form"><input type="hidden" name="next" value="/hq"/><button type="submit" className="hq-shell-logout"><LogOut size={19} strokeWidth={1.9} aria-hidden="true"/><span>Log out</span></button></form>
+   <div className="hq-shell-drawer-future"><span>Coming later</span><p>Inventory · Purchasing · Reports</p></div>{role&&isOfficeRole(role)?<HqPushOptIn/>:null}<form action={logoutAction} className="hq-shell-logout-form"><input type="hidden" name="next" value="/hq"/><button type="submit" className="hq-shell-logout"><LogOut size={19} strokeWidth={1.9} aria-hidden="true"/><span>Log out</span></button></form>
   </aside></>
-  <aside className="hq-shell-desktop-sidebar" aria-label="Desktop HQ navigation"><div className="hq-desktop-nav-heading"><Link href={homeHref} className="hq-desktop-sidebar-brand" aria-label="Exceptional Electrical HQ home"><Image src={HQ_LOGO} alt="Exceptional Electrical" width={130} height={43}/></Link><button type="button" onClick={toggleSidebar} aria-label={compactSidebar?'Expand sidebar':'Collapse sidebar'} title={compactSidebar?'Expand sidebar':'Collapse sidebar'}>{compactSidebar?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button></div><nav>{drawerItems.map(item=><Link key={item.href} href={item.href} prefetch aria-current={active(item.href)?'page':undefined}><item.icon size={19} strokeWidth={1.9}/><span>{item.label}</span>{item.href==='/hq/enquiries'&&enquiryBadge?<span className="hq-shell-drawer-badge" aria-hidden="true">{enquiryBadge}</span>:null}</Link>)}</nav><div className="hq-desktop-sidebar-bottom"><span>Exceptional Electrical HQ</span><form action={logoutAction}><input type="hidden" name="next" value="/hq"/><button type="submit"><LogOut size={18}/> Log out</button></form></div></aside>
+  <aside className="hq-shell-desktop-sidebar" aria-label="Desktop HQ navigation"><div className="hq-desktop-nav-heading"><Link href={homeHref} className="hq-desktop-sidebar-brand" aria-label="Exceptional Electrical HQ home"><Image src={HQ_LOGO} alt="Exceptional Electrical" width={130} height={43}/></Link><button type="button" onClick={toggleSidebar} aria-label={compactSidebar?'Expand sidebar':'Collapse sidebar'} title={compactSidebar?'Expand sidebar':'Collapse sidebar'}>{compactSidebar?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button></div><nav>{drawerItems.map(item=><Link key={item.href} href={item.href} prefetch aria-current={active(item.href)?'page':undefined}><item.icon size={19} strokeWidth={1.9}/><span>{item.label}</span>{item.href==='/hq/enquiries'&&enquiryBadge?<span className="hq-shell-drawer-badge" aria-hidden="true">{enquiryBadge}</span>:null}</Link>)}</nav><div className="hq-desktop-sidebar-bottom"><span>Exceptional Electrical HQ</span>{role&&isOfficeRole(role)?<HqPushOptIn/>:null}<form action={logoutAction}><input type="hidden" name="next" value="/hq"/><button type="submit"><LogOut size={18}/> Log out</button></form></div></aside>
   <div className="hq-shell-content" id="hq-main-content">{children}</div>
   <nav className="hq-shell-bottom" aria-label="HQ sections">
    {bottomItems.map((item)=>{

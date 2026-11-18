@@ -7,6 +7,7 @@ import {
   normalizeEnquiryEmail,
   normalizeEnquiryPhone,
 } from '@/lib/enquiry-abuse';
+import { bestEffortNotifyNewEnquiry } from '@/lib/hq-push';
 
 export const runtime = 'nodejs';
 
@@ -128,25 +129,37 @@ export async function POST(req: NextRequest) {
     ? `Service requested: ${newServiceLabel}\n\n${result.data.message}`
     : result.data.message;
 
-  const { error } = await db.from('enquiries').insert({
-    name: result.data.name,
-    phone: result.data.phone,
-    email: normalizeEnquiryEmail(result.data.email),
-    suburb: result.data.suburb || null,
-    contact_preference: result.data.contact_preference,
-    service: storedService,
-    message: storedMessage,
-    source: 'website',
-    status: 'new',
-  });
+  const { data: enquiry, error } = await db
+    .from('enquiries')
+    .insert({
+      name: result.data.name,
+      phone: result.data.phone,
+      email: normalizeEnquiryEmail(result.data.email),
+      suburb: result.data.suburb || null,
+      contact_preference: result.data.contact_preference,
+      service: storedService,
+      message: storedMessage,
+      source: 'website',
+      status: 'new',
+    })
+    .select('id')
+    .single();
 
-  if (error) {
-    console.error('Enquiry insert failed', error.code);
+  if (error || !enquiry) {
+    console.error('Enquiry insert failed', error?.code);
     return NextResponse.json(
       { error: 'Unable to submit your enquiry right now.' },
       { status: 500 },
     );
   }
+
+  void bestEffortNotifyNewEnquiry({
+    id: enquiry.id,
+    name: result.data.name,
+    suburb: result.data.suburb || null,
+    service: storedService,
+    source: 'website',
+  });
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }
