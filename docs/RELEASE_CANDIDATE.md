@@ -106,7 +106,7 @@ Keep the Production commercial baseline stable while making HQ ready to **rehear
 
 - Live Tradify import into Production
 - Reapplying the six commercial migrations
-- Xero invoice writes / C2 billing UI
+- Xero invoice writes (HQ-native invoice UI is a separate branch: `feature/hq-invoices-c2`; do not apply its migration without owner approval)
 - Live Vapi cutover or Telstra number forward
 - Client portal auth
 - Inventory / purchasing / reports

@@ -1,7 +1,8 @@
 /**
  * Office job detail tabs. UI navigation only — no schema or permission changes.
- * Invoices is a placeholder until C2/Xero. Costs stays out of the top bar until
- * materials tracking lands; old `?tab=costs` links fall back to Overview.
+ * Invoices lists HQ-native invoices linked to the job (C2 surface; Xero later).
+ * Costs stays out of the top bar until materials tracking lands; old `?tab=costs`
+ * links fall back to Overview.
  */
 
 export const JOB_DETAIL_TABS = [

@@ -7,7 +7,25 @@ export const businessProfile = {
   phone: '0413 781 938',
   /** Replace with full postal address when confirmed. */
   addressLines: ['Perth, Western Australia'] as readonly string[],
+  bank: {
+    accountName: 'Exceptional Electrical Services',
+    bsb: '016318',
+    accountNumber: '287009757',
+  },
 } as const;
+
+/** Default terms block seeded onto new invoices (editable per invoice). */
+export function defaultInvoiceTermsAndPayment() {
+  const {bank, tradingName} = businessProfile;
+  return [
+    'Payment is due by the due date shown on this tax invoice.',
+    '',
+    'Bank Account Details:',
+    tradingName,
+    `BSB ${bank.bsb}`,
+    `Account ${bank.accountNumber}`,
+  ].join('\n');
+}
 
 export function formatAbnDisplay(abn = businessProfile.abn) {
   return `ABN ${abn}`;
