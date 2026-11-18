@@ -51,16 +51,67 @@ type AppointmentRow = {
 
 const APPOINTMENT_SELECT =
   'id,job_id,starts_at,ends_at,notes,status,field_status,field_follow_up_required,field_completion_note,field_outstanding_work,field_issues';
+const APPOINTMENT_SELECT_BASE = 'id,job_id,starts_at,ends_at,notes,status';
 
-async function appointmentIdsForStaff(staffId: string): Promise<string[]> {
+type StaffAppointmentLinkRow = {
+  appointment_id: string;
+  job_appointments: AppointmentRow | AppointmentRow[] | null;
+};
+
+function unwrapAppointment(
+  raw: AppointmentRow | AppointmentRow[] | null | undefined,
+): AppointmentRow | null {
+  if (!raw) return null;
+  return Array.isArray(raw) ? (raw[0] ?? null) : raw;
+}
+
+/**
+ * Query assigned visits via job_appointment_staff → job_appointments join.
+ * Avoids PostgREST `.in(id, …)` URL failures for high-volume crews (e.g. Tradify imports).
+ */
+async function listAssignedAppointments(
+  staffId: string,
+  options?: {
+    from?: Date;
+    to?: Date;
+    statuses?: string[];
+    jobId?: string;
+    limit?: number;
+  },
+): Promise<AppointmentRow[]> {
   const db = dbAdmin();
-  const { data, error } = await db
-    .from('job_appointment_staff')
-    .select('appointment_id')
-    .eq('staff_id', staffId)
-    .limit(2000);
-  if (error) throw new Error('Unable to load technician visit assignments.');
-  return [...new Set((data ?? []).map((r) => r.appointment_id as string))];
+  const applyFilters = (appointmentSelect: string) => {
+    let query = db
+      .from('job_appointment_staff')
+      .select(`appointment_id, job_appointments!inner(${appointmentSelect})`)
+      .eq('staff_id', staffId);
+    if (options?.from) {
+      query = query.gte('job_appointments.starts_at', options.from.toISOString());
+    }
+    if (options?.to) {
+      query = query.lt('job_appointments.starts_at', options.to.toISOString());
+    }
+    if (options?.statuses?.length) {
+      query = query.in('job_appointments.status', options.statuses);
+    }
+    if (options?.jobId) {
+      query = query.eq('job_appointments.job_id', options.jobId);
+    }
+    return query
+      .order('starts_at', { ascending: true, foreignTable: 'job_appointments' })
+      .limit(options?.limit ?? 200);
+  };
+
+  const primary = await applyFilters(APPOINTMENT_SELECT);
+  const result = primary.error ? await applyFilters(APPOINTMENT_SELECT_BASE) : primary;
+  if (result.error) throw new Error('Unable to load technician appointments.');
+
+  const rows: AppointmentRow[] = [];
+  for (const link of (result.data ?? []) as unknown as StaffAppointmentLinkRow[]) {
+    const appt = unwrapAppointment(link.job_appointments);
+    if (appt) rows.push(appt);
+  }
+  return rows;
 }
 
 async function hydrateFromAppointments(
@@ -142,24 +193,8 @@ export async function listTechnicianAppointments(
   staffId: string,
   options?: { from?: Date; to?: Date; statuses?: string[]; limit?: number },
 ): Promise<TechAppointmentRow[]> {
-  const ids = await appointmentIdsForStaff(staffId);
-  if (!ids.length) return [];
-
-  const db = dbAdmin();
-  const applyFilters = (select: string) => {
-    let query = db.from('job_appointments').select(select).in('id', ids);
-    if (options?.from) query = query.gte('starts_at', options.from.toISOString());
-    if (options?.to) query = query.lt('starts_at', options.to.toISOString());
-    if (options?.statuses?.length) query = query.in('status', options.statuses);
-    return query.order('starts_at', { ascending: true }).limit(options?.limit ?? 200);
-  };
-
-  const primary = await applyFilters(APPOINTMENT_SELECT);
-  const result = primary.error
-    ? await applyFilters('id,job_id,starts_at,ends_at,notes,status')
-    : primary;
-  if (result.error) throw new Error('Unable to load technician appointments.');
-  return hydrateFromAppointments((result.data ?? []) as unknown as AppointmentRow[]);
+  const appointments = await listAssignedAppointments(staffId, options);
+  return hydrateFromAppointments(appointments);
 }
 
 export async function getTechnicianAppointment(
@@ -184,7 +219,7 @@ export async function getTechnicianAppointment(
   const fallback = primary.error
     ? await db
         .from('job_appointments')
-        .select('id,job_id,starts_at,ends_at,notes,status')
+        .select(APPOINTMENT_SELECT_BASE)
         .eq('id', appointmentId)
         .maybeSingle()
     : primary;
@@ -299,27 +334,7 @@ export async function listAuthorizedJobVisits(
   staffId: string,
   jobId: string,
 ): Promise<{ sample: TechAppointmentRow | null; visits: TechAppointmentRow[] }> {
-  const ids = await appointmentIdsForStaff(staffId);
-  if (!ids.length) return { sample: null, visits: [] };
-
-  const db = dbAdmin();
-  const primary = await db
-    .from('job_appointments')
-    .select(APPOINTMENT_SELECT)
-    .eq('job_id', jobId)
-    .in('id', ids)
-    .order('starts_at', { ascending: true })
-    .limit(100);
-  const result = primary.error
-    ? await db
-        .from('job_appointments')
-        .select('id,job_id,starts_at,ends_at,notes,status')
-        .eq('job_id', jobId)
-        .in('id', ids)
-        .order('starts_at', { ascending: true })
-        .limit(100)
-    : primary;
-  if (result.error) throw new Error('Unable to load job visits.');
-  const visits = await hydrateFromAppointments((result.data ?? []) as unknown as AppointmentRow[]);
+  const appointments = await listAssignedAppointments(staffId, { jobId, limit: 100 });
+  const visits = await hydrateFromAppointments(appointments);
   return { sample: visits[0] ?? null, visits };
 }

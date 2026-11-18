@@ -226,7 +226,7 @@ export async function convertEnquiryToCustomer(enquiryId:string,form:FormData):P
  return {ok:true,message:outcome.message,customerId:outcome.customerId};
 }
 
-/** Hard-delete only unused enquiries. Admin/owner only. Prefer close/spam for anything with history. */
+/** Hard-delete enquiries with no customer/quote/job links. Admin/owner only. Prefer close/spam when converted. */
 export async function deleteEmptyEnquiry(enquiryId:string):Promise<{ok:boolean;message:string}>{
  try{
   const user=await requireHqUser();
