@@ -200,11 +200,11 @@ npm run build
 - Enquiry intake has honeypot + DB-backed email/phone cooldown (`src/lib/enquiry-abuse.ts`, `POST /api/enquiries`). Durable IP/edge rate limiting (e.g. Upstash) is still recommended before high-traffic marketing domain cutover.
 - Race-safe DB exclusion constraints for electrician overlaps are deferred; app-layer hard-blocks remain the posture — see `docs/scheduling-overlap-posture.md`.
 - Quotes can be marked sent but do not email customers yet.
-- Job detail **Invoices** tab is an empty placeholder pending Xero (C2). **More** holds stubs for Purchase orders, Bills, and Forms. Costs is not a top-level tab yet — it should graduate when materials tracking lands.
-- Quotes support optional `customer_reference` (“Your reference / PO”). When C2 billing lands, invoice create should be the **primary** place staff enter/confirm that reference, prefilled from the linked commercial-current quote when present, and mapped to Xero’s customer/reference field later.
-- Quote/invoice letterhead (ABN, electrical licence, phone, address) reads from `src/lib/business-profile.ts`; reuse that module for C2 invoice PDFs rather than hardcoding seller identity again.
+- Job detail **Invoices** tab lists HQ-native invoices linked to the job (`JobInvoicesPanel`). Xero reconciliation remains deferred. **More** holds stubs for Purchase orders, Bills, and Forms. Costs is not a top-level tab yet — it should graduate when materials tracking lands.
+- HQ invoices (`/hq/invoices`) mirror quotes: register, builder, preview, PDF (`EEI-######`), optional `job_id` / `quote_id`, and payment lines for part-paid / amount due. `customer_reference` is first-class on invoice create and seeds from the linked commercial-current quote when present. Xero mapping remains a later step.
+- Quote/invoice letterhead (ABN, electrical licence, phone, address, bank defaults) reads from `src/lib/business-profile.ts`.
 - Job header status is a colored-dot chevron dropdown (statuses in `src/lib/job-statuses.ts`). The three-dot menu is reserved for future job actions.
-- Pending hosted migration (do **not** apply until owner approves): `20261117092844_jobs_status_to_invoice_tafe` adds `to_invoice` and `tafe` to `jobs_status_check`. Until applied, selecting those statuses in the UI will fail at the database.
+- Pending hosted migrations (do **not** apply until owner approves): `20261117092844_jobs_status_to_invoice_tafe` adds `to_invoice` and `tafe` to `jobs_status_check`; `20261118043432_hq_invoices_c2` creates invoice tables/RPCs. Until applied, invoice UI shows a migration-needed message and selecting the new job statuses will fail at the database.
 - Inventory, purchasing, reports, and payroll export are not built. Field offline MVP (shell + outbox) is shipped; full offline/photos/payroll remain open.
 
 ## 11. Remaining development roadmap (post-Production)
@@ -220,7 +220,7 @@ Prioritised against fully replacing Tradify.
 
 ### P1 — Money and customer communications (close the Tradify gap)
 
-5. **C2 billing** — HQ invoice surface + Xero reconciliation against commercial-current quotes. Invoice create must include first-class `customer_reference` (Your reference / PO) as the primary entry point, seeded from the linked quote when available.
+5. **C2 billing** — HQ invoice surface is in progress on `feature/hq-invoices-c2` (manual invoices + payments + PDF; no Xero yet). Remaining: apply hosted migration after approval, then Xero reconciliation against commercial-current quotes.
 6. **Outbound email/SMS** — quote send, appointment reminders (gated; never from Preview against real customers).
 7. **Job materials / costing** (even before full inventory).
 8. **Vapi webhook** + signature verification behind staging; no live number forward until approved.

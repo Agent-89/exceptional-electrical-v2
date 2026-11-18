@@ -120,6 +120,7 @@ describe('job detail tab shell regression', () => {
     assert.match(pageSource, /quotes:/);
     assert.doesNotMatch(pageSource, /^\s+costs:/m);
     assert.match(pageSource, /JobQuotesPanel/);
+    assert.match(pageSource, /JobInvoicesPanel/);
     assert.match(quotesPanelSource, /No quotes linked to this job yet/);
     assert.match(quotesPanelSource, /Make primary/);
     assert.doesNotMatch(quotesPanelSource, /Link existing quote/);

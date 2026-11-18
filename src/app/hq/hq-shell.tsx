@@ -4,11 +4,11 @@ import Image from 'next/image';
 import {logoutAction} from './actions';
 import {usePathname} from 'next/navigation';
 import {useEffect,useRef,useState} from 'react';
-import {House,Inbox,UsersRound,FileText,BriefcaseBusiness,CalendarDays,Menu,X,LogOut,PanelLeftClose,PanelLeftOpen,CalendarCheck2} from 'lucide-react';
+import {House,Inbox,UsersRound,FileText,Receipt,BriefcaseBusiness,CalendarDays,Menu,X,LogOut,PanelLeftClose,PanelLeftOpen,CalendarCheck2} from 'lucide-react';
 import type {HqRole} from '@/lib/hq-roles';
 
 const HQ_LOGO='/exceptional-electrical-logo-hq.webp';
-const officeItems=[{href:'/hq',label:'Home',icon:House},{href:'/hq/enquiries',label:'Enquiries',icon:Inbox},{href:'/hq/customers',label:'Customers',icon:UsersRound},{href:'/hq/quotes',label:'Quotes',icon:FileText},{href:'/hq/jobs',label:'Jobs',icon:BriefcaseBusiness}];
+const officeItems=[{href:'/hq',label:'Home',icon:House},{href:'/hq/enquiries',label:'Enquiries',icon:Inbox},{href:'/hq/customers',label:'Customers',icon:UsersRound},{href:'/hq/quotes',label:'Quotes',icon:FileText},{href:'/hq/invoices',label:'Invoices',icon:Receipt},{href:'/hq/jobs',label:'Jobs',icon:BriefcaseBusiness}];
 const officeDrawer=[...officeItems,{href:'/hq/schedule',label:'Schedule',icon:CalendarDays},{href:'/hq/timesheets',label:'Timesheets',icon:CalendarCheck2}];
 
 /** Office HQ chrome only — Field is a separate app under /field. */
@@ -29,7 +29,7 @@ export default function HqShell({children}:{children:React.ReactNode;role?:HqRol
  useEffect(()=>setMenu(false),[pathname]);
  useEffect(()=>{try{setCompactSidebar(localStorage.getItem('ee-hq-sidebar-compact')==='yes')}catch{}},[]);
  const toggleSidebar=()=>setCompactSidebar(v=>{const next=!v;try{localStorage.setItem('ee-hq-sidebar-compact',next?'yes':'no')}catch{}return next});
- if(pathname==='/hq/login'||pathname.startsWith('/hq/login/')||/^\/hq\/quotes\/[^/]+\/preview\/?$/.test(pathname))return <>{children}</>;
+ if(pathname==='/hq/login'||pathname.startsWith('/hq/login/')||/^\/hq\/quotes\/[^/]+\/preview\/?$/.test(pathname)||/^\/hq\/invoices\/[^/]+\/preview\/?$/.test(pathname))return <>{children}</>;
  const active=(href:string)=>{
   if(href==='/hq')return pathname==='/hq';
   return pathname===href||pathname.startsWith(href+'/');

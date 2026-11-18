@@ -20,7 +20,9 @@ import ScheduleAppointmentForm from './schedule-appointment-form';
 import JobDetailTabs, { JobTabButton } from './job-detail-tabs';
 import JobHeaderActions from './job-header-actions';
 import JobQuotesPanel from './job-quotes-panel';
+import JobInvoicesPanel from './job-invoices-panel';
 import { loadJobQuotesForDisplay } from '@/lib/job-quotes-store';
+import { loadJobInvoices } from '@/lib/job-invoices-store';
 import {
   SuspendedJobAttention,
   SuspendedJobFiles,
@@ -103,6 +105,7 @@ export default async function JobPage({
     appointmentsResult,
     { data: customerSeed },
     jobQuotesResult,
+    jobInvoicesResult,
     { data: linkedEnquiry },
   ] = await Promise.all([
     job.customer_id
@@ -122,6 +125,7 @@ export default async function JobPage({
       .order('starts_at', { ascending: true }),
     db.from('customers').select('id,name').order('name').limit(80),
     loadJobQuotesForDisplay(db, id, job.quote_id as string | null),
+    loadJobInvoices({db, jobId: id}),
     job.enquiry_id
       ? db.from('enquiries').select('id,reference_number').eq('id', job.enquiry_id as string).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -517,18 +521,14 @@ export default async function JobPage({
               />
             ),
             invoices: (
-              <section className="hq-panel ee-compact-panel">
-                <div className="ee-section-title">
-                  <div>
-                    <span className="ee-eyebrow">INVOICES</span>
-                    <h2>Billing</h2>
-                  </div>
-                </div>
-                <p className="ee-muted" style={{ marginTop: 0 }}>
-                  Invoice listing and Xero reconciliation will land with C2 billing. Nothing to show
-                  here yet.
-                </p>
-              </section>
+              <JobInvoicesPanel
+                jobId={id}
+                customerId={(job.customer_id as string | null) ?? null}
+                invoices={jobInvoicesResult.invoices}
+                tableAvailable={jobInvoicesResult.tableAvailable}
+                loadError={jobInvoicesResult.error}
+                canEdit={canEdit}
+              />
             ),
             activity: (
               <section className="hq-panel ee-compact-panel" id="activity-history">

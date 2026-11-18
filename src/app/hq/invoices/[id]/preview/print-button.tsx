@@ -1,0 +1,12 @@
+'use client';
+
+export default function PrintInvoiceButton({invoiceId}:{invoiceId:string}){
+  return <details className="quote-export-menu">
+    <summary className="quote-print-button">Export invoice ▾</summary>
+    <div className="quote-export-options">
+      <a href={'/hq/invoices/'+invoiceId+'/pdf'} download>Download PDF</a>
+      <button type="button" onClick={()=>window.print()}>Print</button>
+    </div>
+    <style>{`.quote-export-menu{position:relative}.quote-export-menu summary{list-style:none;cursor:pointer}.quote-export-menu summary::-webkit-details-marker{display:none}.quote-export-options{position:absolute;right:0;top:calc(100% + 6px);z-index:20;background:white;min-width:175px;border:1px solid #cbd9e5;border-radius:8px;box-shadow:0 8px 20px #122c4430;overflow:hidden}.quote-export-options a,.quote-export-options button{display:block;width:100%;text-align:left;padding:12px 14px;background:white;border:0;color:#12344d;text-decoration:none;font:inherit;cursor:pointer}.quote-export-options a:hover,.quote-export-options button:hover{background:#edf5fa}@media print{.quote-export-menu{display:none}}`}</style>
+  </details>;
+}
