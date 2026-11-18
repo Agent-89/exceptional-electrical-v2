@@ -12,7 +12,9 @@ import type {DryRunReport, StagedRow} from './dry-run.ts';
 import {
   buildSiteAddress,
   collapseWhitespace,
+  appointmentSourceKey,
   extractStaffFromSchedule,
+  groupScheduleWindowsByVisit,
   mapTradifyJobStatus,
   mergeStaffNames,
   normalizeJobNumber,
@@ -357,7 +359,7 @@ export async function applyTradifyBatch(args: {
   type PendingAppt = {
     sourceKey: string;
     jobNumber: string;
-    staffName: string;
+    staffNames: string[];
     row: Record<string, unknown>;
   };
   const pendingAppts: PendingAppt[] = [];
@@ -404,26 +406,28 @@ export async function applyTradifyBatch(args: {
       jobIdByNumber.set(jobNumber, jobId);
     }
 
-    const windows = parseScheduleWindows(row.payload['Schedule'] || '', now);
-    for (const w of windows) {
-      const sourceKey = `${jobNumber}|${w.startAt.toISOString()}|${w.endAt.toISOString()}|${normalizeName(w.staffName)}`;
+    const visits = groupScheduleWindowsByVisit(
+      parseScheduleWindows(row.payload['Schedule'] || '', now),
+    );
+    for (const visit of visits) {
+      const sourceKey = appointmentSourceKey(jobNumber, visit.startAt, visit.endAt);
       if (mapGet(cache, 'appointment', sourceKey)) {
         bump(summary, 'skipped', 'appointments');
         continue;
       }
       const apptId = randomUUID();
-      const isPast = w.endAt.getTime() <= now.getTime();
+      const isPast = visit.endAt.getTime() <= now.getTime();
       pendingAppts.push({
         sourceKey,
         jobNumber,
-        staffName: w.staffName,
+        staffNames: visit.staffNames,
         row: {
           id: apptId,
           job_id: jobId,
-          starts_at: w.startAt.toISOString(),
-          ends_at: w.endAt.toISOString(),
+          starts_at: visit.startAt.toISOString(),
+          ends_at: visit.endAt.toISOString(),
           status: isPast ? 'completed' : 'scheduled',
-          notes: w.rawLine.slice(0, 500),
+          notes: visit.rawLines.join('\n').slice(0, 500),
         },
       });
     }
@@ -458,9 +462,13 @@ export async function applyTradifyBatch(args: {
 
   const staffLinks: Record<string, unknown>[] = [];
   for (const p of pendingAppts) {
-    const staffId = staffIndex.get(normalizeName(p.staffName));
-    if (!staffId) continue;
-    staffLinks.push({appointment_id: p.row.id, staff_id: staffId});
+    const seenStaff = new Set<string>();
+    for (const name of p.staffNames) {
+      const staffId = staffIndex.get(normalizeName(name));
+      if (!staffId || seenStaff.has(staffId)) continue;
+      seenStaff.add(staffId);
+      staffLinks.push({appointment_id: p.row.id, staff_id: staffId});
+    }
   }
   {
     const err = await insertChunk(args.db, 'job_appointment_staff', staffLinks);

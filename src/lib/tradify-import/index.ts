@@ -11,6 +11,8 @@ export {
   extractStaffFromSchedule,
   mergeStaffNames,
   parseScheduleWindows,
+  groupScheduleWindowsByVisit,
+  appointmentSourceKey,
   scheduleHasFutureWindow,
   perthLocalToUtc,
   mapTradifyJobStatus,
@@ -20,6 +22,7 @@ export {
   parseTradifyAmPmToUtc,
   extractJobNumbersFromCell,
   type ScheduleWindow,
+  type GroupedScheduleVisit,
   type HqJobStatus,
   type HqQuoteStatus,
   type HqInvoiceStatus,
@@ -55,3 +58,10 @@ export {formatDryRunMarkdown} from './report.ts';
 export {assertLocalSupabaseUrl, isLocalSupabaseUrl} from './local-db.ts';
 export {stageRecords} from './stage.ts';
 export {applyTradifyBatch, type ApplySummary} from './apply.ts';
+export {
+  findDuplicateVisitGroups,
+  pickSurvivorId,
+  mergeDuplicateTradifyVisits,
+  type DuplicateVisitGroup,
+  type MergeVisitsSummary,
+} from './merge-visits.ts';

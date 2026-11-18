@@ -70,6 +70,7 @@ npm run tradify:apply -- --batch imports/tradify/2026-11-18 --i-understand-hoste
 - Apply creates missing `scheduling_staff` by name with `auth_user_id` null — **never** creates Auth / `staff_profiles`
 - In Progress mapping: future Schedule window → `in_progress`; else → `on_hold` (review). Raw Tradify status kept on `jobs.tradify_status`
 - Schedule: past + future windows → `job_appointments` + `job_appointment_staff` (overlaps reported, not hard-blocked on import)
+- Multi-electrician Tradify lines with the **same job + start + end** collapse to **one** HQ visit with multiple crew (see `groupScheduleWindowsByVisit`). Repair existing duplicates: `npm run tradify:merge-visits -- --batch-id tradify-2026-11-18 --i-understand-hosted-write`
 - Wipe / rollback helpers: `scripts/wipe-hosted-sample-ops.sql`, `scripts/tradify-rollback-batch.sql` (owner phrases only)
 
 Scheduling overlap enforcement posture (app-layer vs deferred DB locks): `docs/scheduling-overlap-posture.md`.

@@ -61,7 +61,13 @@ export type DryRunCounts = {
   appointments: {
     jobsWithSchedule: number;
     parseFailures: number;
+    /** Raw Tradify Schedule lines (per electrician). */
+    scheduleLines: number;
+    /** HQ visits after grouping same job+start+end. */
+    visits: number;
+    /** Alias of visits (kept for older report consumers). */
     windows: number;
+    multiCrewVisits: number;
     future: number;
     past: number;
     staffOverlapPairs: number;
@@ -132,7 +138,10 @@ function emptyCounts(): DryRunCounts {
     appointments: {
       jobsWithSchedule: 0,
       parseFailures: 0,
+      scheduleLines: 0,
+      visits: 0,
       windows: 0,
+      multiCrewVisits: 0,
       future: 0,
       past: 0,
       staffOverlapPairs: 0,
@@ -330,7 +339,10 @@ export function buildDryRunReport(args: {
   counts.appointments = {
     jobsWithSchedule: appt.jobsWithSchedule,
     parseFailures: appt.parseFailures,
-    windows: appt.candidates.length,
+    scheduleLines: appt.scheduleLines,
+    visits: appt.visits,
+    windows: appt.visits,
+    multiCrewVisits: appt.multiCrewVisits,
     future: appt.futureCount,
     past: appt.pastCount,
     staffOverlapPairs: countStaffOverlaps(appt.candidates),

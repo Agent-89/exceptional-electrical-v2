@@ -45,7 +45,11 @@ export function formatDryRunMarkdown(report: DryRunReport): string {
   lines.push('### Appointments (from job Schedule)');
   lines.push(`- Jobs with Schedule text: ${report.counts.appointments.jobsWithSchedule}`);
   lines.push(`- Parse failures: ${report.counts.appointments.parseFailures}`);
-  lines.push(`- Visit windows: ${report.counts.appointments.windows}`);
+  lines.push(`- Tradify schedule lines (per electrician): ${report.counts.appointments.scheduleLines}`);
+  lines.push(
+    `- HQ visits (grouped same job+start+end): ${report.counts.appointments.visits}`,
+  );
+  lines.push(`- Multi-crew visits: ${report.counts.appointments.multiCrewVisits}`);
   lines.push(`- Future: ${report.counts.appointments.future}`);
   lines.push(`- Past: ${report.counts.appointments.past}`);
   lines.push(`- Staff overlap pairs (reported only): ${report.counts.appointments.staffOverlapPairs}`);

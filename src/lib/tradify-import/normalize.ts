@@ -182,6 +182,74 @@ export function scheduleHasFutureWindow(raw: string, now: Date = new Date()): bo
   return parseScheduleWindows(raw, now).some((w) => w.endAt.getTime() > now.getTime());
 }
 
+export type GroupedScheduleVisit = {
+  startAt: Date;
+  endAt: Date;
+  startLocal: string;
+  endLocal: string;
+  staffNames: string[];
+  rawLines: string[];
+};
+
+/**
+ * Collapse Tradify per-electrician Schedule lines that share the exact same
+ * start/end into one HQ visit with multiple crew.
+ */
+export function groupScheduleWindowsByVisit(
+  windows: ScheduleWindow[],
+): GroupedScheduleVisit[] {
+  const byWindow = new Map<
+    string,
+    {
+      startAt: Date;
+      endAt: Date;
+      startLocal: string;
+      endLocal: string;
+      staffNames: string[];
+      staffSeen: Set<string>;
+      rawLines: string[];
+    }
+  >();
+
+  for (const w of windows) {
+    const key = `${w.startAt.toISOString()}|${w.endAt.toISOString()}`;
+    let group = byWindow.get(key);
+    if (!group) {
+      group = {
+        startAt: w.startAt,
+        endAt: w.endAt,
+        startLocal: w.startLocal,
+        endLocal: w.endLocal,
+        staffNames: [],
+        staffSeen: new Set(),
+        rawLines: [],
+      };
+      byWindow.set(key, group);
+    }
+    const staffKey = normalizeName(w.staffName);
+    if (staffKey && !group.staffSeen.has(staffKey)) {
+      group.staffSeen.add(staffKey);
+      group.staffNames.push(w.staffName);
+    }
+    if (w.rawLine && !group.rawLines.includes(w.rawLine)) {
+      group.rawLines.push(w.rawLine);
+    }
+  }
+
+  return [...byWindow.values()]
+    .map(({staffSeen: _seen, ...rest}) => rest)
+    .sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+}
+
+/** Visit-level appointment source key (no staff name). */
+export function appointmentSourceKey(
+  jobNumber: string,
+  startAt: Date,
+  endAt: Date,
+): string {
+  return `${jobNumber}|${startAt.toISOString()}|${endAt.toISOString()}`;
+}
+
 export type HqJobStatus =
   | 'unassigned'
   | 'assigned'

@@ -1,8 +1,10 @@
 /** Pure helpers for In Progress / appointment dry-run inventories. */
 
 import {
+  groupScheduleWindowsByVisit,
   mapTradifyJobStatus,
   normalizeJobNumber,
+  normalizeName,
   parseScheduleWindows,
   scheduleHasFutureWindow,
 } from './normalize.ts';
@@ -10,7 +12,9 @@ import type {StagedRow} from './dry-run.ts';
 
 export type AppointmentCandidate = {
   jobNumber: string;
+  /** Comma-joined crew for reporting; overlap uses staffNames. */
   staffName: string;
+  staffNames: string[];
   startAtIso: string;
   endAtIso: string;
   isFuture: boolean;
@@ -60,16 +64,23 @@ export function collectAppointmentCandidates(
   now: Date = new Date(),
 ): {
   candidates: AppointmentCandidate[];
+  /** Raw Tradify Schedule lines (per electrician). */
+  scheduleLines: number;
+  /** HQ visits after grouping same job+start+end. */
+  visits: number;
   parseFailures: number;
   jobsWithSchedule: number;
   futureCount: number;
   pastCount: number;
+  multiCrewVisits: number;
 } {
   const candidates: AppointmentCandidate[] = [];
   let parseFailures = 0;
   let jobsWithSchedule = 0;
   let futureCount = 0;
   let pastCount = 0;
+  let scheduleLines = 0;
+  let multiCrewVisits = 0;
 
   for (const row of jobs) {
     const raw = row.payload['Schedule'] || '';
@@ -82,37 +93,72 @@ export function collectAppointmentCandidates(
       parseFailures += 1;
       continue;
     }
-    for (const w of windows) {
-      const isFuture = w.endAt.getTime() > now.getTime();
+    scheduleLines += windows.length;
+    const visits = groupScheduleWindowsByVisit(windows);
+    for (const v of visits) {
+      const isFuture = v.endAt.getTime() > now.getTime();
       if (isFuture) futureCount += 1;
       else pastCount += 1;
+      if (v.staffNames.length > 1) multiCrewVisits += 1;
       candidates.push({
         jobNumber,
-        staffName: w.staffName,
-        startAtIso: w.startAt.toISOString(),
-        endAtIso: w.endAt.toISOString(),
+        staffName: v.staffNames.join(', '),
+        staffNames: v.staffNames,
+        startAtIso: v.startAt.toISOString(),
+        endAtIso: v.endAt.toISOString(),
         isFuture,
       });
     }
   }
 
-  return {candidates, parseFailures, jobsWithSchedule, futureCount, pastCount};
+  return {
+    candidates,
+    scheduleLines,
+    visits: candidates.length,
+    parseFailures,
+    jobsWithSchedule,
+    futureCount,
+    pastCount,
+    multiCrewVisits,
+  };
 }
 
-/** Soft overlap inventory: same staff, overlapping intervals (import still inserts). */
+/**
+ * Soft overlap inventory after visit grouping: same staff on overlapping visits
+ * (same-job same-window multi-crew pairs are not counted as overlaps).
+ */
 export function countStaffOverlaps(candidates: AppointmentCandidate[]): number {
-  const byStaff = new Map<string, AppointmentCandidate[]>();
+  type Flat = {
+    staffKey: string;
+    staffName: string;
+    jobNumber: string;
+    startAtIso: string;
+    endAtIso: string;
+  };
+  const flat: Flat[] = [];
   for (const c of candidates) {
-    const key = c.staffName.toLowerCase();
-    const list = byStaff.get(key) || [];
-    list.push(c);
-    byStaff.set(key, list);
+    for (const name of c.staffNames.length ? c.staffNames : [c.staffName]) {
+      flat.push({
+        staffKey: normalizeName(name),
+        staffName: name,
+        jobNumber: c.jobNumber,
+        startAtIso: c.startAtIso,
+        endAtIso: c.endAtIso,
+      });
+    }
   }
+
+  const byStaff = new Map<string, Flat[]>();
+  for (const row of flat) {
+    if (!row.staffKey) continue;
+    const list = byStaff.get(row.staffKey) || [];
+    list.push(row);
+    byStaff.set(row.staffKey, list);
+  }
+
   let overlaps = 0;
   for (const list of byStaff.values()) {
-    const sorted = list
-      .slice()
-      .sort((a, b) => a.startAtIso.localeCompare(b.startAtIso));
+    const sorted = list.slice().sort((a, b) => a.startAtIso.localeCompare(b.startAtIso));
     for (let i = 0; i < sorted.length; i += 1) {
       const a = sorted[i]!;
       const aEnd = Date.parse(a.endAtIso);
@@ -120,6 +166,14 @@ export function countStaffOverlaps(candidates: AppointmentCandidate[]): number {
         const b = sorted[j]!;
         const bStart = Date.parse(b.startAtIso);
         if (bStart >= aEnd) break;
+        // Same job + identical window is one visit with multiple crew — not an overlap.
+        if (
+          a.jobNumber === b.jobNumber &&
+          a.startAtIso === b.startAtIso &&
+          a.endAtIso === b.endAtIso
+        ) {
+          continue;
+        }
         overlaps += 1;
       }
     }

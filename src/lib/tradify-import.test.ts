@@ -13,8 +13,11 @@ import {
   normalizeJobNumber,
   parseCsv,
   parseMoneyToCents,
+  findDuplicateVisitGroups,
+  groupScheduleWindowsByVisit,
   parseScheduleWindows,
   parseTradifyAmPmToUtc,
+  pickSurvivorId,
   rowsToObjects,
   siteMatchKey,
   splitStaffNames,
@@ -78,6 +81,49 @@ describe('normalize helpers', () => {
     // 08:00 Perth = 00:00 UTC
     assert.equal(windows[0]!.startAt.toISOString(), '2026-12-03T00:00:00.000Z');
     assert.equal(windows[0]!.endAt.toISOString(), '2026-12-03T08:00:00.000Z');
+  });
+
+  it('groups same-window Tradify lines into one multi-crew visit', () => {
+    const windows = parseScheduleWindows(
+      [
+        'Kaleb Dierden - 2026-11-19 07:00 to 2026-11-19 12:00',
+        'Aaron Rachman - 2026-11-19 07:00 to 2026-11-19 12:00',
+        'Kaleb Dierden - 2026-11-13 07:00 to 2026-11-13 09:00',
+      ].join('\n'),
+    );
+    assert.equal(windows.length, 3);
+    const visits = groupScheduleWindowsByVisit(windows);
+    assert.equal(visits.length, 2);
+    const multi = visits.find((v) => v.staffNames.length === 2);
+    assert.ok(multi);
+    assert.deepEqual(multi!.staffNames.sort(), ['Aaron Rachman', 'Kaleb Dierden'].sort());
+    assert.equal(multi!.startAt.toISOString(), '2026-11-18T23:00:00.000Z');
+  });
+
+  it('finds duplicate visit groups for repair', () => {
+    const groups = findDuplicateVisitGroups([
+      {
+        id: 'b',
+        job_id: 'job-1',
+        starts_at: '2026-11-19T00:00:00.000Z',
+        ends_at: '2026-11-19T04:00:00.000Z',
+      },
+      {
+        id: 'a',
+        job_id: 'job-1',
+        starts_at: '2026-11-19T00:00:00.000Z',
+        ends_at: '2026-11-19T04:00:00.000Z',
+      },
+      {
+        id: 'c',
+        job_id: 'job-1',
+        starts_at: '2026-11-13T00:00:00.000Z',
+        ends_at: '2026-11-13T02:00:00.000Z',
+      },
+    ]);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]!.appointmentIds.length, 2);
+    assert.equal(pickSurvivorId(groups[0]!.appointmentIds), 'a');
   });
 
   it('maps In Progress by future schedule', () => {
