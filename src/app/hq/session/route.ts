@@ -1,28 +1,56 @@
-import {NextRequest,NextResponse} from 'next/server';
-import {dbAdmin} from '@/lib/hq-auth';
-import {hqHomePath} from '@/lib/hq-roles';
-export const runtime='nodejs';
-export async function GET(request:NextRequest){
- const login=new URL('/hq/login',request.url);
- const refresh=request.cookies.get('ee_hq_refresh')?.value;
- if(!refresh)return NextResponse.redirect(login);
- const db=dbAdmin();
- const {data,error}=await db.auth.refreshSession({refresh_token:refresh});
- if(error||!data.session||!data.user){
-  const response=NextResponse.redirect(login);
-  response.cookies.set('ee_hq_access','',{path:'/',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/',maxAge:0});
+import { NextRequest, NextResponse } from 'next/server';
+import { dbAdmin } from '@/lib/hq-auth';
+import { resolvePostAuthPath, sanitizeReturnPath } from '@/lib/hq-return-path';
+
+export const runtime = 'nodejs';
+
+export async function GET(request: NextRequest) {
+  const next = sanitizeReturnPath(request.nextUrl.searchParams.get('next'));
+  const login = new URL(next && next.startsWith('/field') ? '/field/login' : '/hq/login', request.url);
+  if (next) login.searchParams.set('next', next);
+
+  const refresh = request.cookies.get('ee_hq_refresh')?.value;
+  if (!refresh) return NextResponse.redirect(login);
+
+  const db = dbAdmin();
+  const { data, error } = await db.auth.refreshSession({ refresh_token: refresh });
+  if (error || !data.session || !data.user) {
+    const response = NextResponse.redirect(login);
+    response.cookies.set('ee_hq_access', '', { path: '/', maxAge: 0 });
+    response.cookies.set('ee_hq_refresh', '', { path: '/', maxAge: 0 });
+    return response;
+  }
+
+  const { data: staff } = await db
+    .from('staff_profiles')
+    .select('active,role')
+    .eq('user_id', data.user.id)
+    .eq('active', true)
+    .maybeSingle();
+  if (!staff) {
+    const response = NextResponse.redirect(login);
+    response.cookies.set('ee_hq_access', '', { path: '/', maxAge: 0 });
+    response.cookies.set('ee_hq_refresh', '', { path: '/', maxAge: 0 });
+    return response;
+  }
+
+  const destination = resolvePostAuthPath({ role: String(staff.role), next });
+  const response = NextResponse.redirect(new URL(destination, request.url));
+  response.cookies.set('ee_hq_access', '', { path: '/hq', maxAge: 0 });
+  response.cookies.set('ee_hq_refresh', '', { path: '/hq', maxAge: 0 });
+  const opts = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+  response.cookies.set('ee_hq_access', data.session.access_token, {
+    ...opts,
+    maxAge: data.session.expires_in,
+  });
+  response.cookies.set('ee_hq_refresh', data.session.refresh_token, {
+    ...opts,
+    maxAge: 60 * 60 * 24 * 30,
+  });
   return response;
- }
- const {data:staff}=await db.from('staff_profiles').select('active,role').eq('user_id',data.user.id).eq('active',true).maybeSingle();
- if(!staff){
-  const response=NextResponse.redirect(login);
-  response.cookies.set('ee_hq_access','',{path:'/',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/',maxAge:0});
-  return response;
- }
- const response=NextResponse.redirect(new URL(hqHomePath(String(staff.role)),request.url));
- response.cookies.set('ee_hq_access','',{path:'/hq',maxAge:0});response.cookies.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
- const opts={httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax' as const,path:'/'};
- response.cookies.set('ee_hq_access',data.session.access_token,{...opts,maxAge:data.session.expires_in});
- response.cookies.set('ee_hq_refresh',data.session.refresh_token,{...opts,maxAge:60*60*24*30});
- return response;
 }

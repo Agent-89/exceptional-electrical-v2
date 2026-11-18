@@ -4,8 +4,8 @@ import {ShieldCheck} from 'lucide-react';
 import LoginForm from './login-form';
 import '../hq.css';
 export const dynamic='force-dynamic';
-export default async function Login({searchParams}:{searchParams:Promise<{error?:string;reset?:string}>}){
- const {error,reset}=await searchParams;
+export default async function Login({searchParams}:{searchParams:Promise<{error?:string;reset?:string;next?:string}>}){
+ const {error,reset,next}=await searchParams;
  return <main className="hq-login hq-login-premium hq-login-refined">
   <div className="hq-login-ambient" aria-hidden="true"/>
   <div className="hq-login-layout">
@@ -15,7 +15,7 @@ export default async function Login({searchParams}:{searchParams:Promise<{error?
     <p>Sign in to your workspace.</p>
     {reset==='ok'&&<div role="status" className="hq-alert">Password updated. Sign in with your new password.</div>}
     {error&&<div role="alert" className="hq-alert">{error==='access'?'This account has not been approved for HQ access.':'Email or password not recognised.'}</div>}
-    <LoginForm/>
+    <LoginForm next={next&&next.startsWith('/hq')?next:'/hq'}/>
     <div className="hq-login-secure"><ShieldCheck size={17} aria-hidden="true"/> Authorised Exceptional Electrical staff only</div>
    </section>
    <div className="hq-login-footer"><Link href="/">Return to website</Link></div>

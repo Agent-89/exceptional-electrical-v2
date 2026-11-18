@@ -85,10 +85,10 @@ const PERSONAL_SAVED_SHARED_CONFLICT_MESSAGE =
   'Your work report was saved, but the shared visit outcome changed. Refresh and try again.';
 
 function revalidateVisit(appointmentId: string, jobId: string) {
-  revalidatePath('/hq/tech');
-  revalidatePath('/hq/tech/jobs');
-  revalidatePath('/hq/tech/jobs/' + jobId);
-  revalidatePath('/hq/tech/visits/' + appointmentId);
+  revalidatePath('/field');
+  revalidatePath('/field/jobs');
+  revalidatePath('/field/jobs/' + jobId);
+  revalidatePath('/field/visits/' + appointmentId);
   revalidatePath('/hq/jobs/' + jobId);
   revalidatePath('/hq/timesheets');
 }
@@ -301,7 +301,7 @@ export async function finishWorkAction(formData: FormData): Promise<TechFieldAct
 
   // Timer finish never completes the visit or the overall job — only records time.
   revalidateVisit(visit.id, visit.job_id);
-  redirect(`/hq/tech/visits/${visit.id}?time=recorded#visit-report`);
+  redirect(`/field/visits/${visit.id}?time=recorded#visit-report`);
 }
 
 export async function addManualTimeEntryAction(formData: FormData): Promise<TechFieldActionResult> {
@@ -1463,6 +1463,6 @@ export async function technicianCannotApproveGuard() {
 export async function requireAssignedOrDeny(appointmentId: string) {
   const crew = await requireTechnicianCrew();
   const ok = await technicianHasAppointmentAccess(crew.staffId, appointmentId);
-  if (!ok) redirect('/hq/tech?denied=1');
+  if (!ok) redirect('/field?denied=1');
   return crew;
 }

@@ -8,7 +8,7 @@ import {
   type JobUpdateNote,
   type JobUpdatePhoto,
 } from '@/lib/job-updates';
-import { addOfficeJobUpdateAction } from '@/app/hq/tech/actions';
+import { addOfficeJobUpdateAction } from '@/app/field/actions';
 import HqToast, { type HqToastMessage } from '../../hq-toast';
 
 function perthWhen(iso: string): string {

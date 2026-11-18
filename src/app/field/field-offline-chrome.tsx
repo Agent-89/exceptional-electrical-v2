@@ -6,7 +6,7 @@ import { flushFieldOutbox } from '@/lib/field-offline/sync';
 
 /**
  * Offline status banner + outbox flush for Field surfaces.
- * Mount once under /hq/tech (via tech layout wrapper).
+ * Mount once under /field (via tech layout wrapper).
  */
 export default function FieldOfflineChrome() {
   const [online, setOnline] = useState(true);

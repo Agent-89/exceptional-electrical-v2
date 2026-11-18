@@ -1,16 +1,21 @@
 import 'server-only';
 import { cache } from 'react';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 import {
   canAccessFieldPortal,
   canManageAdminOps,
   canManageOfficeOps,
-  hqHomePath,
   isTechnicianRole,
   type HqRole,
 } from '@/lib/hq-roles';
+import {
+  fieldHomePath,
+  loginPathForReturn,
+  sanitizeReturnPath,
+  sessionRefreshPath,
+} from '@/lib/hq-return-path';
 import {
   interpretSchedulingStaffRows,
   type SchedulingStaffLink,
@@ -48,6 +53,15 @@ export type HqUser = {
   role: HqRole;
 };
 
+async function currentRequestPath(): Promise<string | null> {
+  try {
+    const path = (await headers()).get('x-ee-path');
+    return sanitizeReturnPath(path);
+  } catch {
+    return null;
+  }
+}
+
 /** Per-request memo so layout + page share one auth lookup. */
 export const hqUser = cache(async (): Promise<HqUser | null> => {
   const jar = await cookies();
@@ -59,7 +73,9 @@ export const hqUser = cache(async (): Promise<HqUser | null> => {
     error,
   } = await db.auth.getUser(token);
   if (error || !user) {
-    if (jar.get('ee_hq_refresh')?.value) redirect('/hq/session');
+    if (jar.get('ee_hq_refresh')?.value) {
+      redirect(sessionRefreshPath(await currentRequestPath()));
+    }
     return null;
   }
   const { data: staff } = await db
@@ -83,14 +99,19 @@ export const hqUser = cache(async (): Promise<HqUser | null> => {
 
 export async function requireHqUser(): Promise<HqUser> {
   const user = await hqUser();
-  if (!user) redirect('/hq/login');
+  if (!user) {
+    const next = await currentRequestPath();
+    const login = loginPathForReturn(next);
+    if (next) redirect(`${login}?next=${encodeURIComponent(next)}`);
+    redirect(login);
+  }
   return user;
 }
 
-/** Office HQ surfaces — technicians are redirected to their Today screen. */
+/** Office HQ surfaces — technicians are redirected to Field. */
 export async function requireOfficeUser(): Promise<HqUser> {
   const user = await requireHqUser();
-  if (isTechnicianRole(user.role)) redirect('/hq/tech');
+  if (isTechnicianRole(user.role)) redirect(fieldHomePath());
   return user;
 }
 
@@ -130,15 +151,14 @@ export async function resolveSchedulingStaff(authUserId: string): Promise<Schedu
 export type TechnicianCrew = HqUser & { staffId: string; crewName: string };
 
 /**
- * Field portal pages require field-portal role access plus an active, uniquely
- * mapped scheduling_staff row. Office roles may enter when crew-linked (dual
- * surface). Fail closed with a dedicated setup screen when mapping is missing/invalid.
+ * Field pages require field-portal role access plus an active, uniquely
+ * mapped scheduling_staff row. Office roles may enter when crew-linked.
  */
 export async function requireTechnicianCrew(): Promise<TechnicianCrew> {
   const user = await requireHqUser();
-  if (!canAccessFieldPortal(user.role)) redirect(hqHomePath(user.role));
+  if (!canAccessFieldPortal(user.role)) redirect('/hq');
   const link = await resolveSchedulingStaff(user.id);
-  if (!link.ok) redirect('/hq/tech/account?setup=' + link.reason);
+  if (!link.ok) redirect('/field/account?setup=' + link.reason);
   return { ...user, staffId: link.staffId, crewName: link.fullName };
 }
 
@@ -163,6 +183,6 @@ export async function requireTechnicianAppointmentAccess(
 ): Promise<TechnicianCrew> {
   const crew = await requireTechnicianCrew();
   const allowed = await technicianHasAppointmentAccess(crew.staffId, appointmentId);
-  if (!allowed) redirect('/hq/tech?denied=1');
+  if (!allowed) redirect('/field?denied=1');
   return crew;
 }

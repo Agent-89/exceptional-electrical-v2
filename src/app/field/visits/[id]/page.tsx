@@ -27,7 +27,7 @@ import { seedTechWorkReportFromShared } from '@/lib/tech-visit-report';
 import { HydrateVisitSnapshot } from '../../field-offline-hydrate';
 import TechStyles from '../../tech-styles';
 import VisitFieldOps from './visit-field-ops';
-import '../../../hq.css';
+import '@/app/hq/hq.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,7 +134,7 @@ export default async function TechVisitPage({
           },
         }}
       />
-      <Link className="hq-back" href="/hq/tech">
+      <Link className="hq-back" href="/field">
         ← Today
       </Link>
 
@@ -231,7 +231,7 @@ export default async function TechVisitPage({
       />
 
       <div className="ee-tech-actions ee-tech-footer-link">
-        <Link className="ee-tech-btn ee-tech-btn-ghost" href={'/hq/tech/jobs/' + visit.jobId}>
+        <Link className="ee-tech-btn ee-tech-btn-ghost" href={'/field/jobs/' + visit.jobId}>
           All your visits on this job
         </Link>
       </div>

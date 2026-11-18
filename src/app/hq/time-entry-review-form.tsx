@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
+import { reviewTimeEntryAction } from '@/app/field/actions';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import {
   allowedReviewDecisions,

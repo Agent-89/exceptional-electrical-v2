@@ -23,7 +23,7 @@ import {
 } from './review-time-entry.ts';
 
 const actionsSource = readFileSync(
-  new URL('../app/hq/tech/actions.ts', import.meta.url),
+  new URL('../app/field/actions.ts', import.meta.url),
   'utf8',
 );
 const formSource = readFileSync(

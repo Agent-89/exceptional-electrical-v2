@@ -8,7 +8,7 @@ import {
 } from '@/lib/perth-day';
 import { JOB_STATUS_LABELS } from '@/lib/job-statuses';
 import TechStyles from '../tech-styles';
-import '../../hq.css';
+import '@/app/hq/hq.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,12 +49,12 @@ export default async function TechJobsPage() {
                 {job.nextVisit ? (
                   <Link
                     className="ee-tech-btn ee-tech-btn-primary"
-                    href={'/hq/tech/visits/' + job.nextVisit.appointmentId}
+                    href={'/field/visits/' + job.nextVisit.appointmentId}
                   >
                     View next visit
                   </Link>
                 ) : null}
-                <Link className="ee-tech-btn ee-tech-btn-secondary" href={'/hq/tech/jobs/' + job.jobId}>
+                <Link className="ee-tech-btn ee-tech-btn-secondary" href={'/field/jobs/' + job.jobId}>
                   View job
                 </Link>
               </div>

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-/** Office HQ installable PWA — distinct from Field (`/hq/tech`). */
+/** Office HQ installable PWA — distinct from Field (`/field`). */
 export function GET() {
   return NextResponse.json(
     {

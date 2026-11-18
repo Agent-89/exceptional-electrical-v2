@@ -1,10 +1,10 @@
 import { requireHqUser, resolveSchedulingStaff } from '@/lib/hq-auth';
 import { canAccessFieldPortal, hqHomePath } from '@/lib/hq-roles';
 import { redirect } from 'next/navigation';
-import { logoutAction } from '../../actions';
+import { logoutAction } from '@/app/hq/actions';
 import InstallFieldApp from '../install-field-app';
 import TechStyles from '../tech-styles';
-import '../../hq.css';
+import '@/app/hq/hq.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +75,7 @@ export default async function TechAccountPage({
       <InstallFieldApp />
 
       <form action={logoutAction} className="ee-tech-logout">
+        <input type="hidden" name="next" value="/field" />
         <button type="submit">Log out</button>
       </form>
     </main>

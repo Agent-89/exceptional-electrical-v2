@@ -3,7 +3,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { assertAdminOps,assertOfficeOps,dbAdmin,requireHqUser } from '@/lib/hq-auth';
-import { canManageOfficeOps, hqHomePath } from '@/lib/hq-roles';
+import { canManageOfficeOps } from '@/lib/hq-roles';
+import { isFieldReturnPath, resolvePostAuthPath, sanitizeReturnPath } from '@/lib/hq-return-path';
 import { isEnquiryStatus } from '@/lib/enquiry-status';
 import { findCustomerMatches } from '@/lib/customer-match';
 import { loadCustomersForMatch } from '@/lib/load-customers-for-match';
@@ -13,14 +14,16 @@ import {
 } from '@/lib/hq-empty-delete-assess';
 
 export async function loginAction(form:FormData){
+ const next=sanitizeReturnPath(String(form.get('next')??''))||null;
+ const loginBase=isFieldReturnPath(next)?'/field/login':'/hq/login';
  const email=String(form.get('email')??'').trim().toLowerCase();
  const password=String(form.get('password')??'');
- if(!email||!password)redirect('/hq/login?error=credentials');
+ if(!email||!password)redirect(`${loginBase}?error=credentials${next?`&next=${encodeURIComponent(next)}`:''}`);
  const db=dbAdmin();
  const {data,error}=await db.auth.signInWithPassword({email,password});
- if(error||!data.session||!data.user)redirect('/hq/login?error=credentials');
+ if(error||!data.session||!data.user)redirect(`${loginBase}?error=credentials${next?`&next=${encodeURIComponent(next)}`:''}`);
  const {data:staff}=await db.from('staff_profiles').select('active,role').eq('user_id',data.user.id).eq('active',true).maybeSingle();
- if(!staff)redirect('/hq/login?error=access');
+ if(!staff)redirect(`${loginBase}?error=access${next?`&next=${encodeURIComponent(next)}`:''}`);
  const remember=form.get('remember')==='on';
  const jar=await cookies();
  const secure=process.env.NODE_ENV==='production';
@@ -29,13 +32,14 @@ export async function loginAction(form:FormData){
  jar.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
  jar.set('ee_hq_access',data.session.access_token,{httpOnly:true,secure,sameSite:'lax',path:'/',maxAge:data.session.expires_in});
  jar.set('ee_hq_refresh',data.session.refresh_token,{httpOnly:true,secure,sameSite:'lax',path:'/',...(remember?{maxAge:60*60*24*30}:{})});
- redirect(hqHomePath(String(staff.role)));
+ redirect(resolvePostAuthPath({role:String(staff.role),next}));
 }
-export async function logoutAction(){
+export async function logoutAction(form?:FormData){
+ const next=sanitizeReturnPath(form?String(form.get('next')??''):'')||null;
  const jar=await cookies();
  jar.set('ee_hq_access','',{path:'/',maxAge:0});jar.set('ee_hq_refresh','',{path:'/',maxAge:0});
  jar.set('ee_hq_access','',{path:'/hq',maxAge:0});jar.set('ee_hq_refresh','',{path:'/hq',maxAge:0});
- redirect('/hq/login');
+ redirect(isFieldReturnPath(next)?'/field/login':'/hq/login');
 }
 export async function updateEnquiryAction(form:FormData){
  const user=await requireHqUser();

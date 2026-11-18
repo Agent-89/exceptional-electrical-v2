@@ -5,7 +5,7 @@ import {
   resumeWorkAction,
   startWorkAction,
   updateVisitProgressAction,
-} from '@/app/hq/tech/actions';
+} from '@/app/field/actions';
 import { listOutboxItems, removeOutboxItem, updateOutboxItem } from './db';
 import { payloadToFormData } from './outbox';
 import type { FieldOutboxItem } from './types';

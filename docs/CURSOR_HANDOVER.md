@@ -45,10 +45,10 @@ Treat `main` at the Production merge SHA as the single source of truth. Do not r
 | Quotes / commercial | `src/app/hq/quotes`, `src/lib/quote-commercial.ts`, `src/lib/job-quotes.ts` | Live (C1 + C1.1 + workspace UX) |
 | Jobs | `src/app/hq/jobs` | Live — detail tabs: Overview · Notes · Visits · Time · Quotes · Invoices · Activity · More |
 | Schedule | `src/app/hq/schedule` | Live (HQ electrician overlap hard-block) |
-| Technician field | `src/app/hq/tech` | Live |
+| Field app | `src/app/field` (`/field`) | Live — separate PWA from office HQ |
 | Timesheets / time review | `src/app/hq/timesheets`, job detail time tab | Live |
 | Google Calendar (Neil) | `src/lib/google-calendar.ts`, `src/app/api/integrations/google-calendar` | Partial — Neil-only read; see §7 |
-| Auth / session | `src/app/hq/login`, `src/app/hq/session`, `src/lib/hq-auth.ts` | Live |
+| Auth / session | `src/app/hq/login`, `src/app/field/login`, `src/app/hq/session`, `src/lib/hq-auth.ts` | Live — surface-aware `next` redirects |
 
 Related design notes: `docs/commercial-multi-quote-c1.md`, `docs/commercial-quote-variations-c11.md`, `docs/tradify-migration-and-google-calendar.md`, `docs/scheduling-overlap-posture.md`, `docs/vapi-receptionist-v1.md`, `docs/DEPLOYMENT.md`, `docs/RELEASE_CANDIDATE.md`.
 
@@ -113,9 +113,9 @@ Repository: `Agent-89/exceptional-electrical-v2`
 |------|----------------|
 | owner / admin | Full office ops + admin-only actions (e.g. quote approve; Google Calendar OAuth connect/disconnect); optional field portal when crew-linked |
 | office | Enquiries, customers, quotes (draft), jobs, schedule, time review; optional field portal when crew-linked |
-| technician | `/hq/tech` Today / jobs / visits / account; no office schedule mutations |
+| technician | `/field` Today / jobs / visits / account; no office schedule mutations |
 
-**Dual surface (office + field):** Office roles (`owner` / `admin` / `office`) keep `/hq` as login home and may open `/hq/tech` (shell **Field** / **HQ** switch) when their Auth user is linked to exactly one active `scheduling_staff` row via `scheduling_staff.auth_user_id`. Visit time-stamping still requires assignment on `job_appointment_staff`. Pure technicians remain blocked from office HQ. Do not conflate `staff_profiles.user_id` with `scheduling_staff.id`.
+**Dual surface (office + field):** Office roles (`owner` / `admin` / `office`) keep `/hq` as login home. Field is a **separate app** at `/field` (own shell, login, PWA) — no Field nav in office HQ, and no HQ nav in Field. Crew-linked office users open Field via the Field home-screen app or `/field` / `/field/login` with the same cookies. Login/session use `resolvePostAuthPath` so Field never dumps office users into HQ after refresh. Legacy `/hq/tech/*` permanently redirects to `/field/*`. Visit time-stamping still requires `scheduling_staff.auth_user_id` link + `job_appointment_staff` assignment. Pure technicians remain blocked from office HQ. Do not conflate `staff_profiles.user_id` with `scheduling_staff.id`.
 
 Crew-link check (read-only; hosted project `udwdurnknweavmksotii`) before expecting Neil/Billy field stamps:
 
@@ -134,12 +134,12 @@ Helpers: `src/lib/hq-roles.ts` (`canAccessFieldPortal`). Prefer server-side gate
 
 ### Field + HQ PWAs (separate installs, same login)
 
-| App | Manifest | `id` | `start_url` | Who |
-|-----|----------|------|-------------|-----|
-| Office HQ | `/hq/manifest.webmanifest` | `/hq` | `/hq` | owner / admin / office |
-| Exceptional Field | `/hq/tech/manifest.webmanifest` | `/hq/tech` | `/hq/tech` | technicians + crew-linked office |
+| App | Manifest | `id` / `scope` | `start_url` | Who |
+|-----|----------|----------------|-------------|-----|
+| Office HQ | `/hq/manifest.webmanifest` | `/hq` / `/hq/` | `/hq` | owner / admin / office |
+| Exceptional Field | `/field/manifest.webmanifest` | `/field` / `/field/` | `/field` | technicians + crew-linked office |
 
-Both use `scope: '/hq/'` so `/hq/login` and session refresh stay inside the installed app. Cookies `ee_hq_access` / `ee_hq_refresh` (`path: '/'`) are shared. Install Field from Account (“Install Field app”) or the browser install UI while on `/hq/tech`; install HQ from office pages.
+Cookies `ee_hq_access` / `ee_hq_refresh` (`path: '/'`) are shared. Field login is `/field/login`; HQ login is `/hq/login`. Session refresh is `/hq/session?next=…` and returns to Field when `next` is under `/field`. **Reinstall** the Field home-screen app after this change (old `/hq/tech` start URL is obsolete; redirects help once). Install Field from Account or browser UI while on `/field`; install HQ from office pages.
 
 **Offline Field MVP** (`src/lib/field-offline/`, Field SW shell cache):
 
@@ -181,7 +181,7 @@ npm run build
 - Unit/integration tests: `src/lib/*.test.ts` via Node test runner.
 - After substantive changes, re-run the four commands above on the release tip.
 - Hosted schema checks: `supabase migration list --linked` and read-only `supabase db query --linked`.
-- **Local HQ preview under OneDrive:** OneDrive can corrupt `.next` (missing CSS / black login). Prefer `powershell -File scripts/dev-hq.ps1`, which junctions `.next` to `%LOCALAPPDATA%\ee-hq-next` and starts a detached Next process so stdin close does not kill the server. Open `http://127.0.0.1:3000/hq/login`.
+- **Local HQ preview under OneDrive:** OneDrive can corrupt `.next` (missing CSS / black login). Prefer `powershell -File scripts/dev-hq.ps1`, which junctions `.next` to `%LOCALAPPDATA%\ee-hq-next` and starts a detached Next process so stdin close does not kill the server. Open `http://127.0.0.1:3000/hq/login` (office) or `http://127.0.0.1:3000/field/login` (Field). After the Field move, **reinstall** the Field PWA from `/field` (legacy `/hq/tech` redirects once).
 
 ## 9. Incident response and rollback
 
