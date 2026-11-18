@@ -11,7 +11,7 @@ import {
 } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { reviewTimeEntryAction } from '@/app/hq/tech/actions';
+import { reviewTimeEntryAction } from '@/app/field/actions';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import { jobLabourTotals, type JobDetailTimeEntry } from '@/lib/job-detail-summary';
 import {

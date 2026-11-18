@@ -10,7 +10,7 @@ import {
 } from '@/lib/perth-day';
 import { JOB_STATUS_LABELS } from '@/lib/job-statuses';
 import TechStyles from '../../tech-styles';
-import '../../../hq.css';
+import '@/app/hq/hq.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +25,7 @@ export default async function TechJobPage({ params }: { params: Promise<{ id: st
   return (
     <main className="ee-tech">
       <TechStyles />
-      <Link className="hq-back" href="/hq/tech/jobs">
+      <Link className="hq-back" href="/field/jobs">
         ← My jobs
       </Link>
       <header className="ee-tech-head">
@@ -84,7 +84,7 @@ export default async function TechJobPage({ params }: { params: Promise<{ id: st
             </span>
             {visit.visitNotes ? <p>{visit.visitNotes}</p> : null}
             <div className="ee-tech-actions">
-              <Link className="ee-tech-btn ee-tech-btn-primary" href={'/hq/tech/visits/' + visit.appointmentId}>
+              <Link className="ee-tech-btn ee-tech-btn-primary" href={'/field/visits/' + visit.appointmentId}>
                 Open visit
               </Link>
             </div>

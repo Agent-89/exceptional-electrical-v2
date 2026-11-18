@@ -182,7 +182,7 @@ export default function TechDayCalendar({
                 return (
                   <Link
                     key={v.appointmentId}
-                    href={'/hq/tech/visits/' + v.appointmentId}
+                    href={'/field/visits/' + v.appointmentId}
                     className="ee-tech-cal-block"
                     style={{
                       top: ((start - window.startMinutes) / 60) * HOUR_HEIGHT + 2,

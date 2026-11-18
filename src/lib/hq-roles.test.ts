@@ -37,7 +37,7 @@ describe('hq roles', () => {
   });
 
   it('routes technicians to the tech Today home', () => {
-    assert.equal(hqHomePath('technician'), '/hq/tech');
+    assert.equal(hqHomePath('technician'), '/field');
     assert.equal(hqHomePath('office'), '/hq');
     assert.equal(hqHomePath('admin'), '/hq');
     assert.equal(isTechnicianRole('technician'), true);

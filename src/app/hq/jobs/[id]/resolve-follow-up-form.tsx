@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { resolveFollowUpAction } from '@/app/hq/tech/actions';
+import { resolveFollowUpAction } from '@/app/field/actions';
 
 type LinkOption = {
   id: string;

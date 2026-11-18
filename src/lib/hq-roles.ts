@@ -36,25 +36,23 @@ export function canManageAdminOps(role: string): boolean {
 }
 
 /**
- * Field portal (`/hq/tech`) entry: technicians, plus office roles who may also
+ * Field portal (`/field`) entry: technicians, plus office roles who may also
  * crew visits (same login dual surface). Crew link + visit assignment still required.
  */
 export function canAccessFieldPortal(role: string): boolean {
   return isTechnicianRole(role) || isOfficeRole(role);
 }
 
+/** Default post-login home by role (Field for technicians, HQ for office). */
 export function hqHomePath(role: string): string {
-  return isTechnicianRole(role) ? '/hq/tech' : '/hq';
+  return isTechnicianRole(role) ? '/field' : '/hq';
 }
 
 export const TECH_NAV_ITEMS = [
-  { href: '/hq/tech', label: 'Today' },
-  { href: '/hq/tech/jobs', label: 'My Jobs' },
-  { href: '/hq/tech/account', label: 'Account' },
+  { href: '/field', label: 'Today' },
+  { href: '/field/jobs', label: 'My Jobs' },
+  { href: '/field/account', label: 'Account' },
 ] as const;
-
-/** Field PWA switch back to office HQ (shell adds this for office roles on /hq/tech). */
-export const HQ_NAV_ITEM = { href: '/hq', label: 'HQ' } as const;
 
 export const OFFICE_NAV_ITEMS = [
   { href: '/hq', label: 'Home' },

@@ -19,7 +19,7 @@ import { JOB_STATUS_LABELS } from '@/lib/job-statuses';
 import TechDayCalendar from './tech-day-calendar';
 import { HydrateTodaySnapshot } from './field-offline-hydrate';
 import TechStyles from './tech-styles';
-import '../hq.css';
+import '@/app/hq/hq.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,9 +98,9 @@ export default async function TechTodayPage({
         todayKey={todayKey}
         visits={calendarVisits}
         dayLabel={dayLabel}
-        prevHref={'/hq/tech?day=' + shiftPerthDayKey(selectedDay, -1)}
-        nextHref={'/hq/tech?day=' + shiftPerthDayKey(selectedDay, 1)}
-        todayHref="/hq/tech"
+        prevHref={'/field?day=' + shiftPerthDayKey(selectedDay, -1)}
+        nextHref={'/field?day=' + shiftPerthDayKey(selectedDay, 1)}
+        todayHref="/field"
       />
 
       <section className="ee-tech-section" aria-labelledby="tech-upcoming-title">
@@ -125,7 +125,7 @@ export default async function TechTodayPage({
               <div className="ee-tech-actions">
                 <Link
                   className="ee-tech-btn ee-tech-btn-primary"
-                  href={'/hq/tech/visits/' + visit.appointmentId}
+                  href={'/field/visits/' + visit.appointmentId}
                 >
                   Open visit
                 </Link>

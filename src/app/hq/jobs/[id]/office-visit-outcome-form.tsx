@@ -6,7 +6,7 @@ import HqToast, { type HqToastMessage } from '@/app/hq/hq-toast';
 import {
   officeUpdateVisitOutcomeAction,
   type TechFieldActionResult,
-} from '@/app/hq/tech/actions';
+} from '@/app/field/actions';
 import {
   VISIT_OUTCOME_LABELS,
   VISIT_OUTCOME_STATUSES,

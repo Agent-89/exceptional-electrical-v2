@@ -478,7 +478,7 @@
  .hq-qw-view-switch>span,.hq-qw-view-switch>a{flex:1;text-align:center}
 }
 /* Office/admin HQ is always light — do not follow system dark mode here.
-   Technician navy/dark styling lives under /hq/tech (tech-styles.tsx) only. */
+   Technician navy/dark styling lives under /field (tech-styles.tsx) only. */
 
 /* Phase 2D: persistent PWA navigation shell */
 html:has(.hq-shell),body:has(.hq-shell){width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none}
