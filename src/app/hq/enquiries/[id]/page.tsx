@@ -4,10 +4,11 @@ import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 import {canManageAdminOps} from '@/lib/hq-roles';
 import {assessEnquiryEmptyDelete} from '@/lib/hq-empty-delete-assess';
 import {enquiryUrgencyLabel,resolveEnquiryUrgency} from '@/lib/enquiry-urgency';
-import {enquiryStatusLabel,normalizeEnquiryStatus} from '@/lib/enquiry-status';
+import {normalizeEnquiryStatus} from '@/lib/enquiry-status';
 import EnquiryWorkspace from './enquiry-workspace';
 import ConvertCustomer from './convert-customer';
 import EnquiryDangerActions from './enquiry-danger-actions';
+import EnquiryStatusPill from './enquiry-status-pill';
 import '../../hq.css';
 export const dynamic='force-dynamic';
 function readMeta(message:string,key:string){
@@ -62,7 +63,7 @@ export default async function EnquiryDetail({params}:{params:Promise<{id:string}
  const status=normalizeEnquiryStatus(e.status);
  return <main className="hq-detail"><div className="hq-detail-inner">
   <Link href="/hq/enquiries" className="hq-back">← Back to enquiries</Link>
-  <div className="hq-detail-head"><div><div className="hq-kicker">CUSTOMER ENQUIRY · {'ENQ-'+String(e.reference_number).padStart(4,'0')}</div><div className="hq-detail-labels"><span className="hq-detail-type">{requestLabel}</span>{hasSecondaryConcern&&<span className="hq-detail-type hq-detail-type-warning">Customer concern</span>}</div><h1>{e.name||'Unknown caller'}</h1><p>{serviceDisplay}{e.suburb?' · '+e.suburb:''} · Received {received}</p></div><div className="hq-detail-head-trail"><span className={'hq-status hq-status-'+status}>{enquiryStatusLabel(status)}</span><EnquiryDangerActions enquiryId={e.id} canDelete={canManageAdminOps(user.role)} deleteEligible={emptyDelete.eligible} deleteBlockers={emptyDelete.blockers}/></div></div>
+  <div className="hq-detail-head"><div><div className="hq-kicker">CUSTOMER ENQUIRY · {'ENQ-'+String(e.reference_number).padStart(4,'0')}</div><div className="hq-detail-labels"><span className="hq-detail-type">{requestLabel}</span>{hasSecondaryConcern&&<span className="hq-detail-type hq-detail-type-warning">Customer concern</span>}</div><h1>{e.name||'Unknown caller'}</h1><p>{serviceDisplay}{e.suburb?' · '+e.suburb:''} · Received {received}</p></div><div className="hq-detail-head-trail"><EnquiryStatusPill enquiryId={e.id} initialStatus={status}/><EnquiryDangerActions enquiryId={e.id} canDelete={canManageAdminOps(user.role)} deleteEligible={emptyDelete.eligible} deleteBlockers={emptyDelete.blockers}/></div></div>
   <div className="hq-detail-actions hq-detail-actions-compact">
    <Link className="hq-detail-action-secondary" href={"/hq/quotes/new?enquiry="+e.id}>+ Create quote</Link>
    {phone&&<a className="hq-detail-action-primary" href={'tel:'+phone}>Call customer</a>}

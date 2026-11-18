@@ -60,15 +60,26 @@ describe('hq empty delete eligibility', () => {
     assert.ok(result.blockers.some((b) => /commercial current/i.test(b)));
   });
 
-  it('blocks enquiries linked to customers or quotes', () => {
+  it('allows enquiries with no customer, quote, or job links', () => {
+    const result = evaluateEnquiryEmptyDelete({
+      customerId: null,
+      linkedQuoteCount: 0,
+      linkedJobCount: 0,
+    });
+    assert.equal(result.eligible, true);
+    assert.deepEqual(result.blockers, []);
+  });
+
+  it('blocks enquiries linked to customers, quotes, or jobs', () => {
     const result = evaluateEnquiryEmptyDelete({
       customerId: 'cust-1',
       linkedQuoteCount: 1,
-      meaningfulActivityCount: 0,
+      linkedJobCount: 2,
     });
     assert.equal(result.eligible, false);
     assert.ok(result.blockers.some((b) => /customer/i.test(b)));
     assert.ok(result.blockers.some((b) => /quote/i.test(b)));
+    assert.ok(result.blockers.some((b) => /2 linked jobs/i.test(b)));
   });
 
   it('allows empty customers with no related records', () => {

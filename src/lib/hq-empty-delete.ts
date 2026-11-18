@@ -26,7 +26,7 @@ export type QuoteEmptyFacts = {
 export type EnquiryEmptyFacts = {
   customerId: string | null;
   linkedQuoteCount: number;
-  meaningfulActivityCount: number;
+  linkedJobCount: number;
 };
 
 export type CustomerEmptyFacts = {
@@ -82,13 +82,13 @@ export function evaluateQuoteEmptyDelete(facts: QuoteEmptyFacts): EmptyDeleteVer
   return verdict([...blockers, ...counted]);
 }
 
-/** Enquiry hard-delete only when never converted and unused. */
+/** Enquiry hard-delete only when never linked to customer, quote, or job. */
 export function evaluateEnquiryEmptyDelete(facts: EnquiryEmptyFacts): EmptyDeleteVerdict {
   const blockers: string[] = [];
   if (facts.customerId) blockers.push('Linked to a customer');
   const counted = [
     countBlocker(facts.linkedQuoteCount, 'linked quote'),
-    countBlocker(facts.meaningfulActivityCount, 'activity record'),
+    countBlocker(facts.linkedJobCount, 'linked job'),
   ].filter((item): item is string => Boolean(item));
   return verdict([...blockers, ...counted]);
 }

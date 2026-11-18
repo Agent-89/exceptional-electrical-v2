@@ -94,16 +94,14 @@ export async function assessEnquiryEmptyDelete(
     .eq('id',enquiryId)
     .maybeSingle();
   if(error||!enquiry)throw new Error('Enquiry not found.');
-  const [linkedQuoteCount,{count:activityTotal},{count:createdOnly}]=await Promise.all([
+  const [linkedQuoteCount,linkedJobCount]=await Promise.all([
     countRows(db,'quotes','enquiry_id',enquiryId),
-    db.from('enquiry_activity').select('id',{count:'exact',head:true}).eq('enquiry_id',enquiryId),
-    db.from('enquiry_activity').select('id',{count:'exact',head:true}).eq('enquiry_id',enquiryId).in('action',['created','received']),
+    countRows(db,'jobs','enquiry_id',enquiryId),
   ]);
-  const meaningfulActivityCount=Math.max(0,(activityTotal??0)-(createdOnly??0));
   return evaluateEnquiryEmptyDelete({
     customerId:enquiry.customer_id?String(enquiry.customer_id):null,
     linkedQuoteCount,
-    meaningfulActivityCount,
+    linkedJobCount,
   });
 }
 

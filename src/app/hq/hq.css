@@ -128,6 +128,15 @@
 .hq-detail-head p{margin:0;color:#718294;font-size:13px}
 .hq-detail-head>.hq-status{flex-shrink:0}
 .hq-detail-head-trail{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.hq-status-pill{position:relative;flex-shrink:0}
+.hq-status-pill-trigger{display:inline-flex;align-items:center;gap:6px;border:0;cursor:pointer;font:inherit}
+.hq-status-pill-trigger:disabled{opacity:.7;cursor:default}
+.hq-status-pill-trigger svg{flex-shrink:0;opacity:.75}
+.hq-status-pill-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:30;min-width:148px;margin:0;padding:6px;list-style:none;background:#fff;border:1px solid #d7e2ea;border-radius:10px;box-shadow:0 12px 28px rgba(8,30,48,.12)}
+.hq-status-pill-option{display:block;width:100%;border:0;background:transparent;color:#143349;text-align:left;padding:9px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer}
+.hq-status-pill-option:hover,.hq-status-pill-option:focus-visible{background:#eef5fb;outline:none}
+.hq-status-pill-option.is-selected{background:#e5f3ff;color:#0871c4}
+.hq-status-pill-feedback{position:absolute;top:calc(100% + 6px);right:0;margin:0;white-space:nowrap;font-size:11px;color:#9d3030;background:#fff0f0;border:1px solid #f0d4d4;border-radius:6px;padding:5px 8px;z-index:31}
 .hq-detail-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:23px 0}
 .hq-detail-action-primary,.hq-detail-action-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:10px 17px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:800}
 .hq-detail-action-primary{background:#1689ed;color:#fff}
