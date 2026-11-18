@@ -5,6 +5,7 @@ import {
   deleteHqPushSubscription,
   getHqPushSubscriptionStatus,
   saveHqPushSubscription,
+  sendHqPushTestAlert,
 } from './push-actions';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -48,6 +49,7 @@ type Status = 'loading' | 'unsupported' | 'needs_install' | 'off' | 'on' | 'disa
 export default function HqPushOptIn() {
   const [status, setStatus] = useState<Status>('loading');
   const [message, setMessage] = useState('');
+  const [needsRebind, setNeedsRebind] = useState(false);
   const [pending, startTransition] = useTransition();
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() || '';
 
@@ -75,9 +77,21 @@ export default function HqPushOptIn() {
         }
         const registration = await withTimeout(navigator.serviceWorker.ready, 8000);
         const existing = await registration.pushManager.getSubscription();
-        if (!cancelled) setStatus(existing || server.subscribed ? 'on' : 'off');
+        if (cancelled) return;
+        // Only treat this device as on when PushManager still has a live subscription.
+        // A DB row alone can be a stale Apple endpoint that never reaches this install.
+        if (existing) {
+          setNeedsRebind(false);
+          setStatus('on');
+        } else {
+          setNeedsRebind(server.subscribed);
+          setStatus('off');
+        }
       } catch {
-        if (!cancelled) setStatus('off');
+        if (!cancelled) {
+          setNeedsRebind(false);
+          setStatus('off');
+        }
       }
     })();
     return () => {
@@ -113,8 +127,9 @@ export default function HqPushOptIn() {
           setMessage(result.error);
           return;
         }
+        setNeedsRebind(false);
         setStatus('on');
-        setMessage('Notifications enabled on this device.');
+        setMessage('Notifications enabled on this device. Lock the phone and tap Send test alert.');
       } catch (error) {
         console.warn('HQ push subscribe failed', error);
         setMessage('Could not enable notifications on this device.');
@@ -132,11 +147,28 @@ export default function HqPushOptIn() {
           await deleteHqPushSubscription(subscription.endpoint);
           await subscription.unsubscribe();
         }
+        setNeedsRebind(false);
         setStatus('off');
         setMessage('Notifications turned off on this device.');
       } catch {
         setMessage('Could not turn off notifications.');
       }
+    });
+  };
+
+  const sendTest = () => {
+    setMessage('');
+    startTransition(async () => {
+      const result = await sendHqPushTestAlert();
+      if (!result.ok) {
+        setMessage(result.error);
+        if (result.error.toLowerCase().includes('stale') || result.error.toLowerCase().includes('re-enable')) {
+          setNeedsRebind(true);
+          setStatus('off');
+        }
+        return;
+      }
+      setMessage('Test alert sent. Check the lock screen / Notification Center (leave HQ in the background).');
     });
   };
 
@@ -158,15 +190,22 @@ export default function HqPushOptIn() {
           <p>
             {status === 'on'
               ? 'This device will notify you when website or phone enquiries arrive.'
-              : 'Get a push when a new website or phone enquiry lands in HQ.'}
+              : needsRebind
+                ? 'This device needs to re-enable alerts before pushes can arrive.'
+                : 'Get a push when a new website or phone enquiry lands in HQ.'}
           </p>
           {status === 'on' ? (
-            <button type="button" disabled={pending} onClick={disable}>
-              Turn off on this device
-            </button>
+            <>
+              <button type="button" disabled={pending} onClick={sendTest}>
+                Send test alert
+              </button>
+              <button type="button" disabled={pending} onClick={disable}>
+                Turn off on this device
+              </button>
+            </>
           ) : (
             <button type="button" disabled={pending} onClick={enable}>
-              Enable on this device
+              {needsRebind ? 'Re-enable on this device' : 'Enable on this device'}
             </button>
           )}
         </>
@@ -176,7 +215,7 @@ export default function HqPushOptIn() {
         .hq-push-opt-in{flex-shrink:0;margin-top:14px;padding-top:14px;border-top:1px solid #e1eaf1}
         .hq-push-opt-in strong{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#607e93}
         .hq-push-opt-in p{margin:8px 0 0;font-size:13px;line-height:1.4;color:#476579;font-weight:500}
-        .hq-push-opt-in button{margin-top:10px;border:1px solid #d1e1ef;background:#fff;border-radius:8px;padding:8px 11px;color:#0877c7;font-size:13px;font-weight:700;cursor:pointer}
+        .hq-push-opt-in button{margin-top:10px;margin-right:8px;border:1px solid #d1e1ef;background:#fff;border-radius:8px;padding:8px 11px;color:#0877c7;font-size:13px;font-weight:700;cursor:pointer}
         .hq-push-opt-in button:disabled{opacity:.6;cursor:default}
         .hq-push-opt-in small{display:block;margin-top:8px;color:#607e93;font-size:12px}
       `}</style>
