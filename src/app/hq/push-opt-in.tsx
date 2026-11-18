@@ -24,6 +24,22 @@ function isStandaloneDisplay(): boolean {
   );
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 type Status = 'loading' | 'unsupported' | 'needs_install' | 'off' | 'on' | 'disabled';
 
 /**
@@ -57,9 +73,9 @@ export default function HqPushOptIn() {
           setStatus('needs_install');
           return;
         }
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await withTimeout(navigator.serviceWorker.ready, 8000);
         const existing = await registration.pushManager.getSubscription();
-        setStatus(existing || server.subscribed ? 'on' : 'off');
+        if (!cancelled) setStatus(existing || server.subscribed ? 'on' : 'off');
       } catch {
         if (!cancelled) setStatus('off');
       }
@@ -78,7 +94,7 @@ export default function HqPushOptIn() {
           setMessage('Notifications were blocked for this device.');
           return;
         }
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await withTimeout(navigator.serviceWorker.ready, 8000);
         const subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
@@ -110,7 +126,7 @@ export default function HqPushOptIn() {
     setMessage('');
     startTransition(async () => {
       try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await withTimeout(navigator.serviceWorker.ready, 8000);
         const subscription = await registration.pushManager.getSubscription();
         if (subscription) {
           await deleteHqPushSubscription(subscription.endpoint);
@@ -124,55 +140,40 @@ export default function HqPushOptIn() {
     });
   };
 
-  if (status === 'loading') return null;
-  if (status === 'unsupported') {
-    return (
-      <div className="hq-push-opt-in">
-        <strong>Enquiry alerts</strong>
-        <p>This browser does not support push notifications.</p>
-      </div>
-    );
-  }
-  if (status === 'disabled') {
-    return (
-      <div className="hq-push-opt-in">
-        <strong>Enquiry alerts</strong>
-        <p>Push alerts are not enabled on this environment yet.</p>
-      </div>
-    );
-  }
-  if (status === 'needs_install') {
-    return (
-      <div className="hq-push-opt-in">
-        <strong>Enquiry alerts</strong>
-        <p>
-          On iPhone/iPad, add HQ to the Home Screen first, then open the installed app to enable
-          push alerts.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="hq-push-opt-in">
       <strong>Enquiry alerts</strong>
-      <p>
-        {status === 'on'
-          ? 'This device will notify you when website or phone enquiries arrive.'
-          : 'Get a push when a new website or phone enquiry lands in HQ.'}
-      </p>
-      {status === 'on' ? (
-        <button type="button" disabled={pending} onClick={disable}>
-          Turn off on this device
-        </button>
+      {status === 'loading' ? (
+        <p>Checking notification settings…</p>
+      ) : status === 'unsupported' ? (
+        <p>This browser does not support push notifications.</p>
+      ) : status === 'disabled' ? (
+        <p>Push alerts are not enabled on this environment yet.</p>
+      ) : status === 'needs_install' ? (
+        <p>
+          On iPhone/iPad, open the installed Home Screen HQ app (not Safari) to enable push alerts.
+        </p>
       ) : (
-        <button type="button" disabled={pending} onClick={enable}>
-          Enable on this device
-        </button>
+        <>
+          <p>
+            {status === 'on'
+              ? 'This device will notify you when website or phone enquiries arrive.'
+              : 'Get a push when a new website or phone enquiry lands in HQ.'}
+          </p>
+          {status === 'on' ? (
+            <button type="button" disabled={pending} onClick={disable}>
+              Turn off on this device
+            </button>
+          ) : (
+            <button type="button" disabled={pending} onClick={enable}>
+              Enable on this device
+            </button>
+          )}
+        </>
       )}
       {message ? <small>{message}</small> : null}
       <style>{`
-        .hq-push-opt-in{margin-top:14px;padding-top:14px;border-top:1px solid #e1eaf1}
+        .hq-push-opt-in{flex-shrink:0;margin-top:14px;padding-top:14px;border-top:1px solid #e1eaf1}
         .hq-push-opt-in strong{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#607e93}
         .hq-push-opt-in p{margin:8px 0 0;font-size:13px;line-height:1.4;color:#476579;font-weight:500}
         .hq-push-opt-in button{margin-top:10px;border:1px solid #d1e1ef;background:#fff;border-radius:8px;padding:8px 11px;color:#0877c7;font-size:13px;font-weight:700;cursor:pointer}

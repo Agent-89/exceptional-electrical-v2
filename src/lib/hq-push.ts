@@ -104,12 +104,22 @@ async function deleteSubscription(id: string) {
  */
 export async function bestEffortNotifyNewEnquiry(payload: EnquiryPushPayload): Promise<void> {
   try {
-    if (!pushEnabled() || !configureVapid()) return;
+    if (!pushEnabled()) {
+      console.info('hq_push skipped: HQ_PUSH_ENABLED is not 1');
+      return;
+    }
+    if (!configureVapid()) {
+      console.info('hq_push skipped: VAPID env incomplete');
+      return;
+    }
     if (!/^[0-9a-f-]{36}$/i.test(payload.id)) return;
 
     const notification = buildNotification(payload);
     const subscriptions = await loadOfficeSubscriptions();
-    if (subscriptions.length === 0) return;
+    if (subscriptions.length === 0) {
+      console.info('hq_push skipped: no office subscriptions');
+      return;
+    }
 
     await Promise.all(
       subscriptions.map(async (sub) => {

@@ -540,7 +540,7 @@ html{scroll-padding-top:calc(var(--hq-shell-header-height,76px) + 16px);scroll-p
 .hq-shell-nav-badge{position:absolute;top:-6px;right:-10px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#e11d48;color:#fff;font-size:9px;font-weight:800;line-height:16px;text-align:center;box-shadow:0 0 0 2px #fff}
 .hq-shell-drawer-badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#e11d48;color:#fff;font-size:10px;font-weight:800;line-height:18px;text-align:center}
 .hq-shell-scrim{position:fixed;inset:0;background:#071c2b80;z-index:79;border:0}
-.hq-shell-drawer{position:fixed;inset:0 auto 0 0;width:min(330px,88vw);z-index:80;background:#fff;box-shadow:15px 0 35px #081e3040;padding:calc(22px + env(safe-area-inset-top)) 22px 22px;display:flex;flex-direction:column}
+.hq-shell-drawer{position:fixed;inset:0 auto 0 0;width:min(330px,88vw);z-index:80;background:#fff;box-shadow:15px 0 35px #081e3040;padding:calc(22px + env(safe-area-inset-top)) 22px calc(22px + env(safe-area-inset-bottom));display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .hq-shell-drawer-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;color:#102b40}
 .hq-shell-drawer-heading button{border:0;background:#eef5fa;border-radius:9px;padding:9px 12px}
 .hq-shell-drawer nav{display:grid;gap:5px;margin-top:30px}
