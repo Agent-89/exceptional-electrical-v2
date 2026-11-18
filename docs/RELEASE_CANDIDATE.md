@@ -75,7 +75,7 @@ Some extended items may have been exercised earlier on Preview or prior releases
 
 1. Confirm Vercel env vars (names in `docs/CURSOR_HANDOVER.md`; no secrets in Git).
 2. Use **fictional** customers, jobs, quotes only.
-3. Avoid: Xero, Tradify writes, Vapi live calls, real customer communications, Google Calendar write-back.
+3. Avoid: Xero, Tradify writes, business-number Vapi forward / real customer communications, Google Calendar write-back. (Test-number Vapi intake may already write fictional enquiries via hosted `receive-vapi-enquiry`.)
 
 ---
 

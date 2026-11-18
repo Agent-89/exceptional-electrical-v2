@@ -33,7 +33,7 @@ Premium and modern, using the existing Exceptional Electrical logo and its elect
 
 ## Operational notes
 
-The original `Agent-89/exceptional-electrical` repository remains untouched and is reference-only. The previous Vapi webhook points to the old Supabase project until deliberately reconfigured and tested. Never publish unverified phone numbers, licences, reviews, guarantees or emergency-service claims.
+The original `Agent-89/exceptional-electrical` repository remains untouched and is reference-only. Vapi intake for this project is the hosted Edge Function `receive-vapi-enquiry` (Git: `supabase/functions/receive-vapi-enquiry`). Never publish unverified phone numbers, licences, reviews, guarantees or emergency-service claims.
 
 ## Cursor handover
 
