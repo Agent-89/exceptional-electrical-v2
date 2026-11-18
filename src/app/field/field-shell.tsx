@@ -26,6 +26,25 @@ export default function FieldShell({
   const pathname = usePathname();
   const items = fieldItems;
   const [menu, setMenu] = useState(false);
+  const [showStartup, setShowStartup] = useState(true);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setShowStartup(false);
+      return;
+    }
+    try {
+      if (sessionStorage.getItem('ee-field-startup-seen')) {
+        setShowStartup(false);
+        return;
+      }
+      sessionStorage.setItem('ee-field-startup-seen', '1');
+    } catch {
+      /* Still show the opening on storage-restricted browsers. */
+    }
+    const timer = setTimeout(() => setShowStartup(false), 1400);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => setMenu(false), [pathname]);
 
@@ -40,6 +59,25 @@ export default function FieldShell({
 
   return (
     <div className="hq-shell hq-shell-tech">
+      {showStartup && (
+        <div
+          className="hq-startup field-startup"
+          role="status"
+          aria-label="Opening Exceptional Electrical Field"
+          onClick={() => setShowStartup(false)}
+        >
+          <div className="hq-startup-brand">
+            <div className="hq-startup-mark">
+              <Image className="hq-startup-outline" src={HQ_LOGO} alt="" width={240} height={80} priority />
+              <div className="hq-startup-fill" aria-hidden="true">
+                <Image src={HQ_LOGO} alt="" width={240} height={80} priority />
+              </div>
+            </div>
+            <strong>EXCEPTIONAL ELECTRICAL</strong>
+            <span>FIELD</span>
+          </div>
+        </div>
+      )}
       <header className="hq-shell-header">
         <button
           type="button"

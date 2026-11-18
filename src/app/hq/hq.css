@@ -539,10 +539,27 @@ html{scroll-padding-top:calc(var(--hq-shell-header-height,76px) + 16px);scroll-p
 .hq-shell-content .hq-qw-footer .hq-qw-footer-actions{min-width:0}
 @media(max-width:650px){.hq-shell{--hq-shell-header-height:68px;--hq-shell-bottom-height:66px}.hq-shell-header{grid-template-columns:48px minmax(0,1fr) 48px;padding:0 12px}.hq-shell-logo{width:min(190px,100%)}.hq-shell-logo img{max-height:52px}.hq-shell-content .hq-content{padding-top:24px}.hq-shell-content .hq-detail{padding-top:20px}.hq-shell-content .hq-detail-inner{max-width:100%}}
 /* Field PWA: clear Dynamic Island under black-translucent + viewport-fit=cover */
-.hq-shell-tech{--hq-shell-header-offset:calc(var(--hq-shell-header-height) + env(safe-area-inset-top,0px));scroll-padding-top:calc(var(--hq-shell-header-offset) + 16px)}
-.hq-shell-tech .hq-shell-header{height:var(--hq-shell-header-offset);padding-top:env(safe-area-inset-top,0px)}
-.hq-shell-tech .hq-shell-content{min-height:calc(100dvh - var(--hq-shell-header-offset))}
-@media(min-width:900px){.hq-shell-bottom{max-width:640px;left:50%;transform:translateX(-50%);border:1px solid #dce7ef;border-bottom:0;border-radius:16px 16px 0 0}}
+.hq-shell-tech{--hq-shell-header-offset:calc(var(--hq-shell-header-height) + env(safe-area-inset-top,0px));scroll-padding-top:calc(var(--hq-shell-header-offset) + 16px);background:#0d1822;color:#eef4fa;color-scheme:dark}
+.hq-shell-tech .hq-shell-header{height:var(--hq-shell-header-offset);padding-top:env(safe-area-inset-top,0px);background:#071625;border-bottom-color:#2a3f52;box-shadow:0 1px 4px #00000040}
+.hq-shell-tech .hq-shell-content{min-height:calc(100dvh - var(--hq-shell-header-offset));background:#0d1822}
+.hq-shell-tech .hq-shell-icon-button{color:#c9d8e6}
+.hq-shell-tech .hq-shell-icon-button:hover{background:#1b3144}
+.hq-shell-tech .hq-shell-logo img,.hq-shell-tech .hq-shell-drawer-brand img{filter:brightness(0) invert(1)}
+.hq-shell-tech .hq-shell-bottom{background:#071625;border-top-color:#2a3f52;box-shadow:0 -3px 14px #00000040}
+.hq-shell-tech .hq-shell-bottom a{color:#9ab6c7}
+.hq-shell-tech .hq-shell-bottom a[aria-current=page]{color:#6eb8f0;background:#1b3144}
+.hq-shell-tech .hq-shell-drawer{background:#152433;box-shadow:15px 0 35px #00000066;color:#eef4fa}
+.hq-shell-tech .hq-shell-drawer-heading{color:#eef4fa}
+.hq-shell-tech .hq-shell-drawer-heading button{background:#1b3144;color:#c9d8e6}
+.hq-shell-tech .hq-shell-drawer-brand span{color:#9ec9e8}
+.hq-shell-tech .hq-shell-drawer nav a{color:#c9d8e6}
+.hq-shell-tech .hq-shell-drawer nav a[aria-current=page]{background:#1b3144;color:#6eb8f0}
+.hq-shell-tech .hq-shell-logout-form{border-top-color:#2a3f52}
+.hq-shell-tech .hq-shell-logout{color:#f0a8a8}
+.hq-shell-tech .hq-shell-logout:hover,.hq-shell-tech .hq-shell-logout:focus-visible{background:#3a1f22}
+.hq-shell-tech .hq-shell-scrim{background:#071c2bcc}
+.hq-shell-tech input,.hq-shell-tech textarea,.hq-shell-tech select,.hq-shell-tech button,.hq-shell-tech dialog{color-scheme:dark}
+@media(min-width:900px){.hq-shell-bottom{max-width:640px;left:50%;transform:translateX(-50%);border:1px solid #dce7ef;border-bottom:0;border-radius:16px 16px 0 0}.hq-shell-tech .hq-shell-bottom{border-color:#2a3f52}}
 
 /* Phase 2E: action-first HQ home dashboard */
 .hq-dashboard{min-height:100%;background:#f5f8fb;color:#102b40}
@@ -777,6 +794,14 @@ html{scroll-padding-top:calc(var(--hq-shell-header-height,76px) + 16px);scroll-p
 @keyframes hq-charge-fade{to{opacity:0}}
 @keyframes hq-wordmark-in{to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.hq-startup{display:none}}
+
+/* Field PWA startup: inverse of HQ (dark blue + white logo). */
+.field-startup{background:#071625;color:#fff}
+.field-startup .hq-startup-mark .hq-startup-outline{filter:brightness(0) invert(1);opacity:.22}
+.field-startup .hq-startup-fill img{filter:brightness(0) invert(1)}
+.field-startup .hq-startup-charge{background:#fff;box-shadow:0 0 12px #ffffff88}
+.field-startup .hq-startup-spark{color:#fff}
+.field-startup .hq-startup-brand>span{color:#9ec9e8}
 
 /* Align drawer section icons with the bottom navigation. */
 .hq-shell-drawer nav a{display:flex;align-items:center;gap:12px}
