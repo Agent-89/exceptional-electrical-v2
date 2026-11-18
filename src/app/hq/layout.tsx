@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import HQPwaRegister from './pwa-register';
 import HqShell from './hq-shell';
-import { hqUser } from '@/lib/hq-auth';
+import { dbAdmin, hqUser } from '@/lib/hq-auth';
 import './hq.css';
 
 export const metadata: Metadata = {
@@ -30,10 +30,20 @@ export const viewport: Viewport = {
 
 export default async function HQLayout({ children }: { children: React.ReactNode }) {
   const user = await hqUser();
+  let newEnquiryCount = 0;
+  if (user) {
+    const { count } = await dbAdmin()
+      .from('enquiries')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'new');
+    newEnquiryCount = count ?? 0;
+  }
   return (
     <>
       <HQPwaRegister />
-      <HqShell role={user?.role ?? null}>{children}</HqShell>
+      <HqShell role={user?.role ?? null} newEnquiryCount={newEnquiryCount}>
+        {children}
+      </HqShell>
     </>
   );
 }
