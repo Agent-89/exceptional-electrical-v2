@@ -3,13 +3,17 @@ import {requireOfficeUser,dbAdmin} from '@/lib/hq-auth';
 import {
   formatAudFromCents,
   formatJobRef,
+  INVOICE_OVERDUE_STATUSES,
   invoiceAmountDueCents,
   invoiceStatusLabel,
   invoiceTotalsCents,
+  isInvoiceOverdue,
+  isInvoiceOverdueStatus,
   isInvoiceStatus,
   isMissingInvoiceSchemaError,
   missingInvoiceSchemaMessage,
 } from '@/lib/invoice-commercial';
+import {perthDayKey} from '@/lib/perth-day';
 import '../hq.css';
 
 export const dynamic='force-dynamic';
@@ -46,6 +50,7 @@ const STATUS_FILTERS=[
   {id:'approved',label:'Approved'},
   {id:'sent',label:'Sent'},
   {id:'part_paid',label:'Part paid'},
+  {id:'overdue',label:'Overdue'},
   {id:'paid',label:'Paid'},
   {id:'void',label:'Void'},
 ] as const;
@@ -68,12 +73,11 @@ function sanitizeSearch(raw:string){
   return raw.replace(/[%_,]/g,' ').slice(0,80).trim();
 }
 
-function dueLabel(due:string|null,status:string){
-  if(!due||status==='paid'||status==='void')return null;
-  const today=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Perth'});
-  const days=Math.round((Date.parse(due+'T00:00:00+08:00')-Date.parse(today+'T00:00:00+08:00'))/86400000);
+function dueLabel(due:string|null,status:string,todayKey:string){
+  if(!due||!isInvoiceOverdueStatus(status))return null;
+  if(isInvoiceOverdue({status,dueDate:due,todayKey}))return null;
+  const days=Math.round((Date.parse(due+'T00:00:00+08:00')-Date.parse(todayKey+'T00:00:00+08:00'))/86400000);
   if(Number.isNaN(days))return null;
-  if(days<0)return 'Overdue';
   if(days===0)return 'Due today';
   return `Due in ${days} day${days===1?'':'s'}`;
 }
@@ -87,6 +91,7 @@ export default async function InvoicesPage({searchParams}:{searchParams:Promise<
   const page=Math.max(1,Number.parseInt(params.page??'1',10)||1);
   const from=(page-1)*PAGE_SIZE;
   const to=from+PAGE_SIZE-1;
+  const todayKey=perthDayKey();
   const db=dbAdmin();
 
   let invoicesQuery=db
@@ -95,7 +100,12 @@ export default async function InvoicesPage({searchParams}:{searchParams:Promise<
     .order('updated_at',{ascending:false})
     .range(from,to);
 
-  if(filter!=='all'&&isInvoiceStatus(filter)){
+  if(filter==='overdue'){
+    invoicesQuery=invoicesQuery
+      .in('status',[...INVOICE_OVERDUE_STATUSES])
+      .lt('due_date',todayKey)
+      .not('due_date','is',null);
+  }else if(filter!=='all'&&isInvoiceStatus(filter)){
     invoicesQuery=invoicesQuery.eq('status',filter);
   }
   if(q){
@@ -207,7 +217,8 @@ export default async function InvoicesPage({searchParams}:{searchParams:Promise<
             const customerName=row.customer_snapshot?.name||'Customer not selected';
             const totalInc=totals.get(row.id)||0;
             const amountDue=dues.get(row.id)??totalInc;
-            const due=dueLabel(row.due_date,row.status);
+            const overdue=isInvoiceOverdue({status:row.status,dueDate:row.due_date,todayKey});
+            const due=dueLabel(row.due_date,row.status,todayKey);
             const jobRef=formatJobRef(row.job_snapshot?.job_number);
             const secondary=[
               `Updated ${new Date(row.updated_at).toLocaleDateString('en-AU',{timeZone:'Australia/Perth'})}`,
@@ -224,7 +235,10 @@ export default async function InvoicesPage({searchParams}:{searchParams:Promise<
                   </div>
                   <div className="hq-quote-row-meta">
                     <strong className="hq-quote-row-price">{formatAudFromCents(totalInc)}</strong>
-                    <span className={statusClass(row.status)}>{invoiceStatusLabel(row.status)}</span>
+                    <span className="hq-quote-row-status-group">
+                      <span className={statusClass(row.status)}>{invoiceStatusLabel(row.status)}</span>
+                      {overdue?<span className="hq-status hq-status-bad">Overdue</span>:null}
+                    </span>
                   </div>
                 </div>
                 {secondary?<p className="hq-quote-row-secondary">{secondary}</p>:null}

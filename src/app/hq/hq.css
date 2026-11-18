@@ -245,6 +245,7 @@
 .hq-quote-row-number{font-size:15px;line-height:1.25;color:#102b40}
 .hq-quote-row-customer{font-size:13px;font-weight:650;color:#17364b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hq-quote-row-meta{display:grid;justify-items:end;align-content:start;gap:5px;flex-shrink:0}
+.hq-quote-row-status-group{display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:5px}
 .hq-quote-row-price{font-size:16px;line-height:1.2;color:#102b40;white-space:nowrap}
 .hq-quote-row-secondary{margin:0;font-size:12px;color:#687989;line-height:1.4}
 .hq-quote-row .hq-status{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:#e8f0fa;color:#194f7d;font-size:11px;font-weight:750;text-transform:capitalize;white-space:nowrap}

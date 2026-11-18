@@ -157,7 +157,7 @@ export default async function HQ(){
                   <strong>{metricValue(attention.draftInvoices)}</strong>
                   <small>Finish and send →</small>
                 </Link>
-                <Link href="/hq/invoices">
+                <Link href="/hq/invoices?status=overdue">
                   <span>Overdue invoices</span>
                   <strong>{metricValue(attention.overdueInvoices)}</strong>
                   <small>Chase payment →</small>

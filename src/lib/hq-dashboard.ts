@@ -1,7 +1,7 @@
 import 'server-only';
 import { dbAdmin } from '@/lib/hq-auth';
 import { shiftPerthDayKey, sumAppointmentHours } from '@/lib/hq-dashboard-metrics';
-import { isMissingInvoiceSchemaError } from '@/lib/invoice-commercial';
+import { INVOICE_OVERDUE_STATUSES, isMissingInvoiceSchemaError } from '@/lib/invoice-commercial';
 import {
   formatJobNumber,
   formatPerthTime,
@@ -207,7 +207,7 @@ async function loadAttention(): Promise<{ attention: DashboardAttention; error: 
     db
       .from('invoices')
       .select('id', { count: 'exact', head: true })
-      .in('status', ['approved', 'sent', 'part_paid'])
+      .in('status', [...INVOICE_OVERDUE_STATUSES])
       .lt('due_date', todayKey)
       .not('due_date', 'is', null),
   ]);
