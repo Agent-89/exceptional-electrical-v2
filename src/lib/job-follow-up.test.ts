@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   formatFollowUpResolutionActivityNote,
   isFollowUpOutstanding,
+  pickNextFollowUpAppointment,
   validateFollowUpResolution,
 } from './job-follow-up.ts';
 
@@ -45,10 +46,10 @@ describe('validateFollowUpResolution', () => {
     },
   ];
 
-  it('requires a note and a later appointment when linking', () => {
+  it('requires a later appointment when linking', () => {
     const missingLink = validateFollowUpResolution({
       mode: 'linked_visit',
-      note: 'Booked return visit',
+      note: null,
       linkedAppointmentId: null,
       sourceAppointmentId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0100',
       sourceStartsAt: '2026-11-16T01:00:00.000Z',
@@ -58,7 +59,7 @@ describe('validateFollowUpResolution', () => {
 
     const ok = validateFollowUpResolution({
       mode: 'linked_visit',
-      note: 'Booked return visit',
+      note: null,
       linkedAppointmentId: candidates[0].id,
       sourceAppointmentId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0100',
       sourceStartsAt: '2026-11-16T01:00:00.000Z',
@@ -67,10 +68,10 @@ describe('validateFollowUpResolution', () => {
     assert.equal(ok.ok, true);
   });
 
-  it('allows office_cleared with a note and no linked visit', () => {
+  it('allows office_cleared with no note and no linked visit', () => {
     const result = validateFollowUpResolution({
       mode: 'office_cleared',
-      note: 'Customer cancelled follow-up',
+      note: null,
       linkedAppointmentId: null,
       sourceAppointmentId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0100',
       sourceStartsAt: '2026-11-16T01:00:00.000Z',
@@ -81,6 +82,33 @@ describe('validateFollowUpResolution', () => {
       mode: 'office_cleared',
       linkedAppointmentId: null,
     });
+  });
+});
+
+describe('pickNextFollowUpAppointment', () => {
+  it('picks the earliest later non-cancelled appointment', () => {
+    const next = pickNextFollowUpAppointment({
+      sourceAppointmentId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0100',
+      sourceStartsAt: '2026-11-16T01:00:00.000Z',
+      candidates: [
+        {
+          id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0102',
+          startsAt: '2026-11-18T01:00:00.000Z',
+          status: 'scheduled',
+        },
+        {
+          id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0101',
+          startsAt: '2026-11-17T01:00:00.000Z',
+          status: 'scheduled',
+        },
+        {
+          id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0103',
+          startsAt: '2026-11-17T03:00:00.000Z',
+          status: 'cancelled',
+        },
+      ],
+    });
+    assert.equal(next?.id, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0101');
   });
 });
 

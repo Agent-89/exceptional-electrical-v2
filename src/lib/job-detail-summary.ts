@@ -25,6 +25,7 @@ export type JobDetailTimeEntry = {
 export type JobDetailTechReport = {
   id: string;
   appointmentId: string;
+  staffId?: string | null;
   technicianName: string | null;
   workSummary: string | null;
   outstandingWork: string | null;
@@ -249,17 +250,28 @@ export function visitReportStatusCounts(input: {
   techReports: JobDetailTechReport[];
 }): {
   visitCount: number;
-  reportCount: number;
-  finalisedCount: number;
+  summaryCount: number;
+  completedCount: number;
   pendingOutcomeCount: number;
+  /** @deprecated use summaryCount */
+  reportCount: number;
+  /** @deprecated use completedCount */
+  finalisedCount: number;
 } {
   const visitCount = input.appointments.length;
-  const reportCount = input.techReports.length;
-  const finalisedCount = input.appointments.filter((a) =>
+  const summaryCount = input.techReports.filter((r) => Boolean(r.workSummary?.trim())).length;
+  const completedCount = input.appointments.filter((a) =>
     isTerminalVisitOutcome(a.fieldStatus),
   ).length;
   const pendingOutcomeCount = input.appointments.filter(
     (a) => !isTerminalVisitOutcome(a.fieldStatus) && a.fieldStatus !== 'scheduled',
   ).length;
-  return { visitCount, reportCount, finalisedCount, pendingOutcomeCount };
+  return {
+    visitCount,
+    summaryCount,
+    completedCount,
+    pendingOutcomeCount,
+    reportCount: summaryCount,
+    finalisedCount: completedCount,
+  };
 }

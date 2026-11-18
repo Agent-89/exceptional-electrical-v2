@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -11,14 +12,13 @@ import {
 import { useRouter } from 'next/navigation';
 import HqToast, { type HqToastMessage } from '@/app/hq/hq-toast';
 import {
+  addFieldSiteUpdateAction,
   addManualTimeEntryAction,
-  addTechnicianNoteAction,
   finishWorkAction,
   pauseWorkAction,
   resumeWorkAction,
   startWorkAction,
   updateVisitProgressAction,
-  uploadJobPhotoAction,
   type TechFieldActionResult,
 } from '../../actions';
 import { FIELD_STATUS_LABELS, type FieldStatus } from '@/lib/tech-field-constants';
@@ -28,7 +28,6 @@ import {
   formatDurationMinutes,
 } from '@/lib/tech-time-format';
 import {
-  VISIT_OUTCOME_HINTS,
   VISIT_OUTCOME_LABELS,
   VISIT_OUTCOME_STATUSES,
   canTechnicianFinaliseSharedVisit,
@@ -45,11 +44,13 @@ import {
   timerPrimaryActions,
   timerWorkCaption,
   type TimerPrimaryAction,
+  type TimerUiPhase,
 } from '@/lib/tech-visit-ui';
 import {
   buildVisitReportFormStateForAppointment,
   shouldResetVisitReportForm,
 } from '@/lib/tech-visit-form-state';
+import { buildJobUpdateCards } from '@/lib/job-updates';
 import { enqueueOutboxItem } from '@/lib/field-offline/db';
 import { createOutboxItem, formDataToPayload } from '@/lib/field-offline/outbox';
 import type { FieldOutboxActionType } from '@/lib/field-offline/types';
@@ -89,12 +90,15 @@ type PhotoView = {
   signedUrl: string | null;
   caption: string | null;
   createdAt: string;
+  contentType: string;
+  jobNoteId: string | null;
 };
 
 type Props = {
   staffId: string;
   appointmentId: string;
   appointmentDateLabel: string;
+  visitDayKey: string;
   scheduledLabel: string;
   scheduledMinutes: number;
   fieldStatus: FieldStatus;
@@ -120,8 +124,8 @@ type Props = {
   electricianNames: string[];
 };
 
-type BusyKind = 'timer' | 'report' | 'note' | 'manual' | 'photo' | null;
-type FoldSection = 'photo' | 'note' | 'report';
+type BusyKind = 'timer' | 'report' | 'update' | 'manual' | null;
+type FoldSection = 'update' | 'report';
 
 function statusLabel(status: string): string {
   if (status === 'active') return 'Active';
@@ -146,10 +150,21 @@ function isNextRedirectError(error: unknown): boolean {
   );
 }
 
+function phaseFromOptimistic(
+  action: TimerPrimaryAction | null,
+  base: TimerUiPhase,
+): TimerUiPhase {
+  if (!action) return base;
+  if (action === 'start' || action === 'resume') return 'working';
+  if (action === 'take_break') return 'on_break';
+  if (action === 'finish') return 'finished';
+  return base;
+}
+
 export default function VisitFieldOps({
   staffId,
   appointmentId,
-  appointmentDateLabel,
+  visitDayKey,
   scheduledLabel,
   scheduledMinutes,
   fieldStatus,
@@ -169,7 +184,6 @@ export default function VisitFieldOps({
   sharedOutstandingWork,
   sharedIssues,
   sharedFollowUpRequired,
-  hasPersonalReport,
   visitNotes,
   jobDescription,
   electricianNames,
@@ -179,22 +193,23 @@ export default function VisitFieldOps({
   const [toast, setToast] = useState<HqToastMessage | null>(null);
   const [busy, setBusy] = useState<BusyKind>(null);
   const [timerPendingAction, setTimerPendingAction] = useState<TimerPrimaryAction | null>(null);
+  const [optimisticPhase, setOptimisticPhase] = useState<TimerUiPhase | null>(null);
+  const [localFinished, setLocalFinished] = useState(timeRecorded);
   const [reportPending, setReportPending] = useState(false);
   const [reportSavedFlash, setReportSavedFlash] = useState(false);
-  const [lastTimerMs, setLastTimerMs] = useState<number | null>(null);
   const [nowIso, setNowIso] = useState(() => new Date().toISOString());
-  const [photoOpen, setPhotoOpen] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoCaption, setPhotoCaption] = useState('');
+  const [updateNote, setUpdateNote] = useState('');
+  const [manualDay, setManualDay] = useState(visitDayKey);
+  const [manualStart, setManualStart] = useState('07:00');
+  const [manualEnd, setManualEnd] = useState('15:00');
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const reportDirty = useRef(false);
-  const noteDirty = useRef(false);
   const formAppointmentIdRef = useRef(appointmentId);
 
-  // Shared appointment snapshot (for solo finalisation concurrency).
   const [expectedStatus, setExpectedStatus] = useState(fieldStatus);
   const [expectedCompletion, setExpectedCompletion] = useState(sharedCompletionNote ?? '');
   const [expectedOutstanding, setExpectedOutstanding] = useState(sharedOutstandingWork ?? '');
@@ -204,16 +219,21 @@ export default function VisitFieldOps({
 
   const [outcome, setOutcome] = useState<VisitOutcomeStatus>(personalProgressStatus);
   const [completion, setCompletion] = useState(completionNote ?? '');
-  const [outstanding, setOutstanding] = useState(outstandingWork ?? '');
-  const [issuesText, setIssuesText] = useState(issues ?? '');
   const [followUp, setFollowUp] = useState(followUpRequired);
-  const [noteBody, setNoteBody] = useState('');
 
+  const dismissToast = useCallback(() => setToast(null), []);
   const showToast = useCallback((tone: HqToastMessage['tone'], text: string) => {
     setToast({ id: Date.now(), tone, text });
   }, []);
 
-  // Soft-nav between visits can reuse this client instance; never leak Saved/busy/tokens.
+  useEffect(() => {
+    setLocalFinished(timeRecorded);
+  }, [timeRecorded, appointmentId]);
+
+  useEffect(() => {
+    setManualDay(visitDayKey);
+  }, [visitDayKey]);
+
   useEffect(() => {
     if (!shouldResetVisitReportForm(formAppointmentIdRef.current, appointmentId)) {
       formAppointmentIdRef.current = appointmentId;
@@ -235,7 +255,6 @@ export default function VisitFieldOps({
     });
     formAppointmentIdRef.current = appointmentId;
     reportDirty.current = next.reportDirty;
-    noteDirty.current = false;
     setBusy(next.busy);
     setReportPending(next.reportPending);
     setReportSavedFlash(next.reportSavedFlash);
@@ -247,10 +266,10 @@ export default function VisitFieldOps({
     setExpectedTechUpdatedAt(next.expectedTechUpdatedAt);
     setOutcome(next.outcome);
     setCompletion(next.completion);
-    setOutstanding(next.outstanding);
-    setIssuesText(next.issuesText);
     setFollowUp(next.followUp);
-    setNoteBody('');
+    setUpdateNote('');
+    setPhotoFile(null);
+    setOptimisticPhase(null);
     setToast(null);
   }, [
     appointmentId,
@@ -267,7 +286,6 @@ export default function VisitFieldOps({
     sharedFollowUpRequired,
   ]);
 
-  // Sync server props into the form only when the user is not mid-edit.
   useEffect(() => {
     if (formAppointmentIdRef.current !== appointmentId) return;
     if (reportDirty.current) return;
@@ -279,8 +297,6 @@ export default function VisitFieldOps({
     setExpectedTechUpdatedAt(techReportUpdatedAt);
     setOutcome(personalProgressStatus);
     setCompletion(completionNote ?? '');
-    setOutstanding(outstandingWork ?? '');
-    setIssuesText(issues ?? '');
     setFollowUp(followUpRequired);
   }, [
     appointmentId,
@@ -303,7 +319,6 @@ export default function VisitFieldOps({
     });
   }, [router]);
 
-  // Multi-tech freshness: focus/visibility + low-frequency poll while live timers exist.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') refreshSoft();
@@ -322,12 +337,11 @@ export default function VisitFieldOps({
       entries.some((e) => e.status === 'active' || e.status === 'on_break');
     if (!hasLive) return;
     const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible' && busy === null) refreshSoft();
+      if (document.visibilityState === 'visible' && busy !== 'timer') refreshSoft();
     }, LIVE_TIMER_POLL_MS);
     return () => window.clearInterval(id);
   }, [activeEntry, entries, busy, refreshSoft]);
 
-  // Local display clock — same calculation rules, no server writes.
   useEffect(() => {
     if (!activeEntry || (activeEntry.status !== 'active' && activeEntry.status !== 'on_break')) {
       return;
@@ -337,17 +351,25 @@ export default function VisitFieldOps({
     return () => window.clearInterval(id);
   }, [activeEntry]);
 
+  // Clear optimistic phase once server props catch up.
+  useEffect(() => {
+    if (!optimisticPhase) return;
+    const serverPhase = resolveTimerUiPhase({
+      activeStatus: activeEntry?.status ?? null,
+      timeRecorded: localFinished,
+    });
+    if (serverPhase === optimisticPhase) setOptimisticPhase(null);
+  }, [activeEntry, localFinished, optimisticPhase]);
+
   const markReportDirty = () => {
     reportDirty.current = true;
     setReportSavedFlash(false);
   };
 
   function openSection(section: FoldSection) {
-    if (section === 'photo') setPhotoOpen(true);
-    if (section === 'note') setNoteOpen(true);
+    if (section === 'update') setUpdateOpen(true);
     if (section === 'report') setReportOpen(true);
-    const id =
-      section === 'photo' ? 'add-photo' : section === 'note' ? 'add-note' : 'visit-report';
+    const id = section === 'update' ? 'site-update' : 'visit-report';
     window.requestAnimationFrame(() => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -391,22 +413,23 @@ export default function VisitFieldOps({
       successToast?: string;
       onSuccess?: () => void;
       offlineAction?: FieldOutboxActionType;
+      rollbackOptimistic?: () => void;
     },
   ): Promise<boolean> {
-    if (busy) return false;
+    if (busy && kind !== 'timer') return false;
+    if (kind === 'timer' && busy === 'timer') return false;
     setBusy(kind);
     if (opts?.pendingAction) setTimerPendingAction(opts.pendingAction);
-    const started = performance.now();
     try {
       if (!navigator.onLine && opts?.offlineAction) {
         const ok = await queueOffline(opts.offlineAction, formData, opts.successToast || 'Saved');
-        opts?.onSuccess?.();
+        if (ok) opts?.onSuccess?.();
+        else opts?.rollbackOptimistic?.();
         return ok;
       }
       const result = await action(formData);
-      const elapsed = Math.round(performance.now() - started);
-      if (kind === 'timer') setLastTimerMs(elapsed);
       if (!result.ok) {
+        opts?.rollbackOptimistic?.();
         showToast('error', result.error);
         return false;
       }
@@ -420,9 +443,11 @@ export default function VisitFieldOps({
       if (isNextRedirectError(error)) throw error;
       if (!navigator.onLine && opts?.offlineAction) {
         const ok = await queueOffline(opts.offlineAction, formData, opts.successToast || 'Saved');
-        opts?.onSuccess?.();
+        if (ok) opts?.onSuccess?.();
+        else opts?.rollbackOptimistic?.();
         return ok;
       }
+      opts?.rollbackOptimistic?.();
       showToast('error', 'Something went wrong. Please try again.');
       return false;
     } finally {
@@ -432,14 +457,14 @@ export default function VisitFieldOps({
   }
 
   const timerForThisVisit = activeEntry && activeEntry.id ? activeEntry : null;
-  const timerPhase = resolveTimerUiPhase({
+  const serverPhase = resolveTimerUiPhase({
     activeStatus: timerForThisVisit?.status ?? null,
-    timeRecorded,
+    timeRecorded: localFinished,
   });
+  const timerPhase = optimisticPhase ?? serverPhase;
   const phaseActions = timerPrimaryActions(timerPhase);
   const canFinalise = canTechnicianFinaliseSharedVisit(assignedTechnicianCount);
   const sharedFinalised = isTerminalVisitOutcome(fieldStatus);
-  // Personal work report always allows the full progress set.
   const selectableOutcomes: VisitOutcomeStatus[] = [...VISIT_OUTCOME_STATUSES];
   const formDefault = selectableOutcomes.includes(outcome) ? outcome : 'in_progress';
   const timerLocked = busy === 'timer';
@@ -453,7 +478,33 @@ export default function VisitFieldOps({
   const workedDisplay = formatDurationMinutes(workedMinutes);
   const breakDisplay = formatDurationMinutes(breakMinutes);
 
+  const updateCards = useMemo(
+    () =>
+      buildJobUpdateCards(
+        notes.map((n) => ({
+          id: n.id,
+          body: n.body,
+          authorName: n.authorName,
+          visibility: 'shared',
+          createdAt: n.createdAt,
+        })),
+        photos.map((p) => ({
+          id: p.id,
+          signedUrl: p.signedUrl,
+          caption: p.caption,
+          uploadedByName: null,
+          contentType: p.contentType || 'image/jpeg',
+          createdAt: p.createdAt,
+          jobNoteId: p.jobNoteId,
+        })),
+      ),
+    [notes, photos],
+  );
+
   async function onTimerAction(action: TimerPrimaryAction) {
+    const previousPhase = timerPhase;
+    setOptimisticPhase(phaseFromOptimistic(action, previousPhase));
+
     if (action === 'start') {
       const fd = new FormData();
       fd.set('appointment_id', appointmentId);
@@ -461,20 +512,26 @@ export default function VisitFieldOps({
         pendingAction: 'start',
         successToast: 'Work started',
         offlineAction: 'start_work',
+        rollbackOptimistic: () => setOptimisticPhase(null),
       });
       return;
     }
 
-    if (!timerForThisVisit) return;
+    if (!timerForThisVisit && action !== 'finish') {
+      setOptimisticPhase(null);
+      return;
+    }
+
     const fd = new FormData();
     fd.set('appointment_id', appointmentId);
-    fd.set('entry_id', timerForThisVisit.id);
+    if (timerForThisVisit) fd.set('entry_id', timerForThisVisit.id);
 
     if (action === 'take_break') {
       await runAction('timer', pauseWorkAction, fd, {
         pendingAction: 'take_break',
         successToast: 'Break started',
         offlineAction: 'pause_work',
+        rollbackOptimistic: () => setOptimisticPhase(previousPhase),
       });
       return;
     }
@@ -484,34 +541,49 @@ export default function VisitFieldOps({
         pendingAction: 'resume',
         successToast: 'Work resumed',
         offlineAction: 'resume_work',
+        rollbackOptimistic: () => setOptimisticPhase(previousPhase),
       });
       return;
     }
 
-    if (busy) return;
-    setBusy('timer');
-    setTimerPendingAction('finish');
-    const started = performance.now();
-    try {
-      if (!navigator.onLine) {
-        await queueOffline('finish_work', fd, 'Work finished');
-        setBusy(null);
-        setTimerPendingAction(null);
+    if (action === 'finish') {
+      if (!timerForThisVisit) {
+        setOptimisticPhase(null);
         return;
       }
-      await finishWorkAction(fd);
-      setLastTimerMs(Math.round(performance.now() - started));
-    } catch (error) {
-      if (isNextRedirectError(error)) throw error;
-      if (!navigator.onLine) {
-        await queueOffline('finish_work', fd, 'Work finished');
+      setBusy('timer');
+      setTimerPendingAction('finish');
+      setLocalFinished(true);
+      try {
+        if (!navigator.onLine) {
+          await queueOffline('finish_work', fd, 'Work finished');
+          openSection('report');
+          return;
+        }
+        const result = await finishWorkAction(fd);
+        if (!result.ok) {
+          setLocalFinished(false);
+          setOptimisticPhase(previousPhase);
+          showToast('error', result.error);
+          return;
+        }
+        showToast('success', result.message || 'Work finished');
+        openSection('report');
+        refreshSoft();
+      } catch (error) {
+        if (isNextRedirectError(error)) throw error;
+        if (!navigator.onLine) {
+          await queueOffline('finish_work', fd, 'Work finished');
+          openSection('report');
+          return;
+        }
+        setLocalFinished(false);
+        setOptimisticPhase(previousPhase);
+        showToast('error', 'Unable to finish work timer.');
+      } finally {
         setBusy(null);
         setTimerPendingAction(null);
-        return;
       }
-      showToast('error', 'Unable to finish work timer.');
-      setBusy(null);
-      setTimerPendingAction(null);
     }
   }
 
@@ -524,8 +596,8 @@ export default function VisitFieldOps({
     fd.set('appointment_id', appointmentId);
     fd.set('field_status', formDefault);
     fd.set('completion_note', completion);
-    fd.set('outstanding_work', outstanding);
-    fd.set('issues', issuesText);
+    fd.set('outstanding_work', '');
+    fd.set('issues', '');
     if (followUp) fd.set('follow_up_required', 'yes');
     fd.set('expected_field_status', expectedStatus);
     fd.set('expected_completion_note', expectedCompletion);
@@ -546,7 +618,6 @@ export default function VisitFieldOps({
         setExpectedTechUpdatedAt(result.techReportUpdatedAt);
       }
       if (!result.ok) {
-        // Personal report may already be persisted; keep concurrency token above.
         showToast('error', result.error);
         refreshSoft();
         return;
@@ -555,8 +626,8 @@ export default function VisitFieldOps({
       if (canFinalise && !sharedFinalised) {
         setExpectedStatus(formDefault);
         setExpectedCompletion(completion.trim());
-        setExpectedOutstanding(outstanding.trim());
-        setExpectedIssues(issuesText.trim());
+        setExpectedOutstanding('');
+        setExpectedIssues('');
         setExpectedFollowUp(followUp);
       }
       setReportSavedFlash(true);
@@ -574,36 +645,6 @@ export default function VisitFieldOps({
     }
   }
 
-  async function onAddNote(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy || !noteBody.trim()) return;
-    const fd = new FormData();
-    fd.set('appointment_id', appointmentId);
-    fd.set('body', noteBody);
-    const ok = await runAction('note', addTechnicianNoteAction, fd, {
-      successToast: 'Note saved',
-      offlineAction: 'add_note',
-      onSuccess: () => {
-        noteDirty.current = false;
-        setNoteBody('');
-      },
-    });
-    if (!ok) {
-      /* preserve noteBody */
-    }
-  }
-
-  async function onManualEntry(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const fd = new FormData(form);
-    fd.set('appointment_id', appointmentId);
-    const ok = await runAction('manual', addManualTimeEntryAction, fd, {
-      successToast: 'Manual time entry saved',
-    });
-    if (ok) form.reset();
-  }
-
   function onPickPhoto(fileList: FileList | null) {
     const file = fileList?.[0] ?? null;
     setPhotoFile(file);
@@ -611,41 +652,89 @@ export default function VisitFieldOps({
     if (libraryInputRef.current) libraryInputRef.current.value = '';
   }
 
-  async function onUploadPhoto(event: FormEvent<HTMLFormElement>) {
+  async function onSaveSiteUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    if (!navigator.onLine) {
+    if (!updateNote.trim() && !photoFile) {
+      showToast('error', 'Add a note, a photo, or both.');
+      return;
+    }
+    if (photoFile && !navigator.onLine) {
       showToast('error', 'Photos need a signal. Upload when you’re back online.');
       return;
     }
-    if (!photoFile) {
-      showToast('error', 'Choose a photo first.');
-      return;
-    }
-    setBusy('photo');
+
     const fd = new FormData();
     fd.set('appointment_id', appointmentId);
-    fd.set('photo', photoFile);
-    if (photoCaption.trim()) fd.set('caption', photoCaption.trim());
+    if (updateNote.trim()) fd.set('body', updateNote.trim());
+    if (photoFile) fd.set('photos', photoFile);
+
+    // Offline: notes only (photos stay online-only).
+    if (!navigator.onLine && updateNote.trim() && !photoFile) {
+      setBusy('update');
+      try {
+        const queued = await queueOffline('add_note', fd, 'Note saved');
+        if (queued) setUpdateNote('');
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
+
+    setBusy('update');
     try {
-      await uploadJobPhotoAction(fd);
-      showToast('success', 'Photo uploaded');
+      const result = await addFieldSiteUpdateAction(fd);
+      if (!result.ok) {
+        showToast('error', result.error);
+        return;
+      }
+      showToast('success', result.message || 'Update saved');
+      setUpdateNote('');
       setPhotoFile(null);
-      setPhotoCaption('');
       refreshSoft();
     } catch (error) {
       if (isNextRedirectError(error)) throw error;
-      const message =
-        error instanceof Error && error.message ? error.message : 'Unable to upload photo.';
-      showToast('error', message);
+      showToast('error', 'Unable to save update.');
     } finally {
       setBusy(null);
     }
   }
 
+  async function onManualEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(manualDay)) {
+      showToast('error', 'Enter a valid date.');
+      return;
+    }
+    if (!/^\d{2}:\d{2}$/.test(manualStart) || !/^\d{2}:\d{2}$/.test(manualEnd)) {
+      showToast('error', 'Enter valid start and end times.');
+      return;
+    }
+    if (manualEnd <= manualStart) {
+      showToast('error', 'End time must be after start time on the same day.');
+      return;
+    }
+    const form = event.currentTarget;
+    const fd = new FormData(form);
+    fd.set('appointment_id', appointmentId);
+    fd.set('started_at', `${manualDay}T${manualStart}`);
+    fd.set('ended_at', `${manualDay}T${manualEnd}`);
+    const ok = await runAction('manual', addManualTimeEntryAction, fd, {
+      successToast: 'Manual time entry saved',
+    });
+    if (ok) {
+      form.reset();
+      setManualDay(visitDayKey);
+      setManualStart('07:00');
+      setManualEnd('15:00');
+    }
+  }
+
+  const updateAssetCount = updateCards.length;
+
   return (
     <div className="ee-tech-stack">
-      <HqToast toast={toast} onDismiss={() => setToast(null)} />
+      <HqToast toast={toast} onDismiss={dismissToast} />
 
       <section
         className={`ee-tech-timer-hero ee-tech-timer-hero-${timerPhase}`}
@@ -666,9 +755,7 @@ export default function VisitFieldOps({
           <div className="ee-tech-timer-metrics">
             <div
               className={
-                timerPhase === 'on_break'
-                  ? 'ee-tech-timer-metric is-live'
-                  : 'ee-tech-timer-metric'
+                timerPhase === 'on_break' ? 'ee-tech-timer-metric is-live' : 'ee-tech-timer-metric'
               }
             >
               <span>{timerBreakCaption(timerPhase)}</span>
@@ -709,7 +796,7 @@ export default function VisitFieldOps({
                     primary ? 'ee-tech-btn ee-tech-btn-primary' : 'ee-tech-btn ee-tech-btn-secondary'
                   }
                   disabled={timerLocked}
-                  onClick={() => onTimerAction(action)}
+                  onClick={() => void onTimerAction(action)}
                 >
                   {pending ? TIMER_PENDING_LABELS[action] : TIMER_ACTION_LABELS[action]}
                 </button>
@@ -719,17 +806,15 @@ export default function VisitFieldOps({
         )}
       </section>
 
-      <nav className="ee-tech-quick" aria-label="Quick actions">
-        <button type="button" className="ee-tech-quick-btn" onClick={() => openSection('photo')}>
-          Add Photo
-          {photos.length ? <span className="ee-tech-quick-count">{photos.length}</span> : null}
-        </button>
-        <button type="button" className="ee-tech-quick-btn" onClick={() => openSection('note')}>
-          Add Note
-          {notes.length ? <span className="ee-tech-quick-count">{notes.length}</span> : null}
+      <nav className="ee-tech-quick ee-tech-quick-2" aria-label="Quick actions">
+        <button type="button" className="ee-tech-quick-btn" onClick={() => openSection('update')}>
+          Site update
+          {updateAssetCount ? (
+            <span className="ee-tech-quick-count">{updateAssetCount}</span>
+          ) : null}
         </button>
         <button type="button" className="ee-tech-quick-btn" onClick={() => openSection('report')}>
-          My Work Report
+          Work report
         </button>
       </nav>
 
@@ -761,15 +846,25 @@ export default function VisitFieldOps({
 
       <details
         className="ee-tech-fold"
-        id="add-photo"
-        open={photoOpen}
-        onToggle={(e) => setPhotoOpen(e.currentTarget.open)}
+        id="site-update"
+        open={updateOpen}
+        onToggle={(e) => setUpdateOpen(e.currentTarget.open)}
       >
         <summary>
-          Photos{photos.length ? ` · ${photos.length}` : ''}
+          Site update{updateAssetCount ? ` · ${updateAssetCount}` : ''}
         </summary>
         <div className="ee-tech-fold-body">
-          <form onSubmit={onUploadPhoto} className="ee-tech-form">
+          <form onSubmit={onSaveSiteUpdate} className="ee-tech-form">
+            <label>
+              Note (optional)
+              <textarea
+                name="body"
+                maxLength={4000}
+                placeholder="What did you find on site?"
+                value={updateNote}
+                onChange={(e) => setUpdateNote(e.target.value)}
+              />
+            </label>
             <input
               ref={cameraInputRef}
               className="ee-tech-file-hidden"
@@ -793,14 +888,14 @@ export default function VisitFieldOps({
                 className="ee-tech-btn ee-tech-btn-secondary"
                 onClick={() => cameraInputRef.current?.click()}
               >
-                Take Photo
+                Take photo
               </button>
               <button
                 type="button"
                 className="ee-tech-btn ee-tech-btn-secondary"
                 onClick={() => libraryInputRef.current?.click()}
               >
-                Choose From Library
+                From library
               </button>
             </div>
             {photoFile ? (
@@ -809,109 +904,84 @@ export default function VisitFieldOps({
               </p>
             ) : (
               <p className="ee-tech-muted" style={{ margin: 0 }}>
-                Use the camera or photo library, then upload.
+                Add a note, a photo, or both — then save once.
               </p>
             )}
-            <label>
-              Caption (optional)
-              <input
-                name="caption"
-                maxLength={500}
-                value={photoCaption}
-                onChange={(e) => setPhotoCaption(e.target.value)}
-              />
-            </label>
             <button
               type="submit"
               className="ee-tech-btn ee-tech-btn-primary"
-              disabled={busy !== null || !photoFile}
+              disabled={busy === 'update' || (!updateNote.trim() && !photoFile)}
             >
-              {busy === 'photo' ? 'Uploading…' : 'Upload photo'}
+              {busy === 'update' ? 'Saving…' : 'Save update'}
             </button>
           </form>
-          {photos.length ? (
-            <div className="ee-tech-gallery" style={{ marginTop: 12 }}>
-              {photos.map((p) =>
-                p.signedUrl ? (
-                  <a
-                    key={p.id}
-                    href={p.signedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={p.caption ?? 'Job photo'}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.signedUrl} alt={p.caption || 'Job photo'} />
-                  </a>
-                ) : (
-                  <figure key={p.id}>
-                    <span
-                      className="ee-tech-muted"
-                      style={{ display: 'grid', placeItems: 'center', height: '100%', fontSize: 12 }}
-                    >
-                      Unavailable
-                    </span>
-                  </figure>
-                ),
-              )}
+
+          {updateCards.length ? (
+            <div className="ee-tech-site-feed" style={{ marginTop: 14 }}>
+              {updateCards.map((card) => (
+                <article key={card.id} className="ee-tech-site-card">
+                  {card.kind === 'note' ? (
+                    <>
+                      <p>{card.note.body}</p>
+                      {card.photos.length ? (
+                        <div className="ee-tech-gallery">
+                          {card.photos.map((p) =>
+                            p.signedUrl ? (
+                              <a
+                                key={p.id}
+                                href={p.signedUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={p.caption ?? 'Job photo'}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={p.signedUrl} alt={p.caption || 'Job photo'} />
+                              </a>
+                            ) : null,
+                          )}
+                        </div>
+                      ) : null}
+                      <small>
+                        {card.note.authorName ?? 'Technician'} ·{' '}
+                        {new Date(card.createdAt).toLocaleString('en-AU', {
+                          timeZone: 'Australia/Perth',
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </small>
+                    </>
+                  ) : (
+                    <>
+                      <div className="ee-tech-gallery">
+                        {card.photos.map((p) =>
+                          p.signedUrl ? (
+                            <a
+                              key={p.id}
+                              href={p.signedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={p.caption ?? 'Job photo'}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={p.signedUrl} alt={p.caption || 'Job photo'} />
+                            </a>
+                          ) : null,
+                        )}
+                      </div>
+                      <small>
+                        {new Date(card.createdAt).toLocaleString('en-AU', {
+                          timeZone: 'Australia/Perth',
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </small>
+                    </>
+                  )}
+                </article>
+              ))}
             </div>
           ) : (
-            <p className="ee-tech-muted">No photos uploaded for this visit yet.</p>
-          )}
-        </div>
-      </details>
-
-      <details
-        className="ee-tech-fold"
-        id="add-note"
-        open={noteOpen}
-        onToggle={(e) => setNoteOpen(e.currentTarget.open)}
-      >
-        <summary>
-          Notes{notes.length ? ` · ${notes.length}` : ''}
-        </summary>
-        <div className="ee-tech-fold-body">
-          <form onSubmit={onAddNote} className="ee-tech-form">
-            <label>
-              Add note
-              <textarea
-                name="body"
-                required
-                maxLength={4000}
-                placeholder="What did you find on site?"
-                value={noteBody}
-                onChange={(e) => {
-                  noteDirty.current = true;
-                  setNoteBody(e.target.value);
-                }}
-              />
-            </label>
-            <button
-              type="submit"
-              className="ee-tech-btn ee-tech-btn-secondary"
-              disabled={busy !== null || !noteBody.trim()}
-            >
-              {busy === 'note' ? 'Saving…' : 'Add note'}
-            </button>
-          </form>
-          {notes.length ? (
-            notes.map((n) => (
-              <div className="ee-tech-note" key={n.id}>
-                <p>{n.body}</p>
-                <small>
-                  {n.authorName ?? 'Technician'} ·{' '}
-                  {new Date(n.createdAt).toLocaleString('en-AU', {
-                    timeZone: 'Australia/Perth',
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  })}
-                  {n.editedAt ? ' · edited' : ''}
-                  {n.isOwn ? ' · yours' : ''}
-                </small>
-              </div>
-            ))
-          ) : (
-            <p className="ee-tech-muted">No technician notes yet.</p>
+            <p className="ee-tech-muted">No site updates for this visit yet.</p>
           )}
         </div>
       </details>
@@ -924,28 +994,22 @@ export default function VisitFieldOps({
       >
         <summary>My Work Report</summary>
         <div className="ee-tech-fold-body">
-          <p className="ee-tech-muted" style={{ marginTop: 0 }}>
-            {appointmentDateLabel} · {scheduledLabel}. This is your personal work report. Completing
-            it does not close the overall job.
-            {!hasPersonalReport
-              ? ' Fields may be pre-filled from an earlier shared summary — editing saves as your report only.'
-              : null}
-          </p>
           {!canFinalise ? (
             <p className="ee-tech-hint" role="status">
-              Shared visit · closes when every assigned electrician submits a final report. Record your own work here.
+              Shared visit · closes when every assigned electrician submits a final report.
             </p>
           ) : null}
           {sharedFinalised ? (
             <p className="ee-tech-hint" role="status">
-              This visit is finalised from the crew reports. You can still update your personal work report.
+              Visit completed — crew outcome recorded. You can still update your personal work
+              report.
             </p>
           ) : null}
           <form onSubmit={onSaveReport} className="ee-tech-form">
             <fieldset className="ee-tech-outcome">
               <legend>{canFinalise && !sharedFinalised ? 'Visit outcome' : 'My progress'}</legend>
               {selectableOutcomes.map((key) => (
-                <label key={key} className="ee-tech-outcome-option">
+                <label key={key} className="ee-tech-outcome-option ee-tech-outcome-compact">
                   <input
                     type="radio"
                     name="field_status"
@@ -959,50 +1023,20 @@ export default function VisitFieldOps({
                   />
                   <span>
                     <strong>{VISIT_OUTCOME_LABELS[key]}</strong>
-                    <small>
-                      {canFinalise && !sharedFinalised
-                        ? VISIT_OUTCOME_HINTS[key]
-                        : key === 'work_completed'
-                          ? 'Marks your own work as finished (does not close a shared visit).'
-                          : VISIT_OUTCOME_HINTS[key]}
-                    </small>
                   </span>
                 </label>
               ))}
             </fieldset>
             <label>
-              Work completed / summary
+              Summary
               <textarea
                 name="completion_note"
                 maxLength={2000}
+                placeholder="What was done, what’s left, any issues…"
                 value={completion}
                 onChange={(e) => {
                   markReportDirty();
                   setCompletion(e.target.value);
-                }}
-              />
-            </label>
-            <label>
-              Outstanding work
-              <textarea
-                name="outstanding_work"
-                maxLength={2000}
-                value={outstanding}
-                onChange={(e) => {
-                  markReportDirty();
-                  setOutstanding(e.target.value);
-                }}
-              />
-            </label>
-            <label>
-              Issues encountered
-              <textarea
-                name="issues"
-                maxLength={2000}
-                value={issuesText}
-                onChange={(e) => {
-                  markReportDirty();
-                  setIssuesText(e.target.value);
                 }}
               />
             </label>
@@ -1019,16 +1053,15 @@ export default function VisitFieldOps({
               />
               Further visit required
             </label>
+            <p className="ee-tech-hint" style={{ marginTop: -4 }}>
+              Flags office to schedule or link a follow-up — does not create an appointment.
+            </p>
             <button
               type="submit"
               className="ee-tech-btn ee-tech-btn-primary"
-              disabled={busy !== null}
+              disabled={busy === 'report'}
             >
-              {reportPending
-                ? 'Saving…'
-                : reportSavedFlash
-                  ? 'Saved'
-                  : 'Save my work report'}
+              {reportPending ? 'Saving…' : reportSavedFlash ? 'Saved' : 'Save my work report'}
             </button>
           </form>
         </div>
@@ -1039,18 +1072,40 @@ export default function VisitFieldOps({
         <div className="ee-tech-fold-body">
           <p className="ee-tech-muted" style={{ marginTop: 0 }}>
             Scheduled duration {formatDurationMinutes(scheduledMinutes)} is unchanged by the timer.
-            {lastTimerMs != null ? ` Last timer action · ${lastTimerMs} ms.` : ''}
           </p>
 
           <form onSubmit={onManualEntry} className="ee-tech-form">
             <label>
-              Started (Perth)
-              <input type="datetime-local" name="started_at" required step={60} />
+              Date (Perth)
+              <input
+                type="date"
+                required
+                value={manualDay}
+                onChange={(e) => setManualDay(e.target.value)}
+              />
             </label>
-            <label>
-              Ended (Perth)
-              <input type="datetime-local" name="ended_at" required step={60} />
-            </label>
+            <div className="ee-tech-manual-times">
+              <label>
+                Start time
+                <input
+                  type="time"
+                  required
+                  step={60}
+                  value={manualStart}
+                  onChange={(e) => setManualStart(e.target.value)}
+                />
+              </label>
+              <label>
+                End time
+                <input
+                  type="time"
+                  required
+                  step={60}
+                  value={manualEnd}
+                  onChange={(e) => setManualEnd(e.target.value)}
+                />
+              </label>
+            </div>
             <label>
               Break minutes
               <input type="number" name="break_minutes" min={0} max={1440} defaultValue={0} />
@@ -1062,7 +1117,7 @@ export default function VisitFieldOps({
             <button
               type="submit"
               className="ee-tech-btn ee-tech-btn-secondary"
-              disabled={busy !== null}
+              disabled={busy === 'manual'}
             >
               {busy === 'manual' ? 'Saving…' : 'Save manual entry'}
             </button>

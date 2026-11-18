@@ -17,7 +17,6 @@ import {
   presentJobActivityEvent,
 } from '@/lib/review-time-entry';
 import ScheduleAppointmentForm from './schedule-appointment-form';
-import JobFieldActivity from './job-field-activity';
 import JobDetailTabs, { JobTabButton } from './job-detail-tabs';
 import JobHeaderActions from './job-header-actions';
 import JobQuotesPanel from './job-quotes-panel';
@@ -26,6 +25,7 @@ import {
   SuspendedJobAttention,
   SuspendedJobFiles,
   SuspendedJobTime,
+  SuspendedJobVisits,
 } from './job-field-sections';
 import { getCachedActiveSchedulingStaff } from '@/lib/hq-reference-cache';
 import '../../hq.css';
@@ -489,14 +489,9 @@ export default async function JobPage({
               <SuspendedJobFiles jobId={id} appointments={appointmentViews} staffNames={staffNames} />
             ),
             visits: (
-              <JobFieldActivity
+              <SuspendedJobVisits
                 jobId={id}
                 appointments={appointmentViews}
-                techReports={[]}
-                timeEntries={[]}
-                notes={[]}
-                photos={[]}
-                section="visits"
                 scheduleForm={
                   canEdit ? (
                     <ScheduleAppointmentForm
@@ -736,7 +731,13 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-job-row-body{padding:10px 0 4px;display:grid;gap:10px;min-width:0}
 .ee-job-subblock{display:grid;gap:6px;min-width:0}
 .ee-job-subblock p{margin:0;overflow-wrap:anywhere}
-.ee-report-summaries{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.ee-report-summaries,.ee-tech-summaries{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.ee-tech-summary-row{display:flex;gap:10px;align-items:flex-start}
+.ee-tech-summary-body{min-width:0;flex:1;display:grid;gap:4px}
+.ee-tech-summary-head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+.ee-follow-up-actions{margin-top:12px;padding-top:12px;border-top:1px solid #e1e8f0}
+.ee-follow-up-actions-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ee-follow-up-actions-row .hq-detail-action-primary,.ee-follow-up-actions-row .hq-detail-action-secondary{text-decoration:none;display:inline-flex;align-items:center;border:0;cursor:pointer;font:inherit}
 .ee-nested-expand{border-top:1px solid #eef3f8;margin-top:0;padding-top:6px}
 .ee-nested-expand>summary{color:inherit}
 .ee-nested-expand>summary strong{color:#10233a}

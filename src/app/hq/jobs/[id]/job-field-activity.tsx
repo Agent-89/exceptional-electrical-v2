@@ -2,19 +2,17 @@ import type { ReactNode } from 'react';
 import { staffColor } from '@/lib/staff-color';
 import {
   VISIT_OUTCOME_LABELS,
-  isTerminalVisitOutcome,
   type VisitOutcomeStatus,
 } from '@/lib/tech-visit-report';
 import {
   buildJobAttentionItems,
-  summarizeTechReport,
   visitReportStatusCounts,
   type JobDetailAppointment,
   type JobDetailTechReport,
   type JobDetailTimeEntry,
 } from '@/lib/job-detail-summary';
-import { isFollowUpOutstanding } from '@/lib/job-follow-up';
-import ResolveFollowUpForm from './resolve-follow-up-form';
+import { isFollowUpOutstanding, pickNextFollowUpAppointment } from '@/lib/job-follow-up';
+import FollowUpActions from './resolve-follow-up-form';
 import JobTimePanel from './job-time-panel';
 import JobUpdatesPanel from './job-updates-panel';
 
@@ -144,7 +142,6 @@ export default function JobFieldActivity({
             <span className="ee-eyebrow">REQUIRES ATTENTION</span>
             <h2>Outstanding actions</h2>
           </div>
-          <span className="ee-muted">{attention.length}</span>
         </div>
         {attention.length ? (
           <ul className="ee-attention-list">
@@ -170,13 +167,13 @@ export default function JobFieldActivity({
         <div className="ee-section-title ee-visits-section-title">
           <div>
             <span className="ee-eyebrow">VISITS</span>
-            <h2>Appointments and technician reports</h2>
+            <h2>Appointments and summaries</h2>
           </div>
         </div>
         <p className="ee-muted ee-visits-section-stats">
           {visitStats.visitCount} visit{visitStats.visitCount === 1 ? '' : 's'} ·{' '}
-          {visitStats.reportCount} report{visitStats.reportCount === 1 ? '' : 's'} ·{' '}
-          {visitStats.finalisedCount} finalised
+          {visitStats.summaryCount} summar{visitStats.summaryCount === 1 ? 'y' : 'ies'} ·{' '}
+          {visitStats.completedCount} completed
           {visitStats.pendingOutcomeCount
             ? ` · ${visitStats.pendingOutcomeCount} open outcome${visitStats.pendingOutcomeCount === 1 ? '' : 's'}`
             : ''}
@@ -194,18 +191,33 @@ export default function JobFieldActivity({
                     name,
                     avatarColor: null as string | null,
                   }));
+            const crewById = new Map(crew.map((member) => [member.id, member]));
+            const crewByName = new Map(crew.map((member) => [member.name.toLowerCase(), member]));
             const primaryPill = visitPrimaryPill(appointment);
             const furtherOutstanding = isFollowUpOutstanding(appointment);
-            const reportsLabel = reportsForVisit.length
-              ? `${reportsForVisit.length} report${reportsForVisit.length === 1 ? '' : 's'}`
-              : 'No reports';
+            const nextVisit = furtherOutstanding
+              ? pickNextFollowUpAppointment({
+                  sourceAppointmentId: appointment.id,
+                  sourceStartsAt: appointment.startsAt,
+                  candidates: appointments.map((candidate) => ({
+                    id: candidate.id,
+                    startsAt: candidate.startsAt,
+                    status: candidate.status,
+                  })),
+                })
+              : null;
+            const nextVisitFull = nextVisit
+              ? appointments.find((candidate) => candidate.id === nextVisit.id)
+              : null;
+            const linkedVisit = appointment.followUpLinkedAppointmentId
+              ? appointments.find((candidate) => candidate.id === appointment.followUpLinkedAppointmentId)
+              : null;
             return (
               <details className="ee-expand ee-job-row" key={appointment.id}>
                 <summary>
                   <span className="ee-job-row-main">
                     <strong>{perthDayTime(appointment.startsAt, appointment.endsAt)}</strong>
                     <span className="ee-visit-row-meta">
-                      <span className="ee-muted">{reportsLabel}</span>
                       <VisitCrewAvatars crew={crew} />
                     </span>
                   </span>
@@ -238,15 +250,18 @@ export default function JobFieldActivity({
                     !appointment.issues ? (
                       <p className="ee-muted">No visit summary yet.</p>
                     ) : null}
-                    <p className="ee-muted" style={{ marginBottom: 0 }}>
-                      Further visit required:{' '}
-                      {furtherOutstanding
-                        ? 'Yes · outstanding'
-                        : appointment.followUp
-                          ? 'Yes · resolved by office'
-                          : 'No'}
-                      {isTerminalVisitOutcome(appointment.fieldStatus) ? ' · Finalised' : ''}
-                    </p>
+                    {furtherOutstanding ? (
+                      <p className="ee-muted" style={{ marginBottom: 0 }}>
+                        Further visit required
+                      </p>
+                    ) : appointment.followUp ? (
+                      <p className="ee-muted" style={{ marginBottom: 0 }}>
+                        Further visit resolved
+                        {linkedVisit
+                          ? ` · linked to ${perthDayTime(linkedVisit.startsAt, linkedVisit.endsAt)}`
+                          : ''}
+                      </p>
+                    ) : null}
                     {appointment.followUpResolvedAt ? (
                       <p className="ee-muted">
                         Resolved {perthWhen(appointment.followUpResolvedAt)}
@@ -258,64 +273,63 @@ export default function JobFieldActivity({
                   </div>
 
                   {furtherOutstanding ? (
-                    <ResolveFollowUpForm
+                    <FollowUpActions
                       jobId={jobId}
                       appointmentId={appointment.id}
-                      linkOptions={appointments
-                        .filter(
-                          (candidate) =>
-                            candidate.id !== appointment.id &&
-                            candidate.status !== 'cancelled' &&
-                            new Date(candidate.startsAt).getTime() >=
-                              new Date(appointment.startsAt).getTime(),
-                        )
-                        .map((candidate) => ({
-                          id: candidate.id,
-                          label: perthDayTime(candidate.startsAt, candidate.endsAt),
-                        }))}
+                      nextVisitId={nextVisit?.id ?? null}
+                      nextVisitLabel={
+                        nextVisitFull
+                          ? perthDayTime(nextVisitFull.startsAt, nextVisitFull.endsAt)
+                          : null
+                      }
                     />
                   ) : null}
 
                   <div className="ee-job-subblock">
-                    <strong>Technician reports</strong>
+                    <strong>Summaries</strong>
                     {reportsForVisit.length ? (
-                      <ul className="ee-report-summaries">
-                        {reportsForVisit.map((report) => (
-                          <li key={report.id}>
-                            <details className="ee-expand ee-nested-expand">
-                              <summary>
-                                <span>
-                                  <strong>{report.technicianName ?? 'Technician'}</strong>
-                                  <span className="ee-muted">
-                                    {' '}
-                                    · {summarizeTechReport(report)}
-                                  </span>
-                                </span>
-                                <span className="ee-expand-mark" aria-hidden="true">
-                                  ＋
-                                </span>
-                              </summary>
-                              <div className="ee-job-row-body">
-                                <p className="ee-muted" style={{ marginTop: 0 }}>
-                                  {VISIT_OUTCOME_LABELS[report.progressStatus as VisitOutcomeStatus] ??
-                                    report.progressStatus}{' '}
-                                  · Updated {perthWhen(report.updatedAt)}
-                                </p>
-                                {report.workSummary ? <p>{report.workSummary}</p> : null}
-                                {report.outstandingWork ? (
-                                  <p>Outstanding: {report.outstandingWork}</p>
-                                ) : null}
-                                {report.issues ? <p>Issues: {report.issues}</p> : null}
-                                <p className="ee-muted" style={{ marginBottom: 0 }}>
-                                  Further visit: {report.followUpRequired ? 'Yes' : 'No'}
-                                </p>
+                      <ul className="ee-tech-summaries">
+                        {reportsForVisit.map((report) => {
+                          const member =
+                            (report.staffId ? crewById.get(report.staffId) : undefined) ??
+                            (report.technicianName
+                              ? crewByName.get(report.technicianName.toLowerCase())
+                              : undefined);
+                          const avatarId = member?.id ?? report.staffId ?? report.id;
+                          const avatarName = member?.name ?? report.technicianName ?? 'Technician';
+                          const outcome =
+                            VISIT_OUTCOME_LABELS[report.progressStatus as VisitOutcomeStatus] ??
+                            report.progressStatus;
+                          return (
+                            <li key={report.id} className="ee-tech-summary-row">
+                              <span
+                                className="ee-avatar ee-visit-crew-avatar"
+                                title={avatarName}
+                                style={{
+                                  backgroundColor: staffColor(avatarId, member?.avatarColor ?? null),
+                                }}
+                              >
+                                {crewInitials(avatarName)}
+                              </span>
+                              <div className="ee-tech-summary-body">
+                                <div className="ee-tech-summary-head">
+                                  <strong>{avatarName}</strong>
+                                  <span className="ee-muted">{outcome}</span>
+                                </div>
+                                {report.workSummary ? (
+                                  <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{report.workSummary}</p>
+                                ) : (
+                                  <p className="ee-muted" style={{ margin: 0 }}>
+                                    No summary yet
+                                  </p>
+                                )}
                               </div>
-                            </details>
-                          </li>
-                        ))}
+                            </li>
+                          );
+                        })}
                       </ul>
                     ) : (
-                      <p className="ee-muted">No individual technician work reports yet.</p>
+                      <p className="ee-muted">No summaries yet</p>
                     )}
                   </div>
                 </div>

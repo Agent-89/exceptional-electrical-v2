@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Suspense } from 'react';
 import { listJobAttachments, listJobNotes, signAttachmentUrls } from '@/lib/tech-field';
 import { listTimeEntriesForJob } from '@/lib/tech-time';
@@ -25,6 +26,23 @@ type AppointmentView = {
 
 function staffName(names: Record<string, string>, staffId: string) {
   return names[staffId] ?? 'Technician';
+}
+
+function mapTechReports(
+  techReports: Awaited<ReturnType<typeof listTechWorkReportsForJob>>,
+) {
+  return techReports.map((report) => ({
+    id: report.id,
+    appointmentId: report.appointmentId,
+    staffId: report.staffId,
+    technicianName: report.technicianName,
+    workSummary: report.workSummary,
+    outstandingWork: report.outstandingWork,
+    issues: report.issues,
+    followUpRequired: report.followUpRequired,
+    progressStatus: report.progressStatus,
+    updatedAt: report.updatedAt,
+  }));
 }
 
 async function loadFieldBundle(jobId: string, options: { signPhotos: boolean }) {
@@ -73,17 +91,7 @@ async function JobAttentionSection({
     <JobFieldActivity
       jobId={jobId}
       appointments={appointments}
-      techReports={techReports.map((report) => ({
-        id: report.id,
-        appointmentId: report.appointmentId,
-        technicianName: report.technicianName,
-        workSummary: report.workSummary,
-        outstandingWork: report.outstandingWork,
-        issues: report.issues,
-        followUpRequired: report.followUpRequired,
-        progressStatus: report.progressStatus,
-        updatedAt: report.updatedAt,
-      }))}
+      techReports={mapTechReports(techReports)}
       timeEntries={timeEntries.map((entry) => ({
         id: entry.id,
         staffName: staffName(staffNames, entry.staffId),
@@ -118,17 +126,7 @@ async function JobTimeSection({
     <JobFieldActivity
       jobId={jobId}
       appointments={appointments}
-      techReports={techReports.map((report) => ({
-        id: report.id,
-        appointmentId: report.appointmentId,
-        technicianName: report.technicianName,
-        workSummary: report.workSummary,
-        outstandingWork: report.outstandingWork,
-        issues: report.issues,
-        followUpRequired: report.followUpRequired,
-        progressStatus: report.progressStatus,
-        updatedAt: report.updatedAt,
-      }))}
+      techReports={mapTechReports(techReports)}
       timeEntries={timeEntries.map((entry) => ({
         id: entry.id,
         staffName: staffName(staffNames, entry.staffId),
@@ -149,6 +147,30 @@ async function JobTimeSection({
   );
 }
 
+async function JobVisitsSection({
+  jobId,
+  appointments,
+  scheduleForm,
+}: {
+  jobId: string;
+  appointments: AppointmentView[];
+  scheduleForm?: ReactNode;
+}) {
+  const { techReports } = await loadFieldBundle(jobId, { signPhotos: false });
+  return (
+    <JobFieldActivity
+      jobId={jobId}
+      appointments={appointments}
+      techReports={mapTechReports(techReports)}
+      timeEntries={[]}
+      notes={[]}
+      photos={[]}
+      section="visits"
+      scheduleForm={scheduleForm}
+    />
+  );
+}
+
 async function JobFilesSection({
   jobId,
   appointments,
@@ -165,17 +187,7 @@ async function JobFilesSection({
     <JobFieldActivity
       jobId={jobId}
       appointments={appointments}
-      techReports={techReports.map((report) => ({
-        id: report.id,
-        appointmentId: report.appointmentId,
-        technicianName: report.technicianName,
-        workSummary: report.workSummary,
-        outstandingWork: report.outstandingWork,
-        issues: report.issues,
-        followUpRequired: report.followUpRequired,
-        progressStatus: report.progressStatus,
-        updatedAt: report.updatedAt,
-      }))}
+      techReports={mapTechReports(techReports)}
       timeEntries={timeEntries.map((entry) => ({
         id: entry.id,
         staffName: staffName(staffNames, entry.staffId),
@@ -242,6 +254,18 @@ export function SuspendedJobFiles(props: {
   return (
     <Suspense fallback={<FieldFallback label="notes and photos" />}>
       <JobFilesSection {...props} />
+    </Suspense>
+  );
+}
+
+export function SuspendedJobVisits(props: {
+  jobId: string;
+  appointments: AppointmentView[];
+  scheduleForm?: ReactNode;
+}) {
+  return (
+    <Suspense fallback={<FieldFallback label="visits" />}>
+      <JobVisitsSection {...props} />
     </Suspense>
   );
 }
