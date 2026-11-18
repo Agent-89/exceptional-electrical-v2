@@ -6,9 +6,15 @@ import {
   buildSiteAddress,
   extractStaffFromSchedule,
   formatDryRunMarkdown,
+  groupQuoteRows,
   isLocalSupabaseUrl,
+  mapTradifyInvoiceStatus,
+  mapTradifyJobStatus,
   normalizeJobNumber,
   parseCsv,
+  parseMoneyToCents,
+  parseScheduleWindows,
+  parseTradifyAmPmToUtc,
   rowsToObjects,
   siteMatchKey,
   splitStaffNames,
@@ -61,6 +67,54 @@ describe('normalize helpers', () => {
       extractStaffFromSchedule('Cooper Peberdy - 2026-12-03 08:00 to 2026-12-03 16:00'),
       ['Cooper Peberdy'],
     );
+  });
+
+  it('parses schedule windows in Australia/Perth', () => {
+    const windows = parseScheduleWindows(
+      'Cooper Peberdy - 2026-12-03 08:00 to 2026-12-03 16:00',
+    );
+    assert.equal(windows.length, 1);
+    assert.equal(windows[0]!.staffName, 'Cooper Peberdy');
+    // 08:00 Perth = 00:00 UTC
+    assert.equal(windows[0]!.startAt.toISOString(), '2026-12-03T00:00:00.000Z');
+    assert.equal(windows[0]!.endAt.toISOString(), '2026-12-03T08:00:00.000Z');
+  });
+
+  it('maps In Progress by future schedule', () => {
+    assert.equal(mapTradifyJobStatus('In Progress', true), 'in_progress');
+    assert.equal(mapTradifyJobStatus('In Progress', false), 'on_hold');
+    assert.equal(mapTradifyJobStatus('Complete', false), 'completed');
+    assert.equal(mapTradifyJobStatus('Scheduled', true), 'scheduled');
+  });
+
+  it('parses money and invoice status', () => {
+    assert.equal(parseMoneyToCents('27528.47'), 2752847);
+    assert.equal(parseMoneyToCents('$1,234.56'), 123456);
+    assert.equal(
+      mapTradifyInvoiceStatus({
+        deliveryStatus: 'Viewed',
+        paidCents: 565000,
+        dueCents: 0,
+        totalCents: 565000,
+      }),
+      'paid',
+    );
+    assert.equal(
+      mapTradifyInvoiceStatus({
+        deliveryStatus: 'Unsent',
+        paidCents: 0,
+        dueCents: 1000,
+        totalCents: 1000,
+      }),
+      'approved',
+    );
+  });
+
+  it('parses timesheet AM/PM times', () => {
+    const start = parseTradifyAmPmToUtc('2026-11-16', '7:00 AM');
+    const end = parseTradifyAmPmToUtc('2026-11-16', '11:00 AM');
+    assert.ok(start && end && end > start);
+    assert.equal(start!.toISOString(), '2026-11-15T23:00:00.000Z');
   });
 });
 
@@ -168,9 +222,52 @@ describe('buildDryRunReport', () => {
     assert.equal(report.counts.jobs.unmatchedCustomer, 1);
     assert.equal(report.inProgressJobs.length, 1);
     assert.equal(report.inProgressJobs[0]!.jobNumber, 'JB00001');
+    assert.equal(report.inProgressSplit.toOnHold, 1);
+    assert.equal(report.inProgressSplit.toInProgress, 0);
     assert.ok(report.staffNames.includes('Neil Smith'));
     assert.ok(report.staffNames.includes('Cooper Peberdy'));
+    assert.equal(report.counts.appointments.windows, 1);
     assert.match(formatDryRunMarkdown(report), /In Progress jobs/i);
+    assert.match(formatDryRunMarkdown(report), /in_progress/i);
+  });
+
+  it('groups quote line rows by Quote No', () => {
+    const rows = stageRecords({
+      sourceFilename: 'quote_export.csv',
+      batchId: 'tradify-test',
+      records: [
+        {
+          'Quote No': 'QT00002',
+          'Customer Name': 'Acme',
+          Status: 'Accepted',
+          Total: '100.00',
+          Subtotal: '90.00',
+          Tax: '10.00',
+          'Line Number': '1',
+          'Line Description': 'Labour',
+          'Line Quantity': '1',
+          'Line Unit Sell Price': '90.00',
+          Jobs: 'JB00001',
+        },
+        {
+          'Quote No': 'QT00002',
+          'Customer Name': 'Acme',
+          Status: 'Accepted',
+          Total: '100.00',
+          'Line Number': '2',
+          'Line Description': 'Materials',
+          'Line Quantity': '2',
+          'Line Unit Sell Price': '5.00',
+          Jobs: 'JB00001',
+        },
+      ],
+    });
+    const grouped = groupQuoteRows(rows);
+    assert.equal(grouped.length, 1);
+    assert.equal(grouped[0]!.quoteNo, 'QT00002');
+    assert.equal(grouped[0]!.status, 'accepted');
+    assert.equal(grouped[0]!.lines.length, 2);
+    assert.deepEqual(grouped[0]!.jobNumbers, ['JB00001']);
   });
 
   it('detects HQ collisions when snapshot provided', () => {

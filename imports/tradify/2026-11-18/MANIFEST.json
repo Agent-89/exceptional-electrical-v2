@@ -1,0 +1,38 @@
+{
+  "batch_id": "tradify-2026-11-18",
+  "source_system": "tradify",
+  "frozen_at": "2026-11-18T06:42:00.000Z",
+  "environment": "hosted-apply-candidate",
+  "files": {
+    "customer_export.csv": {
+      "sha256": "d239db19422531e4fb62fcde2baccb5948a891577da0a9d3e3c0e1202abfc398",
+      "bytes": 172377,
+      "rows": 629
+    },
+    "site_export.csv": {
+      "sha256": "b4e2732fb53af983ad6478f18e3f4ce0c256ac823811041f5680cd13a3f8680f",
+      "bytes": 120845,
+      "rows": 961
+    },
+    "job_export.csv": {
+      "sha256": "ebb6bf075d0c6e6e4cdf31c76193b9bcb470e150c755e37073b481f0021309b0",
+      "bytes": 1291062,
+      "rows": 1716
+    },
+    "quote_export.csv": {
+      "sha256": "100270cb9165476fb4b636c9adccdbd726d7b5fbda89b14323992af4141f0d4d",
+      "bytes": 1536696,
+      "rows": 3939
+    },
+    "invoice_export.csv": {
+      "sha256": "1df89623c82ce94bda93f9db66b7af554ac5d32dc2a17edf2d0cfc75fe1eac1f",
+      "bytes": 1778327,
+      "rows": 4090
+    },
+    "timesheet_export.csv": {
+      "sha256": "e77414df153ac5a9545ba114685632287eb254a4670637f7c6b825d6005ee8e4",
+      "bytes": 825,
+      "rows": 11
+    }
+  }
+}

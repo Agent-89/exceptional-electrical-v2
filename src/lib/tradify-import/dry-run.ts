@@ -1,3 +1,4 @@
+import {groupInvoiceRows, groupQuoteRows, mapTimesheetRows} from './commercial.ts';
 import {
   buildSiteAddress,
   extractStaffFromSchedule,
@@ -7,6 +8,12 @@ import {
   parseJobNumberInt,
   siteMatchKey,
 } from './normalize.ts';
+import {
+  buildInProgressSplit,
+  collectAppointmentCandidates,
+  countStaffOverlaps,
+  type InProgressSplit,
+} from './status-split.ts';
 
 export type StagedRow = {
   sourceFilename: string;
@@ -49,6 +56,23 @@ export type DryRunCounts = {
     uniqueNames: number;
     matchedSchedulingStaff: number;
     unmatchedNames: number;
+    willCreateSchedulingStaff: number;
+  };
+  appointments: {
+    jobsWithSchedule: number;
+    parseFailures: number;
+    windows: number;
+    future: number;
+    past: number;
+    staffOverlapPairs: number;
+  };
+  quotes: {sourceLines: number; uniqueQuotes: number; unmatchedCustomer: number};
+  invoices: {sourceLines: number; uniqueInvoices: number; unmatchedCustomer: number};
+  timesheets: {
+    source: number;
+    parseOk: number;
+    unmatchedJob: number;
+    unmatchedStaff: number;
   };
 };
 
@@ -58,6 +82,7 @@ export type DryRunReport = {
   mode: 'csv-only' | 'csv+local-db';
   counts: DryRunCounts;
   statusInventory: Record<string, number>;
+  inProgressSplit: InProgressSplit;
   inProgressJobs: {jobNumber: string; customer: string; status: string}[];
   unmatchedCustomersForJobs: string[];
   unmatchedCustomersForSites: string[];
@@ -98,7 +123,23 @@ function emptyCounts(): DryRunCounts {
       collisionHqTradifyId: 0,
       unmatchedCustomer: 0,
     },
-    staff: {uniqueNames: 0, matchedSchedulingStaff: 0, unmatchedNames: 0},
+    staff: {
+      uniqueNames: 0,
+      matchedSchedulingStaff: 0,
+      unmatchedNames: 0,
+      willCreateSchedulingStaff: 0,
+    },
+    appointments: {
+      jobsWithSchedule: 0,
+      parseFailures: 0,
+      windows: 0,
+      future: 0,
+      past: 0,
+      staffOverlapPairs: 0,
+    },
+    quotes: {sourceLines: 0, uniqueQuotes: 0, unmatchedCustomer: 0},
+    invoices: {sourceLines: 0, uniqueInvoices: 0, unmatchedCustomer: 0},
+    timesheets: {source: 0, parseOk: 0, unmatchedJob: 0, unmatchedStaff: 0},
   };
 }
 
@@ -107,9 +148,14 @@ export function buildDryRunReport(args: {
   customers: StagedRow[];
   sites: StagedRow[];
   jobs: StagedRow[];
+  quotes?: StagedRow[];
+  invoices?: StagedRow[];
+  timesheets?: StagedRow[];
   hq?: HqSnapshot | null;
   generatedAt?: string;
+  now?: Date;
 }): DryRunReport {
+  const now = args.now || new Date();
   const counts = emptyCounts();
   const customerByTradifyId = new Map<string, StagedRow>();
   const customerByName = new Map<string, string[]>();
@@ -277,6 +323,92 @@ export function buildDryRunReport(args: {
   counts.staff.uniqueNames = staffNames.length;
   counts.staff.matchedSchedulingStaff = matchedStaff.length;
   counts.staff.unmatchedNames = unmatchedStaffNames.length;
+  // Apply will create missing scheduling_staff rows (no Auth) for unmatched names.
+  counts.staff.willCreateSchedulingStaff = unmatchedStaffNames.length;
+
+  const appt = collectAppointmentCandidates(args.jobs, now);
+  counts.appointments = {
+    jobsWithSchedule: appt.jobsWithSchedule,
+    parseFailures: appt.parseFailures,
+    windows: appt.candidates.length,
+    future: appt.futureCount,
+    past: appt.pastCount,
+    staffOverlapPairs: countStaffOverlaps(appt.candidates),
+  };
+
+  const inProgressSplit = buildInProgressSplit(args.jobs, now);
+
+  const quoteRows = args.quotes || [];
+  const groupedQuotes = groupQuoteRows(quoteRows);
+  counts.quotes.sourceLines = quoteRows.length;
+  counts.quotes.uniqueQuotes = groupedQuotes.length;
+  for (const q of groupedQuotes) {
+    if (!customerNameSet.has(normalizeName(q.customerName))) {
+      counts.quotes.unmatchedCustomer += 1;
+    }
+  }
+
+  const invoiceRows = args.invoices || [];
+  const groupedInvoices = groupInvoiceRows(invoiceRows);
+  counts.invoices.sourceLines = invoiceRows.length;
+  counts.invoices.uniqueInvoices = groupedInvoices.length;
+  for (const inv of groupedInvoices) {
+    if (!customerNameSet.has(normalizeName(inv.customerName))) {
+      counts.invoices.unmatchedCustomer += 1;
+    }
+  }
+
+  const timesheetRows = args.timesheets || [];
+  const mappedTs = mapTimesheetRows(timesheetRows);
+  counts.timesheets.source = mappedTs.length;
+  const jobNumberSet = new Set(jobNumbersSeen.keys());
+  for (const ts of mappedTs) {
+    if (ts.parseOk) counts.timesheets.parseOk += 1;
+    if (ts.jobNumber && !jobNumberSet.has(ts.jobNumber)) {
+      counts.timesheets.unmatchedJob += 1;
+    }
+    if (ts.staffName) {
+      const key = normalizeName(ts.staffName);
+      if (!staffNameSet.has(key)) {
+        staffNameSet.set(key, ts.staffName);
+      }
+      if (args.hq) {
+        const byNorm = new Map<string, string>();
+        for (const [id, name] of args.hq.schedulingStaffNames) {
+          byNorm.set(normalizeName(name), id);
+        }
+        if (!byNorm.has(key) && !staffNames.some((n) => normalizeName(n) === key)) {
+          counts.timesheets.unmatchedStaff += 1;
+        }
+      }
+    }
+  }
+  // Refresh staff list after timesheet names
+  const staffNamesFinal = [...staffNameSet.values()].sort((a, b) =>
+    a.localeCompare(b, 'en', {sensitivity: 'base'}),
+  );
+  // Recompute unmatched if timesheets added names
+  if (staffNamesFinal.length !== staffNames.length) {
+    unmatchedStaffNames.length = 0;
+    matchedStaff.length = 0;
+    if (args.hq) {
+      const byNorm = new Map<string, string>();
+      for (const [id, name] of args.hq.schedulingStaffNames) {
+        byNorm.set(normalizeName(name), id);
+      }
+      for (const name of staffNamesFinal) {
+        const id = byNorm.get(normalizeName(name));
+        if (id) matchedStaff.push({name, schedulingStaffId: id});
+        else unmatchedStaffNames.push(name);
+      }
+    } else {
+      unmatchedStaffNames.push(...staffNamesFinal);
+    }
+    counts.staff.uniqueNames = staffNamesFinal.length;
+    counts.staff.matchedSchedulingStaff = matchedStaff.length;
+    counts.staff.unmatchedNames = unmatchedStaffNames.length;
+    counts.staff.willCreateSchedulingStaff = unmatchedStaffNames.length;
+  }
 
   const notes = [
     'Dry-run only: no database writes were performed.',
@@ -284,9 +416,11 @@ export function buildDryRunReport(args: {
     'Sites keyed by (customer, normalised site name, normalised address); ambiguous duplicates flagged for review.',
     'Jobs retain Job Number; collisions with HQ job_number must not overwrite HQ-created jobs.',
     'Staff names map to scheduling_staff only — never create Auth/staff_profiles from export names.',
-    'Schedule strings are inventoried for staff evidence only; historical appointments are not auto-published.',
-    'Do not treat Tradify In Progress jobs as currently active without owner review.',
-    'Import apply path is out of scope; design must be idempotent and reversible by batch when built.',
+    'Unmatched staff names will be created as scheduling_staff (auth_user_id null) on apply.',
+    'Schedule windows (past + future) are published as job_appointments on apply; overlaps are reported only.',
+    'Tradify In Progress → HQ in_progress when a future schedule window exists; otherwise on_hold for review.',
+    'Quotes/invoices/timesheets are included when present in the batch MANIFEST.',
+    'Apply path is owner-gated (npm run tradify:apply -- --i-understand-hosted-write).',
   ];
   if (!args.hq) {
     notes.push(
@@ -300,6 +434,7 @@ export function buildDryRunReport(args: {
     mode: args.hq ? 'csv+local-db' : 'csv-only',
     counts,
     statusInventory,
+    inProgressSplit,
     inProgressJobs: inProgressJobs
       .slice()
       .sort((a, b) => a.jobNumber.localeCompare(b.jobNumber)),
@@ -308,7 +443,7 @@ export function buildDryRunReport(args: {
     duplicateCustomerTradifyIds: [...new Set(duplicateCustomerTradifyIds)].sort(),
     duplicateJobNumbersInExport: duplicateJobNumbersInExport.sort(),
     ambiguousSites: ambiguousSites.slice(0, 200),
-    staffNames,
+    staffNames: staffNamesFinal,
     unmatchedStaffNames,
     matchedStaff,
     hqCollisions: {

@@ -8,7 +8,7 @@
  * collision/staff compare against local Supabase (127.0.0.1:54321) only.
  *
  * Usage:
- *   npm run tradify:dry-run -- [--batch imports/tradify/2026-11-12] [--local-db]
+ *   npm run tradify:dry-run -- [--batch imports/tradify/2026-11-18] [--local-db]
  */
 import {readFileSync, writeFileSync, existsSync} from 'node:fs';
 import {resolve, dirname, join} from 'node:path';
@@ -29,7 +29,7 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function parseArgs(argv: string[]) {
-  let batchDir = join(root, 'imports', 'tradify', '2026-11-12');
+  let batchDir = join(root, 'imports', 'tradify', '2026-11-18');
   let localDb = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
@@ -61,7 +61,7 @@ Usage:
 
 Options:
   --batch <dir>   Batch folder containing MANIFEST.json + CSVs
-                  (default: imports/tradify/2026-11-12)
+                  (default: imports/tradify/2026-11-18)
   --local-db      Read-only compare against local Supabase only
                   (NEXT_PUBLIC_SUPABASE_URL must be http://127.0.0.1:54321)
 `);
@@ -107,15 +107,13 @@ async function loadHqSnapshot(): Promise<HqSnapshot> {
     if (row.tradify_reference) jobTradifyIds.add(String(row.tradify_reference));
   }
 
-  // Customers may not have a tradify column in all schemas; ignore missing column.
   const {data: customers, error: customersError} = await db
     .from('customers')
-    .select('id,name');
+    .select('id,name,tradify_id');
   if (customersError) {
     console.warn(`Skipping customer snapshot: ${customersError.message}`);
   } else {
     for (const row of customers || []) {
-      // No tradify id column guaranteed — keep set empty unless present on row.
       const anyRow = row as Record<string, unknown>;
       if (anyRow.tradify_id) customerTradifyIds.add(String(anyRow.tradify_id));
     }
@@ -150,19 +148,26 @@ async function main() {
     throw new Error(`Unexpected source_system: ${manifest.source_system}`);
   }
 
-  const required = ['customer_export.csv', 'site_export.csv', 'job_export.csv'] as const;
-  const staged: Record<(typeof required)[number], ReturnType<typeof stageRecords>> = {
-    'customer_export.csv': [],
-    'site_export.csv': [],
-    'job_export.csv': [],
-  };
+  const core = ['customer_export.csv', 'site_export.csv', 'job_export.csv'] as const;
+  const optional = ['quote_export.csv', 'invoice_export.csv', 'timesheet_export.csv'] as const;
+  const staged: Record<string, ReturnType<typeof stageRecords>> = {};
 
-  const checks = [];
-  for (const filename of required) {
+  for (const filename of [...core, ...optional]) {
     const expected = manifest.files[filename];
-    if (!expected) throw new Error(`MANIFEST missing file entry: ${filename}`);
+    if (!expected) {
+      if ((core as readonly string[]).includes(filename)) {
+        throw new Error(`MANIFEST missing file entry: ${filename}`);
+      }
+      continue;
+    }
     const filePath = join(batchDir, filename);
-    if (!existsSync(filePath)) throw new Error(`Missing CSV: ${filePath}`);
+    if (!existsSync(filePath)) {
+      if ((core as readonly string[]).includes(filename)) {
+        throw new Error(`Missing CSV: ${filePath}`);
+      }
+      console.warn(`Optional CSV missing, skipping: ${filename}`);
+      continue;
+    }
     const bytes = readFileSync(filePath);
     const records = loadCsvObjects(filePath);
     const check = verifyManifestFile({
@@ -171,20 +176,16 @@ async function main() {
       bytes,
       dataRowCount: records.length,
     });
-    checks.push(check);
     if (!check.ok) {
       console.error(`Manifest check failed for ${filename}:`);
       for (const err of check.errors) console.error(`  - ${err}`);
+      throw new Error('Manifest verification failed — refusing to emit dry-run report.');
     }
     staged[filename] = stageRecords({
       sourceFilename: filename,
       batchId: manifest.batch_id,
       records,
     });
-  }
-
-  if (checks.some((c) => !c.ok)) {
-    throw new Error('Manifest verification failed — refusing to emit dry-run report.');
   }
 
   let hq: HqSnapshot | null = null;
@@ -197,9 +198,12 @@ async function main() {
 
   const report = buildDryRunReport({
     batchId: manifest.batch_id,
-    customers: staged['customer_export.csv'],
-    sites: staged['site_export.csv'],
-    jobs: staged['job_export.csv'],
+    customers: staged['customer_export.csv'] || [],
+    sites: staged['site_export.csv'] || [],
+    jobs: staged['job_export.csv'] || [],
+    quotes: staged['quote_export.csv'],
+    invoices: staged['invoice_export.csv'],
+    timesheets: staged['timesheet_export.csv'],
     hq,
   });
 
@@ -212,7 +216,15 @@ async function main() {
   console.log(`  customers insert=${report.counts.customers.insert} / source=${report.counts.customers.source}`);
   console.log(`  sites insert=${report.counts.sites.insert} / source=${report.counts.sites.source}`);
   console.log(`  jobs insert=${report.counts.jobs.insert} / source=${report.counts.jobs.source}`);
-  console.log(`  In Progress jobs: ${report.inProgressJobs.length}`);
+  console.log(
+    `  appointments windows=${report.counts.appointments.windows} (future=${report.counts.appointments.future} past=${report.counts.appointments.past})`,
+  );
+  console.log(
+    `  quotes=${report.counts.quotes.uniqueQuotes} invoices=${report.counts.invoices.uniqueInvoices} timesheets=${report.counts.timesheets.source}`,
+  );
+  console.log(
+    `  In Progress → in_progress=${report.inProgressSplit.toInProgress} on_hold=${report.inProgressSplit.toOnHold}`,
+  );
   console.log(`  Wrote ${jsonPath}`);
   console.log(`  Wrote ${mdPath}`);
 }

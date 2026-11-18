@@ -1,0 +1,96 @@
+-- ============================================================================
+-- TRADIFY IMPORT BATCH ROLLBACK — OWNER APPROVAL REQUIRED
+-- ============================================================================
+-- Deletes HQ rows recorded in public.import_row_map for one batch_id.
+-- Does NOT delete scheduling_staff rows created during import (safe to keep).
+-- Does NOT touch Auth / staff_profiles / enquiries.
+--
+-- Replace :batch_id below, then run only after explicit owner approval.
+-- Example batch: tradify-2026-11-18
+-- ============================================================================
+
+-- begin;
+--
+-- -- Child commercial / time / visit rows first where FKs require it
+-- delete from public.invoice_payments
+--  where id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'invoice_payment'
+--  );
+--
+-- delete from public.invoice_items
+--  where invoice_id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'invoice'
+--  );
+--
+-- delete from public.invoice_activity
+--  where invoice_id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'invoice'
+--  );
+--
+-- delete from public.invoices
+--  where id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'invoice'
+--  );
+--
+-- delete from public.quote_items
+--  where quote_id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'quote'
+--  );
+--
+-- delete from public.job_quotes
+--  where quote_id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'quote'
+--  );
+--
+-- delete from public.quotes
+--  where id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'quote'
+--  );
+--
+-- delete from public.job_time_entries
+--  where id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'time_entry'
+--  );
+--
+-- delete from public.job_appointment_staff
+--  where appointment_id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'appointment'
+--  );
+--
+-- delete from public.job_appointments
+--  where id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'appointment'
+--  );
+--
+-- delete from public.jobs
+--  where id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'job'
+--  );
+--
+-- delete from public.customer_addresses
+--  where id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'address'
+--  );
+--
+-- delete from public.customers
+--  where id in (
+--    select hq_id from public.import_row_map
+--     where batch_id = :'batch_id' and entity = 'customer'
+--  );
+--
+-- delete from public.import_row_map where batch_id = :'batch_id';
+-- delete from public.import_batches where batch_id = :'batch_id';
+--
+-- commit;

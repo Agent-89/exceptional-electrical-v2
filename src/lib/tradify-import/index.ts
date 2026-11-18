@@ -10,7 +10,33 @@ export {
   splitStaffNames,
   extractStaffFromSchedule,
   mergeStaffNames,
+  parseScheduleWindows,
+  scheduleHasFutureWindow,
+  perthLocalToUtc,
+  mapTradifyJobStatus,
+  mapTradifyQuoteStatus,
+  mapTradifyInvoiceStatus,
+  parseMoneyToCents,
+  parseTradifyAmPmToUtc,
+  extractJobNumbersFromCell,
+  type ScheduleWindow,
+  type HqJobStatus,
+  type HqQuoteStatus,
+  type HqInvoiceStatus,
 } from './normalize.ts';
+export {
+  groupQuoteRows,
+  groupInvoiceRows,
+  mapTimesheetRows,
+  type GroupedQuote,
+  type GroupedInvoice,
+  type TimesheetRow,
+} from './commercial.ts';
+export {
+  buildInProgressSplit,
+  collectAppointmentCandidates,
+  countStaffOverlaps,
+} from './status-split.ts';
 export {
   sha256Hex,
   verifyManifestFile,
@@ -28,3 +54,4 @@ export {
 export {formatDryRunMarkdown} from './report.ts';
 export {assertLocalSupabaseUrl, isLocalSupabaseUrl} from './local-db.ts';
 export {stageRecords} from './stage.ts';
+export {applyTradifyBatch, type ApplySummary} from './apply.ts';
