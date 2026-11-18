@@ -25,7 +25,7 @@ export function parseFollowUpResolutionMode(value: string): FollowUpResolutionMo
   return null;
 }
 
-/** Earliest later non-cancelled appointment on the same job (for auto-link). */
+/** Earliest later non-cancelled appointment on the same job. */
 export function pickNextFollowUpAppointment(input: {
   sourceAppointmentId: string;
   sourceStartsAt: string;
@@ -41,6 +41,21 @@ export function pickNextFollowUpAppointment(input: {
     )
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   return later[0] ?? null;
+}
+
+/** Attention only while flagged and no later visit exists on the job. */
+export function needsFollowUpAttention(input: {
+  appointment: FollowUpAppointment;
+  candidates: Array<{ id: string; startsAt: string; status: string }>;
+}): boolean {
+  if (!input.appointment.followUp) return false;
+  return (
+    pickNextFollowUpAppointment({
+      sourceAppointmentId: input.appointment.id,
+      sourceStartsAt: input.appointment.startsAt,
+      candidates: input.candidates,
+    }) === null
+  );
 }
 
 export function validateFollowUpResolution(input: {

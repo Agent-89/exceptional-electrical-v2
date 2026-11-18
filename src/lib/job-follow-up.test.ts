@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   formatFollowUpResolutionActivityNote,
   isFollowUpOutstanding,
+  needsFollowUpAttention,
   pickNextFollowUpAppointment,
   validateFollowUpResolution,
 } from './job-follow-up.ts';
@@ -109,6 +110,52 @@ describe('pickNextFollowUpAppointment', () => {
       ],
     });
     assert.equal(next?.id, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0101');
+  });
+});
+
+describe('needsFollowUpAttention', () => {
+  const source = {
+    id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0100',
+    startsAt: '2026-11-16T01:00:00.000Z',
+    followUp: true,
+  };
+  const later = {
+    id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0101',
+    startsAt: '2026-11-17T01:00:00.000Z',
+    status: 'scheduled',
+  };
+
+  it('is true when flagged with no later visit', () => {
+    assert.equal(
+      needsFollowUpAttention({
+        appointment: source,
+        candidates: [{ id: source.id, startsAt: source.startsAt, status: 'completed' }],
+      }),
+      true,
+    );
+  });
+
+  it('is false when a later visit already exists', () => {
+    assert.equal(
+      needsFollowUpAttention({
+        appointment: source,
+        candidates: [
+          { id: source.id, startsAt: source.startsAt, status: 'completed' },
+          later,
+        ],
+      }),
+      false,
+    );
+  });
+
+  it('is false when not flagged', () => {
+    assert.equal(
+      needsFollowUpAttention({
+        appointment: { ...source, followUp: false },
+        candidates: [{ id: source.id, startsAt: source.startsAt, status: 'completed' }],
+      }),
+      false,
+    );
   });
 });
 

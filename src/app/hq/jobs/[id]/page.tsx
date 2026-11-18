@@ -735,9 +735,9 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-tech-summary-row{display:flex;gap:10px;align-items:flex-start}
 .ee-tech-summary-body{min-width:0;flex:1;display:grid;gap:4px}
 .ee-tech-summary-head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
-.ee-follow-up-actions{margin-top:12px;padding-top:12px;border-top:1px solid #e1e8f0}
-.ee-follow-up-actions-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.ee-follow-up-actions-row .hq-detail-action-primary,.ee-follow-up-actions-row .hq-detail-action-secondary{text-decoration:none;display:inline-flex;align-items:center;border:0;cursor:pointer;font:inherit}
+.ee-further-visit-flag{display:grid;gap:8px;margin-top:8px}
+.ee-further-visit-next{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.ee-further-visit-next .hq-detail-action-secondary{text-decoration:none}
 .ee-nested-expand{border-top:1px solid #eef3f8;margin-top:0;padding-top:6px}
 .ee-nested-expand>summary{color:inherit}
 .ee-nested-expand>summary strong{color:#10233a}
@@ -849,7 +849,6 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-time-calc p{margin:0}
 .ee-billable-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:-6px}
 .ee-billable-manual{color:#9a3412;font-size:13px;font-weight:700}
-.ee-follow-up-resolve{margin-top:12px;padding-top:12px;border-top:1px solid #e1e8f0}
 .ee-job-team-avatars{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .ee-avatar{display:grid;place-items:center;background:#e6f1fd;color:#fff;border-radius:50%;width:35px;height:35px;font-size:12px;font-weight:800;letter-spacing:.02em}
 .ee-job-inline{display:flex;gap:8px;margin-top:14px}
