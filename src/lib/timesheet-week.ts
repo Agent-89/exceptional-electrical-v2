@@ -23,11 +23,14 @@ export type TimesheetStaffWeekRow = {
   staffId: string;
   fullName: string;
   initials: string;
+  avatarColor: string | null;
   days: TimesheetDayCell[];
   weekApprovedWorkedMinutes: number;
   weekApprovedBillableMinutes: number;
   weekPendingCount: number;
 };
+
+export type TimesheetEntryStatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const PENDING_HINT = new Set(['submitted', 'corrected']);
@@ -79,7 +82,9 @@ export function resolveTimesheetWeekMonday(weekParam: string | undefined, todayK
   return perthWeekMonday(raw);
 }
 
-export function staffInitials(fullName: string): string {
+export function staffInitials(fullName: string, dbInitials?: string | null): string {
+  const fromDb = (dbInitials || '').trim();
+  if (fromDb) return fromDb.slice(0, 3).toUpperCase();
   const parts = fullName
     .trim()
     .split(/\s+/)
@@ -87,6 +92,45 @@ export function staffInitials(fullName: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/** Entries list status filter: pending = submitted + corrected. */
+export function matchesTimesheetStatusFilter(
+  status: string,
+  filter: TimesheetEntryStatusFilter,
+): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'pending') return status === 'submitted' || status === 'corrected';
+  if (filter === 'approved') return status === 'approved';
+  if (filter === 'rejected') return status === 'rejected';
+  return true;
+}
+
+function timesheetReviewSortBand(status: string): number {
+  if (status === 'submitted' || status === 'corrected') return 0;
+  if (status === 'approved') return 1;
+  if (status === 'rejected') return 2;
+  return 3;
+}
+
+/** Needs review → approved → rejected → other; newest startedAt within each band. */
+export function sortTimesheetEntriesForReview<T extends { status: string; startedAt: string }>(
+  entries: T[],
+): T[] {
+  return [...entries].sort((a, b) => {
+    const band = timesheetReviewSortBand(a.status) - timesheetReviewSortBand(b.status);
+    if (band !== 0) return band;
+    return b.startedAt.localeCompare(a.startedAt);
+  });
+}
+
+export function resolveTimesheetStatusFilter(
+  raw: string | undefined,
+): TimesheetEntryStatusFilter {
+  if (raw === 'pending' || raw === 'approved' || raw === 'rejected' || raw === 'all') return raw;
+  // Legacy deep links from the old submitted default → pending bucket.
+  if (raw === 'submitted' || raw === 'corrected') return 'pending';
+  return 'all';
 }
 
 function emptyDayCell(dateKey: string): TimesheetDayCell {
@@ -104,7 +148,7 @@ function emptyDayCell(dateKey: string): TimesheetDayCell {
  * Pending hint counts `submitted` + `corrected` (not rejected).
  */
 export function buildTimesheetWeekRows(
-  staff: { id: string; fullName: string }[],
+  staff: { id: string; fullName: string; initials?: string | null; avatarColor?: string | null }[],
   entries: TimesheetWeekEntry[],
   weekDateKeys: string[],
 ): TimesheetStaffWeekRow[] {
@@ -115,7 +159,8 @@ export function buildTimesheetWeekRows(
     rows.set(member.id, {
       staffId: member.id,
       fullName: member.fullName,
-      initials: staffInitials(member.fullName),
+      initials: staffInitials(member.fullName, member.initials),
+      avatarColor: member.avatarColor ?? null,
       days: weekDateKeys.map(emptyDayCell),
       weekApprovedWorkedMinutes: 0,
       weekApprovedBillableMinutes: 0,
@@ -136,6 +181,7 @@ export function buildTimesheetWeekRows(
         staffId: entry.staffId,
         fullName: 'Unknown technician',
         initials: '?',
+        avatarColor: null,
         days: weekDateKeys.map(emptyDayCell),
         weekApprovedWorkedMinutes: 0,
         weekApprovedBillableMinutes: 0,

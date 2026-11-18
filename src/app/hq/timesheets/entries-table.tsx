@@ -7,12 +7,16 @@ import { reviewTimeEntryAction } from '@/app/field/actions';
 import TimeEntryReviewForm from '@/app/hq/time-entry-review-form';
 import { formatJobNumber, formatPerthDate, formatPerthTime } from '@/lib/perth-day';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
+import { inferBillableMode, type ReviewTimeDecision } from '@/lib/review-time-entry';
 import {
-  allowedReviewDecisions,
-  inferBillableMode,
-  type ReviewTimeDecision,
-} from '@/lib/review-time-entry';
-import { jobTimeStatusLabel } from '@/lib/job-time-list';
+  canQuickApproveTimeEntry,
+  canReviewJobTimeEntry,
+  jobTimeStatusLabel,
+  timeEntryReviewNotes,
+  timeEntryStatusTone,
+} from '@/lib/job-time-list';
+import type { TimesheetEntryStatusFilter } from '@/lib/timesheet-week';
+import TimesheetEntriesFilters from './entries-filters';
 
 export type TimesheetEntryRow = {
   id: string;
@@ -29,24 +33,41 @@ export type TimesheetEntryRow = {
   status: string;
   entrySource: string;
   note: string | null;
+  rejectionReason: string | null;
+  correctionNote: string | null;
   originalWorkedMinutes: number | null;
 };
 
-function canDecision(status: string, decision: ReviewTimeDecision): boolean {
-  return allowedReviewDecisions(status).includes(decision);
-}
-
-export default function TimesheetEntriesTable({ entries }: { entries: TimesheetEntryRow[] }) {
+export default function TimesheetEntriesTable({
+  entries,
+  mondayKey,
+  staffFilter,
+  jobFilter,
+  statusFilter,
+  dayFilter,
+  staffOptions,
+  jobOptions,
+  dayLabel,
+  staffLabel,
+}: {
+  entries: TimesheetEntryRow[];
+  mondayKey: string;
+  staffFilter: string;
+  jobFilter: string;
+  statusFilter: TimesheetEntryStatusFilter;
+  dayFilter: string;
+  staffOptions: { id: string; fullName: string }[];
+  jobOptions: { id: string; number: number; title: string }[];
+  dayLabel?: string;
+  staffLabel?: string;
+}) {
   const router = useRouter();
-  const rejectDialog = useRef<HTMLDialogElement>(null);
   const correctDialog = useRef<HTMLDialogElement>(null);
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<TimesheetEntryRow | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [correctTarget, setCorrectTarget] = useState<TimesheetEntryRow | null>(null);
+  const [editTarget, setEditTarget] = useState<TimesheetEntryRow | null>(null);
 
   useEffect(() => {
     if (!flash) return;
@@ -55,31 +76,20 @@ export default function TimesheetEntriesTable({ entries }: { entries: TimesheetE
   }, [flash]);
 
   useEffect(() => {
-    const node = rejectDialog.current;
-    if (!node) return;
-    if (rejectTarget && !node.open) node.showModal();
-    if (!rejectTarget && node.open) node.close();
-  }, [rejectTarget]);
-
-  useEffect(() => {
     const node = correctDialog.current;
     if (!node) return;
-    if (correctTarget && !node.open) node.showModal();
-    if (!correctTarget && node.open) node.close();
-  }, [correctTarget]);
+    if (editTarget && !node.open) node.showModal();
+    if (!editTarget && node.open) node.close();
+  }, [editTarget]);
 
-  const closeReject = useCallback(() => {
-    setRejectTarget(null);
-    setRejectReason('');
-  }, []);
-
-  const closeCorrect = useCallback(() => {
-    setCorrectTarget(null);
+  const closeEdit = useCallback(() => {
+    setEditTarget(null);
   }, []);
 
   const runReview = useCallback(
-    (entry: TimesheetEntryRow, decision: ReviewTimeDecision, extras?: { rejectionReason?: string }) => {
+    (entry: TimesheetEntryRow, decision: ReviewTimeDecision) => {
       if (pending && busyId) return;
+      if (decision !== 'approve') return;
       setBusyId(entry.id);
       setRowError(null);
       setFlash(null);
@@ -91,7 +101,7 @@ export default function TimesheetEntriesTable({ entries }: { entries: TimesheetE
       data.set('decision', decision);
       data.set('billable_minutes', String(billable));
       data.set('billable_mode', inferBillableMode(entry.billableMinutes, entry.workedMinutes));
-      data.set('rejection_reason', extras?.rejectionReason ?? '');
+      data.set('rejection_reason', '');
       data.set('started_at', '');
       data.set('ended_at', '');
       data.set('break_minutes', String(entry.breakMinutes));
@@ -107,28 +117,17 @@ export default function TimesheetEntriesTable({ entries }: { entries: TimesheetE
           setBusyId(null);
           return;
         }
-        setFlash(result.message || (decision === 'approve' ? 'Time entry approved.' : 'Time entry rejected.'));
+        setFlash(result.message || 'Time entry approved.');
         setBusyId(null);
-        if (decision === 'reject') closeReject();
         router.refresh();
       });
     },
-    [pending, busyId, router, closeReject],
+    [pending, busyId, router],
   );
 
-  const submitReject = useCallback(() => {
-    if (!rejectTarget) return;
-    const reason = rejectReason.trim();
-    if (!reason) {
-      setRowError({ id: rejectTarget.id, message: 'Rejection reason is required.' });
-      return;
-    }
-    runReview(rejectTarget, 'reject', { rejectionReason: reason });
-  }, [rejectTarget, rejectReason, runReview]);
-
   return (
-    <section className="hq-panel ee-compact-panel">
-      <div className="ee-section-title">
+    <section className="hq-panel ee-compact-panel" id="timesheet-entries">
+      <div className="ee-section-title ee-timesheet-entries-head">
         <div>
           <span className="ee-eyebrow">ENTRIES</span>
           <h2>
@@ -136,6 +135,18 @@ export default function TimesheetEntriesTable({ entries }: { entries: TimesheetE
           </h2>
         </div>
       </div>
+
+      <TimesheetEntriesFilters
+        mondayKey={mondayKey}
+        staffFilter={staffFilter}
+        jobFilter={jobFilter}
+        statusFilter={statusFilter}
+        dayFilter={dayFilter}
+        staffOptions={staffOptions}
+        jobOptions={jobOptions}
+        dayLabel={dayLabel}
+        staffLabel={staffLabel}
+      />
 
       {flash ? (
         <p className="ee-form-success" role="status">
@@ -164,10 +175,11 @@ export default function TimesheetEntriesTable({ entries }: { entries: TimesheetE
             </thead>
             <tbody>
               {entries.map((entry) => {
-                const canApprove = canDecision(entry.status, 'approve');
-                const canReject = canDecision(entry.status, 'reject');
-                const canCorrect = canDecision(entry.status, 'correct');
+                const showApprove = canQuickApproveTimeEntry(entry.status);
+                const canEdit = canReviewJobTimeEntry(entry.status);
                 const busy = busyId === entry.id && pending;
+                const reviewNotes = timeEntryReviewNotes(entry);
+                const tone = timeEntryStatusTone(entry.status);
                 return (
                   <tr
                     key={entry.id}
@@ -199,11 +211,29 @@ export default function TimesheetEntriesTable({ entries }: { entries: TimesheetE
                         : 'Not set'}
                     </td>
                     <td>
-                      <span className="ee-timesheet-status">{jobTimeStatusLabel(entry.status)}</span>
+                      <span className={'ee-timesheet-status ee-timesheet-status-' + tone}>
+                        {jobTimeStatusLabel(entry.status, {
+                          correctionNote: entry.correctionNote,
+                        })}
+                      </span>
+                      {reviewNotes.length ? (
+                        <div className="ee-timesheet-review-notes">
+                          {reviewNotes.map((note) => (
+                            <p
+                              key={note.kind + note.text}
+                              className={
+                                'ee-timesheet-review-note ee-timesheet-review-note-' + note.kind
+                              }
+                            >
+                              <strong>{note.label}:</strong> {note.text}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
                     </td>
                     <td>
                       <div className="ee-timesheet-row-actions">
-                        {canApprove ? (
+                        {showApprove ? (
                           <button
                             type="button"
                             className="ee-timesheet-approve"
@@ -213,28 +243,14 @@ export default function TimesheetEntriesTable({ entries }: { entries: TimesheetE
                             {busy && busyId === entry.id ? '…' : 'Approve'}
                           </button>
                         ) : null}
-                        {canReject ? (
+                        {canEdit ? (
                           <button
                             type="button"
-                            className="ee-text-action"
+                            className="ee-text-action ee-timesheet-edit"
                             disabled={busy}
-                            onClick={() => {
-                              setRowError(null);
-                              setRejectReason('');
-                              setRejectTarget(entry);
-                            }}
+                            onClick={() => setEditTarget(entry)}
                           >
-                            Reject
-                          </button>
-                        ) : null}
-                        {canCorrect ? (
-                          <button
-                            type="button"
-                            className="ee-text-action"
-                            disabled={busy}
-                            onClick={() => setCorrectTarget(entry)}
-                          >
-                            Correct
+                            Edit
                           </button>
                         ) : null}
                       </div>
@@ -253,96 +269,41 @@ export default function TimesheetEntriesTable({ entries }: { entries: TimesheetE
       )}
 
       <dialog
-        ref={rejectDialog}
-        className="ee-timesheet-dialog"
-        aria-label="Reject time entry"
-        onClose={closeReject}
-        onClick={(event) => {
-          if (event.target === rejectDialog.current) closeReject();
-        }}
-      >
-        {rejectTarget ? (
-          <div className="ee-timesheet-dialog-body">
-            <div className="ee-timesheet-dialog-head">
-              <div>
-                <strong>Reject time entry</strong>
-                <p>
-                  {rejectTarget.staffName} · {formatPerthDate(rejectTarget.startedAt)} ·{' '}
-                  {formatDurationMinutes(rejectTarget.workedMinutes ?? 0)} worked
-                </p>
-              </div>
-              <button type="button" aria-label="Close" onClick={closeReject}>
-                ×
-              </button>
-            </div>
-            <label>
-              Rejection reason
-              <textarea
-                value={rejectReason}
-                onChange={(event) => setRejectReason(event.target.value)}
-                rows={3}
-                required
-                placeholder="Required"
-              />
-            </label>
-            {rowError?.id === rejectTarget.id ? (
-              <p className="ee-form-error" role="alert">
-                {rowError.message}
-              </p>
-            ) : null}
-            <div className="ee-timesheet-dialog-actions">
-              <button type="button" onClick={closeReject} disabled={pending}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="hq-detail-action-primary"
-                disabled={pending}
-                onClick={submitReject}
-              >
-                {pending && busyId === rejectTarget.id ? 'Rejecting…' : 'Reject'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </dialog>
-
-      <dialog
         ref={correctDialog}
         className="ee-timesheet-dialog ee-timesheet-correct-dialog"
-        aria-label="Correct time entry"
-        onClose={closeCorrect}
+        aria-label="Edit time entry"
+        onClose={closeEdit}
         onClick={(event) => {
-          if (event.target === correctDialog.current) closeCorrect();
+          if (event.target === correctDialog.current) closeEdit();
         }}
       >
-        {correctTarget ? (
+        {editTarget ? (
           <div className="ee-timesheet-dialog-body">
             <div className="ee-timesheet-dialog-head">
               <div>
-                <strong>Correct time entry</strong>
+                <strong>Edit time entry</strong>
                 <p>
-                  {correctTarget.staffName} · {formatPerthDate(correctTarget.startedAt)}
+                  {editTarget.staffName} · {formatPerthDate(editTarget.startedAt)}
                 </p>
               </div>
-              <button type="button" aria-label="Close" onClick={closeCorrect}>
+              <button type="button" aria-label="Close" onClick={closeEdit}>
                 ×
               </button>
             </div>
             <TimeEntryReviewForm
               entry={{
-                id: correctTarget.id,
-                startedAt: correctTarget.startedAt,
-                endedAt: correctTarget.endedAt,
-                breakMinutes: correctTarget.breakMinutes,
-                workedMinutes: correctTarget.workedMinutes,
-                billableMinutes: correctTarget.billableMinutes,
-                status: correctTarget.status,
+                id: editTarget.id,
+                startedAt: editTarget.startedAt,
+                endedAt: editTarget.endedAt,
+                breakMinutes: editTarget.breakMinutes,
+                workedMinutes: editTarget.workedMinutes,
+                billableMinutes: editTarget.billableMinutes,
+                status: editTarget.status,
               }}
               actionsClassName="ee-timesheet-actions"
-              onCancel={closeCorrect}
+              onCancel={closeEdit}
               onSaved={() => {
-                closeCorrect();
+                closeEdit();
               }}
             />
           </div>

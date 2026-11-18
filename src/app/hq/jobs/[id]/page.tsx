@@ -765,10 +765,15 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-time-flash{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#e7f3ff}
 .ee-time-row-feedback{margin:6px 0 0;max-width:14rem}
 .ee-time-status{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.02em;text-transform:capitalize}
-.ee-time-status-submitted,.ee-time-status-corrected{color:#9a3412}
+.ee-time-status-pending{color:#9a3412}
 .ee-time-status-rejected{color:#b42318}
-.ee-time-status-approved{color:#0875c9}
-.ee-time-status-active,.ee-time-status-on-break{color:#17669e}
+.ee-time-status-approved{color:#15803d}
+.ee-time-status-live{color:#17669e}
+.ee-time-status-neutral{color:#31536c}
+.ee-time-review-notes{display:grid;gap:4px;margin-top:6px;max-width:16rem}
+.ee-time-review-note{margin:0;font-size:12px;line-height:1.35;color:#647d91;font-weight:600;overflow-wrap:anywhere}
+.ee-time-review-note-rejection{color:#9f1239}
+.ee-time-review-note-correction{color:#9a3412}
 .ee-time-inline-editor{border-top:1px solid #ead9b8;margin-top:4px;padding-top:10px}
 .ee-time-inline-form{max-width:720px;padding-top:4px}
 .ee-time-editor-row>td{background:#f8fbfe;padding:4px 10px 14px}

@@ -34,6 +34,7 @@ export type JobTimeEntry = {
   status: TimeEntryStatus;
   entrySource: 'timer' | 'manual';
   note: string | null;
+  rejectionReason: string | null;
   correctionNote: string | null;
   originalStartedAt: string | null;
   originalEndedAt: string | null;
@@ -58,6 +59,7 @@ type DbRow = {
   status: TimeEntryStatus;
   entry_source: 'timer' | 'manual';
   note: string | null;
+  rejection_reason: string | null;
   correction_note: string | null;
   original_started_at: string | null;
   original_ended_at: string | null;
@@ -68,7 +70,7 @@ type DbRow = {
 };
 
 const SELECT =
-  'id,job_id,appointment_id,staff_id,technician_user_id,started_at,ended_at,break_started_at,break_minutes,worked_minutes,billable_minutes,status,entry_source,note,correction_note,original_started_at,original_ended_at,original_break_minutes,original_worked_minutes,created_at,updated_at';
+  'id,job_id,appointment_id,staff_id,technician_user_id,started_at,ended_at,break_started_at,break_minutes,worked_minutes,billable_minutes,status,entry_source,note,rejection_reason,correction_note,original_started_at,original_ended_at,original_break_minutes,original_worked_minutes,created_at,updated_at';
 
 export function mapTimeEntry(row: DbRow): JobTimeEntry {
   return {
@@ -86,6 +88,7 @@ export function mapTimeEntry(row: DbRow): JobTimeEntry {
     status: row.status,
     entrySource: row.entry_source,
     note: row.note,
+    rejectionReason: row.rejection_reason,
     correctionNote: row.correction_note,
     originalStartedAt: row.original_started_at,
     originalEndedAt: row.original_ended_at,

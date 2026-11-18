@@ -15,16 +15,18 @@ import { reviewTimeEntryAction } from '@/app/field/actions';
 import { formatDurationMinutes } from '@/lib/tech-time-format';
 import { jobLabourTotals, type JobDetailTimeEntry } from '@/lib/job-detail-summary';
 import {
+  canQuickApproveTimeEntry,
   canReviewJobTimeEntry,
   filterJobTimeEntries,
   isLiveJobTimeStatus,
   isPendingJobTimeStatus,
   jobTimeListSummary,
   jobTimeStatusLabel,
+  timeEntryReviewNotes,
+  timeEntryStatusTone,
   type JobTimeListFilter,
 } from '@/lib/job-time-list';
 import {
-  allowedReviewDecisions,
   inferBillableMode,
   shouldCloseInlineTimeEditor,
   type ReviewTimeDecision,
@@ -91,8 +93,32 @@ function BillableCell({ entry }: { entry: JobDetailTimeEntry }) {
   return <>Not set</>;
 }
 
-function canQuickApproveEntry(status: string): boolean {
-  return allowedReviewDecisions(status).includes('approve');
+function StatusBadge({
+  status,
+  correctionNote,
+}: {
+  status: string;
+  correctionNote?: string | null;
+}) {
+  return (
+    <span className={'ee-time-status ee-time-status-' + timeEntryStatusTone(status)}>
+      {jobTimeStatusLabel(status, { correctionNote })}
+    </span>
+  );
+}
+
+function ReviewNotes({ entry }: { entry: JobDetailTimeEntry }) {
+  const notes = timeEntryReviewNotes(entry);
+  if (!notes.length) return null;
+  return (
+    <div className="ee-time-review-notes">
+      {notes.map((note) => (
+        <p key={note.kind + note.text} className={'ee-time-review-note ee-time-review-note-' + note.kind}>
+          <strong>{note.label}:</strong> {note.text}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 export default function JobTimePanel({
@@ -187,7 +213,7 @@ export default function JobTimePanel({
 
   const quickApprove = useCallback(
     (entry: JobDetailTimeEntry) => {
-      if (!canQuickApproveEntry(entry.status)) return;
+      if (!canQuickApproveTimeEntry(entry.status)) return;
       if (approvePending && approvingId) return;
       if (expandedId === entry.id && editorDirty && !confirmDiscardUnsaved()) return;
 
@@ -259,7 +285,7 @@ export default function JobTimePanel({
 
   const renderActions = (entry: JobDetailTimeEntry) => {
     const canEdit = canReviewJobTimeEntry(entry.status);
-    const showApprove = canQuickApproveEntry(entry.status);
+    const showApprove = canQuickApproveTimeEntry(entry.status);
     if (!canEdit && !showApprove) {
       return <span className="ee-muted">—</span>;
     }
@@ -424,14 +450,11 @@ export default function JobTimePanel({
                           <BillableCell entry={entry} />
                         </td>
                         <td>
-                          <span
-                            className={
-                              'ee-time-status ee-time-status-' +
-                              entry.status.replaceAll('_', '-')
-                            }
-                          >
-                            {jobTimeStatusLabel(entry.status)}
-                          </span>
+                          <StatusBadge
+                            status={entry.status}
+                            correctionNote={entry.correctionNote}
+                          />
+                          <ReviewNotes entry={entry} />
                         </td>
                         <td>
                           {renderActions(entry)}
@@ -465,13 +488,10 @@ export default function JobTimePanel({
                   <div className="ee-time-entry-main">
                     <div className="ee-time-entry-head">
                       <strong title={entry.staffName}>{entry.staffName}</strong>
-                      <span
-                        className={
-                          'ee-time-status ee-time-status-' + entry.status.replaceAll('_', '-')
-                        }
-                      >
-                        {jobTimeStatusLabel(entry.status)}
-                      </span>
+                      <StatusBadge
+                        status={entry.status}
+                        correctionNote={entry.correctionNote}
+                      />
                     </div>
                     <span className="ee-muted">
                       {perthDate(entry.startedAt)} · {perthClock(entry.startedAt)} →{' '}
@@ -489,7 +509,7 @@ export default function JobTimePanel({
                           ? ''
                           : ' · Billable not set'}
                     </span>
-                    {entry.note ? <p>{entry.note}</p> : null}
+                    <ReviewNotes entry={entry} />
                     {renderRowFeedback(entry.id)}
                   </div>
                   <div className="ee-time-entry-actions">{renderActions(entry)}</div>

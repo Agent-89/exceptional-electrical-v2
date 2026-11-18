@@ -20,6 +20,8 @@ export type JobDetailTimeEntry = {
   billableMinutes: number | null;
   status: string;
   note: string | null;
+  rejectionReason?: string | null;
+  correctionNote?: string | null;
 };
 
 export type JobDetailTechReport = {

@@ -1,11 +1,13 @@
-import Link from 'next/link';
 import { dbAdmin, requireOfficeUser } from '@/lib/hq-auth';
-import { formatJobNumber, perthDayKey } from '@/lib/perth-day';
+import { perthDayKey } from '@/lib/perth-day';
 import {
   buildTimesheetWeekRows,
+  matchesTimesheetStatusFilter,
   perthWeekBounds,
   perthWeekDateKeys,
+  resolveTimesheetStatusFilter,
   resolveTimesheetWeekMonday,
+  sortTimesheetEntriesForReview,
 } from '@/lib/timesheet-week';
 import TimesheetWeekGrid from './week-grid';
 import TimesheetEntriesTable, { type TimesheetEntryRow } from './entries-table';
@@ -27,6 +29,8 @@ type EntryRow = {
   status: string;
   entry_source: string;
   note: string | null;
+  rejection_reason: string | null;
+  correction_note: string | null;
   original_worked_minutes: number | null;
 };
 
@@ -55,21 +59,25 @@ export default async function TimesheetsPage({
 
   const staffFilter = params.staff && UUID_RE.test(params.staff) ? params.staff : '';
   const jobFilter = params.job && UUID_RE.test(params.job) ? params.job : '';
-  const statusFilter = params.status ?? 'submitted';
+  const statusFilter = resolveTimesheetStatusFilter(params.status);
   const dayFilter = params.day && DATE_RE.test(params.day) ? params.day : '';
 
   const [{ data: entries, error }, { data: staff }, { data: jobs }] = await Promise.all([
     db
       .from('job_time_entries')
       .select(
-        'id,job_id,appointment_id,staff_id,technician_user_id,started_at,ended_at,break_minutes,worked_minutes,billable_minutes,status,entry_source,note,original_worked_minutes',
+        'id,job_id,appointment_id,staff_id,technician_user_id,started_at,ended_at,break_minutes,worked_minutes,billable_minutes,status,entry_source,note,rejection_reason,correction_note,original_worked_minutes',
       )
       .gte('started_at', weekStart.toISOString())
       .lt('started_at', weekEnd.toISOString())
       .neq('status', 'cancelled')
       .order('started_at', { ascending: false })
       .limit(500),
-    db.from('scheduling_staff').select('id,full_name').eq('active', true).order('full_name'),
+    db
+      .from('scheduling_staff')
+      .select('id,full_name,initials,avatar_color')
+      .eq('active', true)
+      .order('full_name'),
     db.from('jobs').select('id,job_number,title').order('job_number', { ascending: false }).limit(500),
   ]);
 
@@ -77,14 +85,16 @@ export default async function TimesheetsPage({
   const staffList = (staff ?? []).map((s) => ({
     id: s.id as string,
     fullName: s.full_name as string,
+    initials: (s.initials as string | null) ?? null,
+    avatarColor: (s.avatar_color as string | null) ?? null,
   }));
   const staffMap = new Map(staffList.map((s) => [s.id, s.fullName]));
-  const jobMap = new Map(
-    (jobs ?? []).map((j) => [
-      j.id as string,
-      { number: j.job_number as number, title: j.title as string },
-    ]),
-  );
+  const jobOptions = (jobs ?? []).map((j) => ({
+    id: j.id as string,
+    number: j.job_number as number,
+    title: j.title as string,
+  }));
+  const jobMap = new Map(jobOptions.map((j) => [j.id, j]));
 
   const weekRows = buildTimesheetWeekRows(
     staffList,
@@ -98,13 +108,20 @@ export default async function TimesheetsPage({
     weekDateKeys,
   );
 
-  const filtered = list.filter((entry) => {
-    if (staffFilter && entry.staff_id !== staffFilter) return false;
-    if (jobFilter && entry.job_id !== jobFilter) return false;
-    if (dayFilter && perthDayKey(entry.started_at) !== dayFilter) return false;
-    if (statusFilter && statusFilter !== 'all' && entry.status !== statusFilter) return false;
-    return true;
-  });
+  const filtered = sortTimesheetEntriesForReview(
+    list
+      .filter((entry) => {
+        if (staffFilter && entry.staff_id !== staffFilter) return false;
+        if (jobFilter && entry.job_id !== jobFilter) return false;
+        if (dayFilter && perthDayKey(entry.started_at) !== dayFilter) return false;
+        if (!matchesTimesheetStatusFilter(entry.status, statusFilter)) return false;
+        return true;
+      })
+      .map((entry) => ({
+        ...entry,
+        startedAt: entry.started_at,
+      })),
+  );
 
   const tableRows: TimesheetEntryRow[] = filtered.map((entry) => {
     const job = jobMap.get(entry.job_id);
@@ -123,9 +140,20 @@ export default async function TimesheetsPage({
       status: entry.status,
       entrySource: entry.entry_source,
       note: entry.note,
+      rejectionReason: entry.rejection_reason,
+      correctionNote: entry.correction_note,
       originalWorkedMinutes: entry.original_worked_minutes,
     };
   });
+
+  const dayLabel = dayFilter
+    ? new Date(dayFilter + 'T12:00:00+08:00').toLocaleDateString('en-AU', {
+        timeZone: 'Australia/Perth',
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      })
+    : undefined;
 
   return (
     <main className="hq-detail">
@@ -143,71 +171,6 @@ export default async function TimesheetsPage({
           </p>
         ) : null}
 
-        <section className="hq-panel ee-compact-panel">
-          <form className="ee-timesheet-filters" method="get">
-            <input type="hidden" name="week" value={mondayKey} />
-            {dayFilter ? <input type="hidden" name="day" value={dayFilter} /> : null}
-            <label>
-              Technician
-              <select name="staff" defaultValue={staffFilter}>
-                <option value="">All</option>
-                {staffList.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.fullName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Job
-              <select name="job" defaultValue={jobFilter}>
-                <option value="">All</option>
-                {(jobs ?? []).map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {formatJobNumber(j.job_number as number)} · {j.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Status
-              <select name="status" defaultValue={statusFilter}>
-                <option value="all">All</option>
-                <option value="submitted">Submitted</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="corrected">Corrected</option>
-                <option value="active">Active</option>
-                <option value="on_break">On break</option>
-              </select>
-            </label>
-            <div className="ee-timesheet-filter-actions">
-              <span className="ee-timesheet-filter-actions-label" aria-hidden="true">
-                &nbsp;
-              </span>
-              <div className="ee-timesheet-filter-actions-row">
-                <button type="submit" className="hq-detail-action-primary">
-                  Apply filters
-                </button>
-                {staffFilter || jobFilter || dayFilter || statusFilter !== 'submitted' ? (
-                  <Link href={`/hq/timesheets?week=${mondayKey}`} className="ee-text-action">
-                    Clear filters
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          </form>
-          {dayFilter ? (
-            <p className="ee-muted" style={{ marginBottom: 0 }}>
-              Showing entries for {dayFilter}
-              {staffFilter ? ` · ${staffMap.get(staffFilter) ?? 'technician'}` : ''}.{' '}
-              <Link href={`/hq/timesheets?week=${mondayKey}&status=${encodeURIComponent(statusFilter)}`}>
-                Clear day filter
-              </Link>
-            </p>
-          ) : null}
-        </section>
-
         <TimesheetWeekGrid
           mondayKey={mondayKey}
           rows={weekRows}
@@ -215,7 +178,18 @@ export default async function TimesheetsPage({
           statusFilter={statusFilter}
         />
 
-        <TimesheetEntriesTable entries={tableRows} />
+        <TimesheetEntriesTable
+          entries={tableRows}
+          mondayKey={mondayKey}
+          staffFilter={staffFilter}
+          jobFilter={jobFilter}
+          statusFilter={statusFilter}
+          dayFilter={dayFilter}
+          staffOptions={staffList.map((s) => ({ id: s.id, fullName: s.fullName }))}
+          jobOptions={jobOptions}
+          dayLabel={dayLabel}
+          staffLabel={staffFilter ? staffMap.get(staffFilter) : undefined}
+        />
       </div>
       <style>{`
 .ee-workspace-head{margin-bottom:18px}
@@ -224,12 +198,6 @@ export default async function TimesheetsPage({
 .ee-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
 .ee-section-title h2{margin:5px 0 0;font-size:22px}
 .ee-compact-panel{padding:22px;margin-bottom:12px;overflow:hidden}
-.ee-timesheet-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end}
-.ee-timesheet-filters label,.ee-timesheet-filter-actions{display:grid;gap:6px;font-size:13px;font-weight:700;align-content:end}
-.ee-timesheet-filters input,.ee-timesheet-filters select{min-height:42px;padding:10px;border:1px solid #cbd8e6;border-radius:10px;font:inherit;font-size:16px}
-.ee-timesheet-filter-actions-label{display:block;line-height:1.2;min-height:1.2em}
-.ee-timesheet-filter-actions-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;min-height:42px}
-.ee-timesheet-filter-actions-row .hq-detail-action-primary{flex:0 0 auto;width:auto}
 .ee-timesheet-entries-table a,.ee-timesheet-staff{color:#0875c9;text-decoration:none;font-weight:700}
 .ee-timesheet-actions{display:flex;flex-wrap:wrap;gap:8px}
 .ee-timesheet-actions button{border:1px solid #d4e1ed;border-radius:8px;background:#fff;padding:10px 12px;cursor:pointer;font-weight:700}
@@ -251,12 +219,15 @@ export default async function TimesheetsPage({
 .ee-job-table th{font-size:11px;letter-spacing:.04em;color:#647d91;font-weight:800}
 .ee-job-table tbody th{font-size:13px;letter-spacing:0;color:#10233a;font-weight:700}
 .ee-timesheet-week-wrap{overflow:auto}
-.ee-timesheet-week-table{min-width:720px}
-.ee-timesheet-week-table th,.ee-timesheet-week-table td{text-align:center;vertical-align:middle}
+.ee-timesheet-week-table{min-width:720px;border-collapse:separate;border-spacing:0}
+.ee-timesheet-week-table th,.ee-timesheet-week-table td{text-align:center;vertical-align:middle;background:#fff}
 .ee-timesheet-week-table th:first-child,.ee-timesheet-week-table td:first-child,.ee-timesheet-week-table tbody th{text-align:left}
+.ee-timesheet-sticky-col{position:sticky;left:0;z-index:2;background:#fff;min-width:11rem;max-width:14rem;box-shadow:1px 0 0 #e1e8f0}
+.ee-timesheet-week-table thead .ee-timesheet-sticky-col{z-index:3}
 .ee-timesheet-day-label{display:block;font-size:12px;color:#647d91;font-weight:700}
 .ee-timesheet-day-date{display:block;font-size:11px;color:#8aa0b2;font-weight:600}
-.ee-timesheet-staff{display:inline-flex;align-items:center;gap:10px;color:inherit}
+.ee-timesheet-staff{display:inline-flex;align-items:center;gap:10px;color:inherit;max-width:100%}
+.ee-timesheet-staff-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ee-timesheet-avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:999px;color:#fff;font-size:11px;font-weight:800;flex:none}
 .ee-timesheet-day-cell{display:grid;justify-items:center;gap:4px;min-height:44px;padding:6px 4px;border-radius:8px;text-decoration:none;color:#17364b;font-weight:700}
 .ee-timesheet-day-cell:hover{background:#eef6fc}
@@ -264,14 +235,35 @@ export default async function TimesheetsPage({
 .ee-timesheet-day-main{font-variant-numeric:tabular-nums}
 .ee-timesheet-pending-hint{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#fff4e4;border:1px solid #e4b16d;color:#865a1a;font-size:10px;font-weight:800;line-height:1}
 .ee-timesheet-total{font-variant-numeric:tabular-nums;font-weight:800;color:#17364b}
+.ee-timesheet-entries-filters{display:grid;gap:10px;margin:0 0 14px}
+.ee-timesheet-status-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ee-timesheet-status-chip{display:inline-flex;align-items:center;min-height:30px;padding:4px 10px;border:1px solid #d4e1ed;border-radius:999px;background:#fff;color:#31536c;font-size:12px;font-weight:700;text-decoration:none}
+.ee-timesheet-status-chip.is-active{background:#e7f3ff;border-color:#9bcbf4;color:#076ab5}
+.ee-timesheet-filter-selects{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ee-timesheet-mini-filter{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:12px;font-weight:700;color:#647d91}
+.ee-timesheet-mini-label{flex:none}
+.ee-timesheet-mini-filter select{min-height:32px;max-width:11rem;padding:4px 8px;border:1px solid #cbd8e6;border-radius:8px;font:inherit;font-size:13px;font-weight:600;color:#17364b;background:#fff}
+.ee-timesheet-clear{font-size:12px}
+.ee-timesheet-day-hint{margin:0;font-size:12px}
 .ee-timesheet-entries-wrap{overflow:auto}
 .ee-timesheet-entries-table{min-width:960px}
 .ee-timesheet-entries-table tbody tr.ee-time-pending-row{background:#fff7eb}
-.ee-timesheet-entries-table th,.ee-timesheet-entries-table td{vertical-align:top}
-.ee-timesheet-status{font-size:12px;font-weight:700;color:#31536c}
-.ee-timesheet-row-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.ee-timesheet-approve{border:1px solid #1688e9;border-radius:8px;background:#1688e9;color:#fff;padding:8px 12px;cursor:pointer;font-weight:700}
+.ee-timesheet-entries-table th,.ee-timesheet-entries-table td{vertical-align:middle}
+.ee-timesheet-entries-table td:last-child{min-width:11.5rem;white-space:normal}
+.ee-timesheet-status{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.02em}
+.ee-timesheet-status-pending{color:#9a3412}
+.ee-timesheet-status-approved{color:#15803d}
+.ee-timesheet-status-rejected{color:#b42318}
+.ee-timesheet-status-live{color:#17669e}
+.ee-timesheet-status-neutral{color:#31536c}
+.ee-timesheet-review-notes{display:grid;gap:3px;margin-top:5px;max-width:14rem}
+.ee-timesheet-review-note{margin:0;font-size:11px;line-height:1.35;color:#647d91;font-weight:600;overflow-wrap:anywhere}
+.ee-timesheet-review-note-rejection{color:#9f1239}
+.ee-timesheet-review-note-correction{color:#9a3412}
+.ee-timesheet-row-actions{display:flex;flex-wrap:nowrap;gap:8px;align-items:center}
+.ee-timesheet-approve{border:1px solid #1688e9;border-radius:7px;background:#1688e9;color:#fff;padding:5px 9px;min-height:30px;cursor:pointer;font:inherit;font-size:12px;font-weight:800;white-space:nowrap}
 .ee-timesheet-approve:disabled{opacity:.6;cursor:wait}
+.ee-timesheet-edit{font-size:12px;white-space:nowrap}
 .ee-text-action{border:0;background:transparent;color:#0875c9;font-weight:700;cursor:pointer;padding:0;text-decoration:none}
 .ee-time-row-feedback{margin-top:6px}
 .ee-timesheet-dialog{width:min(560px,calc(100vw - 28px));max-height:min(88dvh,900px);border:1px solid #dce5ee;border-radius:16px;padding:0;background:#fff;color:#17364b;box-shadow:0 25px 75px #102b4860}
@@ -286,10 +278,14 @@ export default async function TimesheetsPage({
 .ee-timesheet-dialog-body textarea,.ee-timesheet-dialog-body input{min-height:42px;padding:10px;border:1px solid #cbd8e6;border-radius:10px;font:inherit;font-size:16px}
 .ee-timesheet-dialog-body textarea{min-height:88px;resize:vertical}
 .ee-timesheet-dialog-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
-.ee-timesheet-dialog-actions button{border:1px solid #d4e1ed;border-radius:8px;background:#fff;padding:10px 14px;cursor:pointer;font-weight:700}
+.ee-timesheet-dialog-cancel{border:1px solid #d4e1ed;border-radius:8px;background:#fff;color:#31536c;padding:10px 14px;cursor:pointer;font-weight:700}
+.ee-timesheet-dialog-actions .hq-detail-action-primary{background:#1688e9;border:1px solid #1688e9;color:#fff;border-radius:8px;padding:10px 14px;cursor:pointer;font-weight:800}
 .ee-edit-form.ee-time-inline-form,.ee-time-inline-form{display:grid;gap:12px}
 @media (max-width:900px){
   .ee-timesheet-week-table th:nth-child(n+2):nth-child(-n+8),.ee-timesheet-week-table td:nth-child(n+2):nth-child(-n+8){min-width:4.5rem}
+  .ee-timesheet-sticky-col{min-width:9.5rem;max-width:11rem}
+  .ee-compact-panel{padding:16px}
+  .ee-timesheet-mini-filter select{max-width:9.5rem}
 }
 `}</style>
     </main>

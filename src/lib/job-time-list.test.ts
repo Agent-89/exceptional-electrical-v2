@@ -59,7 +59,11 @@ describe('job time list', () => {
     assert.equal(canReviewJobTimeEntry('approved'), true);
     assert.equal(canReviewJobTimeEntry('active'), false);
     assert.equal(jobTimeStatusLabel('rejected'), 'Rejected');
-    assert.equal(jobTimeStatusLabel('submitted'), 'Pending');
+    assert.equal(jobTimeStatusLabel('submitted'), 'Needs approval');
+    assert.equal(
+      jobTimeStatusLabel('approved', { correctionNote: 'Adjusted break' }),
+      'Approved · corrected',
+    );
   });
 });
 
@@ -75,8 +79,8 @@ describe('unified Time tab regression', () => {
     assert.match(panelSource, /Actions/);
     assert.equal((panelSource.match(/TimeEntryReviewForm/g) || []).length, 2);
     assert.doesNotMatch(panelSource, /ee-time-desktop-reviews/);
-    assert.doesNotMatch(panelSource, /ee-time-review/);
     assert.doesNotMatch(pageSource, /ee-time-desktop-reviews/);
+    assert.match(panelSource, /ee-time-review-notes/);
     assert.match(pageSource, /\.ee-time-inline-editor/);
     assert.match(pageSource, /\.ee-time-entry-head/);
     assert.match(pageSource, /@media\(min-width:900px\)\{[\s\S]*\.ee-time-entry-list\{display:none\}/);
@@ -106,7 +110,7 @@ describe('unified Time tab regression', () => {
   });
 
   it('offers quick Approve for pending statuses without a second approval path', () => {
-    assert.match(panelSource, /canQuickApproveEntry/);
+    assert.match(panelSource, /canQuickApproveTimeEntry/);
     assert.match(panelSource, /ee-time-approve-btn/);
     assert.match(panelSource, /decision', 'approve'/);
     assert.match(panelSource, /reviewTimeEntryAction\(data\)/);
@@ -114,7 +118,7 @@ describe('unified Time tab regression', () => {
     assert.match(panelSource, /approvePending && approvingId/);
     assert.match(pageSource, /\.ee-time-approve-btn/);
     assert.match(pageSource, /\.ee-time-row-actions/);
-    // Approved rows cannot quick-approve.
-    assert.match(panelSource, /allowedReviewDecisions\(status\)\.includes\('approve'\)/);
+    // Rejected/approved rows cannot quick-approve — only submitted/corrected.
+    assert.match(panelSource, /canQuickApproveTimeEntry\(entry\.status\)/);
   });
 });

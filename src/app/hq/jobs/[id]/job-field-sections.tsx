@@ -104,6 +104,8 @@ async function JobAttentionSection({
         billableMinutes: entry.billableMinutes,
         status: entry.status,
         note: entry.note,
+        rejectionReason: entry.rejectionReason,
+        correctionNote: entry.correctionNote,
       }))}
       notes={[]}
       photos={[]}
@@ -139,6 +141,8 @@ async function JobTimeSection({
         billableMinutes: entry.billableMinutes,
         status: entry.status,
         note: entry.note,
+        rejectionReason: entry.rejectionReason,
+        correctionNote: entry.correctionNote,
       }))}
       notes={[]}
       photos={[]}
@@ -200,6 +204,8 @@ async function JobFilesSection({
         billableMinutes: entry.billableMinutes,
         status: entry.status,
         note: entry.note,
+        rejectionReason: entry.rejectionReason,
+        correctionNote: entry.correctionNote,
       }))}
       notes={notes.map((note) => ({
         id: note.id,
