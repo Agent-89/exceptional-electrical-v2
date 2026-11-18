@@ -30,16 +30,16 @@
 
 begin;
 
--- vapi_call_intake.customer_id is NO ACTION — must null before customer delete
+-- vapi_call_intake FKs are NO ACTION — null before truncating enquiries/customers
 update public.vapi_call_intake
-   set customer_id = null
- where customer_id is not null;
+   set customer_id = null,
+       enquiry_id = null
+ where customer_id is not null
+    or enquiry_id is not null;
 
--- Enquiries reference customers; clear activity then enquiries before customers.
-truncate table
-  public.enquiry_activity,
-  public.enquiries
-restart identity;
+-- Cannot TRUNCATE enquiries while vapi_call_intake FK exists — DELETE instead.
+delete from public.enquiry_activity;
+delete from public.enquiries;
 
 -- Multi-table truncate (self-FKs OK when listed together). No CASCADE.
 truncate table
@@ -87,8 +87,8 @@ commit;
 --   supabase storage rm --linked --experimental --yes \
 --     ss:///job-photos/<object-name> ...
 --
--- Or recursively: supabase storage rm --linked --experimental --yes -r ss:///job-photos/
--- Keep the job-photos bucket; only clear objects.
+-- Prefer listing objects then deleting paths — do NOT use -r on ss:///job-photos/
+-- because CLI may delete the bucket itself. Keep/recreate the job-photos bucket.
 -- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------

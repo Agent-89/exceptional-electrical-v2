@@ -199,6 +199,7 @@ async function main() {
     invoices: staged['invoice_export.csv'],
     timesheets: staged['timesheet_export.csv'],
     dryRunReport: report,
+    onProgress: (message) => console.log(`  … ${message}`),
   });
 
   const summaryPath = join(batchDir, 'apply-summary.json');
