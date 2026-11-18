@@ -342,8 +342,8 @@ Deno.serve(async (req) => {
     })
     .eq('id', reserved.id);
 
-  // Fire-and-forget; do not block the Vapi webhook response on push delivery.
-  void bestEffortHqPush({
+  // Await so the isolate is not frozen before the HQ notify callback finishes.
+  await bestEffortHqPush({
     id: enquiry.id,
     name,
     suburb: suburb || null,

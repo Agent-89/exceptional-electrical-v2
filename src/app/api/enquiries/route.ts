@@ -153,7 +153,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  void bestEffortNotifyNewEnquiry({
+  // Await so serverless freeze cannot drop the Apple/FCM push mid-send.
+  await bestEffortNotifyNewEnquiry({
     id: enquiry.id,
     name: result.data.name,
     suburb: result.data.suburb || null,
