@@ -33,21 +33,8 @@ async function replayItem(item: FieldOutboxItem): Promise<{ ok: boolean; error?:
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     }
     case 'finish_work': {
-      try {
-        const result = await finishWorkAction(fd);
-        return result.ok ? { ok: true } : { ok: false, error: result.error };
-      } catch (error) {
-        // Successful finish redirects to the visit report anchor.
-        if (
-          typeof error === 'object' &&
-          error !== null &&
-          'digest' in error &&
-          String((error as { digest?: string }).digest || '').startsWith('NEXT_REDIRECT')
-        ) {
-          return { ok: true };
-        }
-        throw error;
-      }
+      const result = await finishWorkAction(fd);
+      return result.ok ? { ok: true } : { ok: false, error: result.error };
     }
     case 'add_note': {
       const result = await addTechnicianNoteAction(fd);

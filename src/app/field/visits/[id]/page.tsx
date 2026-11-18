@@ -7,6 +7,7 @@ import {
   formatPerthDateLong,
   formatPerthTime,
   mapsDirectionsUrl,
+  perthDayKey,
 } from '@/lib/perth-day';
 import { listJobAttachments, listJobNotes, signAttachmentUrls } from '@/lib/tech-field';
 import type { FieldStatus } from '@/lib/tech-field-constants';
@@ -193,6 +194,7 @@ export default async function TechVisitPage({
         staffId={crew.staffId}
         appointmentId={visit.appointmentId}
         appointmentDateLabel={formatPerthDateLong(visit.startsAt)}
+        visitDayKey={perthDayKey(visit.startsAt)}
         scheduledLabel={appointmentTime}
         scheduledMinutes={scheduledMinutes}
         fieldStatus={fieldStatus}
@@ -213,6 +215,8 @@ export default async function TechVisitPage({
           signedUrl: p.signedUrl ?? null,
           caption: p.caption,
           createdAt: p.createdAt,
+          contentType: p.contentType,
+          jobNoteId: p.jobNoteId ?? null,
         }))}
         completionNote={personalFields.workSummary}
         outstandingWork={personalFields.outstandingWork}

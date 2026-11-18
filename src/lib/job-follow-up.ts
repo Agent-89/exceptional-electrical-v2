@@ -25,6 +25,24 @@ export function parseFollowUpResolutionMode(value: string): FollowUpResolutionMo
   return null;
 }
 
+/** Earliest later non-cancelled appointment on the same job (for auto-link). */
+export function pickNextFollowUpAppointment(input: {
+  sourceAppointmentId: string;
+  sourceStartsAt: string;
+  candidates: Array<{ id: string; startsAt: string; status: string }>;
+}): { id: string; startsAt: string } | null {
+  const sourceMs = new Date(input.sourceStartsAt).getTime();
+  const later = input.candidates
+    .filter(
+      (row) =>
+        row.id !== input.sourceAppointmentId &&
+        row.status !== 'cancelled' &&
+        new Date(row.startsAt).getTime() >= sourceMs,
+    )
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  return later[0] ?? null;
+}
+
 export function validateFollowUpResolution(input: {
   mode: string;
   note: string | null;
@@ -35,9 +53,7 @@ export function validateFollowUpResolution(input: {
 }): { ok: true; mode: FollowUpResolutionMode; linkedAppointmentId: string | null } | { ok: false; error: string } {
   const mode = parseFollowUpResolutionMode(input.mode);
   if (!mode) return { ok: false, error: 'Choose how to resolve the further visit.' };
-  if (!input.note?.trim()) {
-    return { ok: false, error: 'Add a short note for the audit trail.' };
-  }
+  // Note is optional in the compact HQ actions UI; canned audit text is applied by the caller.
   if (mode === 'office_cleared') {
     return { ok: true, mode, linkedAppointmentId: null };
   }

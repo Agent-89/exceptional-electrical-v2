@@ -210,28 +210,31 @@ export async function listTechnicianDaySchedule(
   });
 }
 
+/** Scheduled visits after the end of today (Perth), up to 14 days ahead. */
+export async function listTechnicianUpcoming(
+  staffId: string,
+  limit = 50,
+): Promise<TechAppointmentRow[]> {
+  const todayKey = perthDayKey();
+  const { end: todayEnd } = perthDayBounds(todayKey);
+  const horizon = new Date(todayEnd.getTime() + 14 * 24 * 60 * 60 * 1000);
+  return listTechnicianAppointments(staffId, {
+    from: todayEnd,
+    to: horizon,
+    statuses: ['scheduled'],
+    limit,
+  });
+}
+
 export async function listTechnicianTodayAndUpcoming(staffId: string): Promise<{
   todayKey: string;
   today: TechAppointmentRow[];
   upcoming: TechAppointmentRow[];
 }> {
   const todayKey = perthDayKey();
-  const { start: todayStart, end: todayEnd } = perthDayBounds(todayKey);
-  const horizon = new Date(todayEnd.getTime() + 14 * 24 * 60 * 60 * 1000);
-
   const [today, upcoming] = await Promise.all([
-    listTechnicianAppointments(staffId, {
-      from: todayStart,
-      to: todayEnd,
-      statuses: [...TECH_CALENDAR_STATUSES],
-      limit: 50,
-    }),
-    listTechnicianAppointments(staffId, {
-      from: todayEnd,
-      to: horizon,
-      statuses: ['scheduled'],
-      limit: 50,
-    }),
+    listTechnicianDaySchedule(staffId, todayKey),
+    listTechnicianUpcoming(staffId),
   ]);
 
   return { todayKey, today, upcoming };

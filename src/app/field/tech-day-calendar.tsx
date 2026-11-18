@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   computeVisibleWindow,
@@ -9,6 +9,10 @@ import {
   layoutOverlappingSlots,
   perthMinutesOnDay,
 } from '@/lib/day-timeline-layout';
+import {
+  fieldStatusChipModifier,
+  fieldVisitStatusLabel,
+} from '@/lib/tech-field-constants';
 
 export type TechCalendarVisit = {
   appointmentId: string;
@@ -35,11 +39,6 @@ type Props = {
 const HOUR_HEIGHT = 56;
 const MIN_BLOCK = 34;
 
-function statusLabel(visit: TechCalendarVisit): string {
-  const field = visit.fieldStatus && visit.fieldStatus !== 'scheduled' ? visit.fieldStatus : null;
-  return (field ?? visit.visitStatus).replaceAll('_', ' ');
-}
-
 export default function TechDayCalendar({
   dayKey,
   todayKey,
@@ -51,10 +50,21 @@ export default function TechDayCalendar({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isToday = dayKey === todayKey;
+  const fitMode = visits.length > 0 && visits.length <= 2;
 
-  const nowMinutes = useMemo(() => {
-    if (!isToday) return null;
-    return perthMinutesOnDay(new Date().toISOString(), dayKey);
+  const [nowMinutes, setNowMinutes] = useState<number | null>(() =>
+    isToday ? perthMinutesOnDay(new Date().toISOString(), dayKey) : null,
+  );
+
+  useEffect(() => {
+    if (!isToday) {
+      setNowMinutes(null);
+      return;
+    }
+    const tick = () => setNowMinutes(perthMinutesOnDay(new Date().toISOString(), dayKey));
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
   }, [dayKey, isToday]);
 
   const positioned = useMemo(() => {
@@ -66,7 +76,7 @@ export default function TechDayCalendar({
     });
   }, [visits, dayKey]);
 
-  const window = useMemo(
+  const visibleWindow = useMemo(
     () => computeVisibleWindow(positioned, nowMinutes, { padMinutes: 45, minSpanMinutes: 7 * 60 }),
     [positioned, nowMinutes],
   );
@@ -85,25 +95,28 @@ export default function TechDayCalendar({
 
   const hours = useMemo(() => {
     const list: number[] = [];
-    for (let m = window.startMinutes; m <= window.endMinutes; m += 60) list.push(m / 60);
+    for (let m = visibleWindow.startMinutes; m <= visibleWindow.endMinutes; m += 60) {
+      list.push(m / 60);
+    }
     return list;
-  }, [window]);
+  }, [visibleWindow]);
 
-  const laneHeight = ((window.endMinutes - window.startMinutes) / 60) * HOUR_HEIGHT;
+  const laneHeight =
+    ((visibleWindow.endMinutes - visibleWindow.startMinutes) / 60) * HOUR_HEIGHT;
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || fitMode) return;
     const focus =
       positioned[0]?.startMinutes ??
-      (nowMinutes != null ? nowMinutes : window.startMinutes + 60);
-    const top = ((focus - window.startMinutes) / 60) * HOUR_HEIGHT - 48;
+      (nowMinutes != null ? nowMinutes : visibleWindow.startMinutes + 60);
+    const top = ((focus - visibleWindow.startMinutes) / 60) * HOUR_HEIGHT - 48;
     el.scrollTop = Math.max(0, top);
-  }, [dayKey, positioned, nowMinutes, window.startMinutes]);
+  }, [dayKey, positioned, nowMinutes, visibleWindow.startMinutes, fitMode]);
 
   return (
     <section className="ee-tech-cal" aria-label="Daily schedule">
-      <div className="ee-tech-cal-nav">
+      <div className={`ee-tech-cal-nav${isToday ? ' is-today' : ''}`}>
         <Link className="ee-tech-cal-arrow" href={prevHref} aria-label="Previous day">
           <ChevronLeft size={18} strokeWidth={2.2} aria-hidden="true" />
         </Link>
@@ -120,24 +133,27 @@ export default function TechDayCalendar({
           <Link className="ee-tech-cal-today" href={todayHref}>
             Today
           </Link>
-        ) : (
-          <span className="ee-tech-cal-today is-current">Today</span>
-        )}
+        ) : null}
       </div>
 
       {positioned.length === 0 ? (
         <div className="ee-tech-empty ee-tech-empty-compact" role="status">
           <strong>No visits {isToday ? 'today' : 'this day'}</strong>
-          <p>Check nearby days with the arrows, or see Upcoming below.</p>
+          <p>Check nearby days with the arrows, or see later visits below.</p>
         </div>
       ) : (
-        <div className="ee-tech-cal-scroll" ref={scrollRef}>
+        <div
+          className={`ee-tech-cal-scroll${fitMode ? ' is-fit' : ''}`}
+          ref={scrollRef}
+        >
           <div className="ee-tech-cal-grid" style={{ height: laneHeight + 28 }}>
             <div className="ee-tech-cal-hours" aria-hidden="true">
               {hours.map((h) => (
                 <span
                   key={h}
-                  style={{ top: ((h * 60 - window.startMinutes) / 60) * HOUR_HEIGHT }}
+                  style={{
+                    top: ((h * 60 - visibleWindow.startMinutes) / 60) * HOUR_HEIGHT,
+                  }}
                 >
                   {hourLabel(h)}
                 </span>
@@ -152,21 +168,25 @@ export default function TechDayCalendar({
             >
               {isToday &&
               nowMinutes != null &&
-              nowMinutes >= window.startMinutes &&
-              nowMinutes <= window.endMinutes ? (
+              nowMinutes >= visibleWindow.startMinutes &&
+              nowMinutes <= visibleWindow.endMinutes ? (
                 <div
                   className="ee-tech-cal-now"
-                  style={{ top: ((nowMinutes - window.startMinutes) / 60) * HOUR_HEIGHT }}
+                  style={{
+                    top: ((nowMinutes - visibleWindow.startMinutes) / 60) * HOUR_HEIGHT,
+                  }}
                 >
                   <span>Now</span>
                 </div>
               ) : null}
 
               {positioned.map((v) => {
-                const start = Math.max(window.startMinutes, v.startMinutes);
-                const end = Math.min(window.endMinutes, v.endMinutes);
+                const start = Math.max(visibleWindow.startMinutes, v.startMinutes);
+                const end = Math.min(visibleWindow.endMinutes, v.endMinutes);
                 if (end <= start) return null;
                 const { index, count } = placements.get(v.appointmentId) ?? { index: 0, count: 1 };
+                const blockHeight = Math.max(MIN_BLOCK, ((end - start) / 60) * HOUR_HEIGHT - 4);
+                const tall = blockHeight >= HOUR_HEIGHT * 2.5;
                 const timeLabel =
                   new Date(v.startsAt).toLocaleTimeString('en-AU', {
                     timeZone: 'Australia/Perth',
@@ -179,26 +199,28 @@ export default function TechDayCalendar({
                     hour: 'numeric',
                     minute: '2-digit',
                   });
+                const status = fieldVisitStatusLabel(v.fieldStatus, v.visitStatus);
+                const chipMod = fieldStatusChipModifier(v.fieldStatus);
                 return (
                   <Link
                     key={v.appointmentId}
                     href={'/field/visits/' + v.appointmentId}
-                    className="ee-tech-cal-block"
+                    className={`ee-tech-cal-block${tall ? ' is-tall' : ''}`}
                     style={{
-                      top: ((start - window.startMinutes) / 60) * HOUR_HEIGHT + 2,
-                      height: Math.max(MIN_BLOCK, ((end - start) / 60) * HOUR_HEIGHT - 4),
+                      top: ((start - visibleWindow.startMinutes) / 60) * HOUR_HEIGHT + 2,
+                      height: blockHeight,
                       left: `calc(${(index / count) * 100}% + 3px)`,
                       width: `calc(${100 / count}% - 6px)`,
                     }}
                   >
-                    <strong className="ee-tech-cal-job">
-                      {v.jobNumber} · {v.title}
-                    </strong>
+                    <div className="ee-tech-cal-block-head">
+                      <strong className="ee-tech-cal-job">
+                        {v.jobNumber} · {v.customerName ?? 'Customer not assigned'}
+                      </strong>
+                      <span className={`ee-tech-cal-status ${chipMod}`}>{status}</span>
+                    </div>
                     <span className="ee-tech-cal-meta">{timeLabel}</span>
-                    <span className="ee-tech-cal-meta">
-                      {v.customerName ?? 'Customer not assigned'}
-                    </span>
-                    <span className="ee-tech-cal-status">{statusLabel(v)}</span>
+                    <span className="ee-tech-cal-meta">{v.title}</span>
                   </Link>
                 );
               })}

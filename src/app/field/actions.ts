@@ -301,7 +301,7 @@ export async function finishWorkAction(formData: FormData): Promise<TechFieldAct
 
   // Timer finish never completes the visit or the overall job — only records time.
   revalidateVisit(visit.id, visit.job_id);
-  redirect(`/field/visits/${visit.id}?time=recorded#visit-report`);
+  return okResult({ message: 'Work finished' });
 }
 
 export async function addManualTimeEntryAction(formData: FormData): Promise<TechFieldActionResult> {
@@ -631,7 +631,7 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
         `Work report → ${personalStatus}` +
         (sharedUpdated
           ? sharedFinalised
-            ? ' · shared visit finalised'
+            ? ' · visit completed'
             : ' · shared visit updated'
           : ' · personal report only') +
         (completionNote ? ` · ${completionNote}` : '') +
@@ -648,7 +648,7 @@ export async function updateVisitProgressAction(formData: FormData): Promise<Tec
     });
   }
   return okResult({
-    message: sharedFinalised ? 'Work report saved and visit finalised' : 'Work report saved',
+    message: sharedFinalised ? 'Work report saved and visit completed' : 'Work report saved',
     techReportUpdatedAt: personalSave.row.updatedAt,
   });
 }
@@ -1127,11 +1127,18 @@ export async function resolveFollowUpAction(formData: FormData): Promise<FollowU
   const appointmentId = String(formData.get('appointment_id') || '');
   const jobId = String(formData.get('job_id') || '');
   const mode = String(formData.get('resolution_mode') || '');
-  const note = textField(formData, 'resolution_note', 2000);
   const linkedAppointmentId = String(formData.get('linked_appointment_id') || '').trim() || null;
   if (!/^[0-9a-f-]{36}$/i.test(appointmentId) || !/^[0-9a-f-]{36}$/i.test(jobId)) {
     return { ok: false, error: 'Invalid visit.' };
   }
+  const modeHint = String(formData.get('resolution_mode') || '');
+  const note =
+    textField(formData, 'resolution_note', 2000) ||
+    (modeHint === 'linked_visit'
+      ? 'Linked next follow-up visit'
+      : modeHint === 'office_cleared'
+        ? 'Cleared — no follow-up needed'
+        : null);
 
   const db = dbAdmin();
   let source: Record<string, unknown> | null = null;
@@ -1315,6 +1322,132 @@ async function prepareOfficePhotoUpload(file: File): Promise<{
   }
   if (uploadBytes.length > MAX_PHOTO_BYTES) throw new Error('Compressed photo still exceeds size limit.');
   return { id: crypto.randomUUID(), uploadBytes, uploadType, width, height };
+}
+
+/**
+ * Field site update: note only, photo only, or note with photo(s).
+ * When both are present, photos link via job_attachments.job_note_id (soft-fallback if missing).
+ */
+export async function addFieldSiteUpdateAction(formData: FormData): Promise<TechFieldActionResult> {
+  const appointmentId = String(formData.get('appointment_id') || '');
+  const body = textField(formData, 'body', 4000);
+  const files = formData
+    .getAll('photos')
+    .filter((item): item is File => item instanceof File && item.size > 0);
+
+  if (!body && files.length === 0) {
+    return failResult('Add a note, a photo, or both.', 'validation');
+  }
+  if (files.length > 8) return failResult('Upload up to 8 photos at a time.', 'validation');
+
+  const { crew, visit } = await assertAssignedAppointment(appointmentId);
+  const db = dbAdmin();
+
+  let noteId: string | null = null;
+  if (body) {
+    const { data, error } = await db
+      .from('job_notes')
+      .insert({
+        job_id: visit.job_id,
+        appointment_id: visit.id,
+        author_id: crew.id,
+        visibility: 'shared',
+        body,
+        updated_at: new Date().toISOString(),
+      })
+      .select('id')
+      .maybeSingle();
+    if (error || !data) return failResult('Unable to save note.');
+    noteId = data.id as string;
+    await db.from('job_activity').insert({
+      job_id: visit.job_id,
+      actor_id: crew.id,
+      action: 'technician_note_added',
+      note: body.slice(0, 240),
+    });
+  }
+
+  let linkedPhotos = false;
+  for (const file of files) {
+    let prepared;
+    try {
+      prepared = await prepareOfficePhotoUpload(file);
+    } catch (error) {
+      return failResult(error instanceof Error ? error.message : 'Unable to process photo.', 'validation');
+    }
+    const ext =
+      prepared.uploadType === 'image/png'
+        ? 'png'
+        : prepared.uploadType === 'image/webp'
+          ? 'webp'
+          : 'jpg';
+    const storagePath = `${visit.job_id}/${visit.id}/${crew.id}/${prepared.id}.${ext}`;
+    const { error: uploadError } = await db.storage
+      .from('job-photos')
+      .upload(storagePath, prepared.uploadBytes, {
+        contentType: prepared.uploadType,
+        upsert: false,
+      });
+    if (uploadError) return failResult('Photo upload failed. Please try again.');
+
+    const baseRow = {
+      id: prepared.id,
+      job_id: visit.job_id,
+      appointment_id: visit.id,
+      uploaded_by: crew.id,
+      storage_path: storagePath,
+      content_type: prepared.uploadType,
+      byte_size: prepared.uploadBytes.length,
+      width: prepared.width,
+      height: prepared.height,
+      caption: body ? body.slice(0, 120) : null,
+    };
+
+    let insertError = null as { message?: string } | null;
+    if (noteId) {
+      const linked = await db
+        .from('job_attachments')
+        .insert({ ...baseRow, job_note_id: noteId })
+        .select('id')
+        .maybeSingle();
+      if (!linked.error && linked.data) {
+        linkedPhotos = true;
+      } else if (linked.error && /job_note_id|column/i.test(linked.error.message || '')) {
+        const fallback = await db.from('job_attachments').insert(baseRow).select('id').maybeSingle();
+        insertError = fallback.error;
+      } else {
+        insertError = linked.error;
+      }
+    } else {
+      const standalone = await db.from('job_attachments').insert(baseRow).select('id').maybeSingle();
+      insertError = standalone.error;
+    }
+
+    if (insertError) {
+      await db.storage.from('job-photos').remove([storagePath]);
+      return failResult('Unable to save photo record.');
+    }
+
+    await db.from('job_activity').insert({
+      job_id: visit.job_id,
+      actor_id: crew.id,
+      action: 'photo_uploaded',
+      note: 'Photo ' + prepared.id + (noteId ? ` · note ${noteId}` : ''),
+    });
+  }
+
+  revalidateVisit(visit.id, visit.job_id);
+  const message =
+    body && files.length
+      ? linkedPhotos
+        ? 'Note and photo saved together'
+        : 'Note and photo saved'
+      : body
+        ? 'Note saved'
+        : files.length === 1
+          ? 'Photo saved'
+          : 'Photos saved';
+  return okResult({ message });
 }
 
 /**
