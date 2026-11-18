@@ -69,6 +69,18 @@ export default async function InvoiceDetail({params}:{params:Promise<{id:string}
   if(selectedCustomer)customersById.set(selectedCustomer.id,selectedCustomer);
   const customers=[...customersById.values()];
 
+  const jobContext=invoice.job_id
+    ?{
+      jobId:String(invoice.job_id),
+      jobNumber:(invoice.job_snapshot as {job_number?:string|null}|null)?.job_number
+        ||jobs.find(j=>j.id===invoice.job_id)?.jobNumber
+        ||null,
+      jobTitle:(invoice.job_snapshot as {title?:string|null}|null)?.title
+        ||jobs.find(j=>j.id===invoice.job_id)?.title
+        ||null,
+    }
+    :null;
+
   return (
     <InvoiceEditor
       canApprove={['owner','admin'].includes(user.role)}
@@ -85,6 +97,7 @@ export default async function InvoiceDetail({params}:{params:Promise<{id:string}
         postcode:a.postcode||'',
       }))}
       jobs={jobs}
+      jobContext={jobContext}
       payments={(payments||[]).map(p=>({
         id:p.id,
         amount_cents:Number(p.amount_cents),

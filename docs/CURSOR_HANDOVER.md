@@ -204,7 +204,8 @@ npm run build
 - HQ invoices (`/hq/invoices`) mirror quotes: register, builder, preview, PDF (`EEI-######`), optional `job_id` / `quote_id`, and payment lines for part-paid / amount due. `customer_reference` is first-class on invoice create and seeds from the linked commercial-current quote when present. Xero mapping remains a later step.
 - Quote/invoice letterhead (ABN, electrical licence, phone, address, bank defaults) reads from `src/lib/business-profile.ts`.
 - Job header status is a colored-dot chevron dropdown (statuses in `src/lib/job-statuses.ts`). The three-dot menu is reserved for future job actions.
-- Pending hosted migrations (do **not** apply until owner approves): `20261117092844_jobs_status_to_invoice_tafe` adds `to_invoice` and `tafe` to `jobs_status_check`; `20261118043432_hq_invoices_c2` creates invoice tables/RPCs. Until applied, invoice UI shows a migration-needed message and selecting the new job statuses will fail at the database.
+- Hosted: `20261118043432_hq_invoices_c2` applied (owner-approved) — invoice tables/RPCs live on shared Preview/Production project `udwdurnknweavmksotii`.
+- Pending hosted migration (do **not** apply until owner approves): `20261117092844_jobs_status_to_invoice_tafe` adds `to_invoice` and `tafe` to `jobs_status_check`. Until applied, selecting those statuses in the UI will fail at the database.
 - Inventory, purchasing, reports, and payroll export are not built. Field offline MVP (shell + outbox) is shipped; full offline/photos/payroll remain open.
 
 ## 11. Remaining development roadmap (post-Production)

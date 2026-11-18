@@ -177,6 +177,14 @@ export default async function NewInvoice({
   const customerNameSeed=String((customers||[]).find(c=>c.id===customerId)?.name||'').trim();
   const today=perthToday();
 
+  const jobContext=linkedJobId
+    ?{
+      jobId:linkedJobId,
+      jobNumber:jobs.find(j=>j.id===linkedJobId)?.jobNumber||null,
+      jobTitle:jobs.find(j=>j.id===linkedJobId)?.title||null,
+    }
+    :null;
+
   return (
     <InvoiceEditor
       canApprove={['owner','admin'].includes(user.role)}
@@ -192,6 +200,7 @@ export default async function NewInvoice({
         postcode:a.postcode||'',
       }))}
       jobs={jobs}
+      jobContext={jobContext}
       linkedQuoteNumber={linkedQuoteNumber}
       initial={{
         customerId,
