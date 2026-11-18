@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/lib/*.test.ts",
     "tradify:dry-run": "node --experimental-strip-types scripts/tradify-dry-run.ts",
-    "tradify:apply": "node --experimental-strip-types scripts/tradify-apply.ts"
+    "tradify:apply": "node --experimental-strip-types scripts/tradify-apply.ts",
+    "tradify:merge-visits": "node --experimental-strip-types scripts/tradify-merge-visits.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.81.1",

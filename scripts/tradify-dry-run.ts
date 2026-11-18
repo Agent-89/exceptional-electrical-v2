@@ -217,7 +217,7 @@ async function main() {
   console.log(`  sites insert=${report.counts.sites.insert} / source=${report.counts.sites.source}`);
   console.log(`  jobs insert=${report.counts.jobs.insert} / source=${report.counts.jobs.source}`);
   console.log(
-    `  appointments windows=${report.counts.appointments.windows} (future=${report.counts.appointments.future} past=${report.counts.appointments.past})`,
+    `  appointments lines=${report.counts.appointments.scheduleLines} visits=${report.counts.appointments.visits} multiCrew=${report.counts.appointments.multiCrewVisits} (future=${report.counts.appointments.future} past=${report.counts.appointments.past})`,
   );
   console.log(
     `  quotes=${report.counts.quotes.uniqueQuotes} invoices=${report.counts.invoices.uniqueInvoices} timesheets=${report.counts.timesheets.source}`,

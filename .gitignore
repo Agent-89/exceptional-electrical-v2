@@ -17,4 +17,5 @@ scripts/tradify-dry-run/__pycache__/
 imports/tradify/**/dry-run-report.json
 imports/tradify/**/dry-run-report.md
 imports/tradify/**/apply-summary.json
+imports/tradify/**/merge-visits-summary.json
 .gitignore.tmp
