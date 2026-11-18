@@ -777,7 +777,13 @@ button.ee-text-action{border:0;background:transparent;padding:0;font:inherit;fon
 .ee-time-inline-editor{border-top:1px solid #ead9b8;margin-top:4px;padding-top:10px}
 .ee-time-inline-form{max-width:720px;padding-top:4px}
 .ee-time-editor-row>td{background:#f8fbfe;padding:4px 10px 14px}
-.ee-review-cancel{border:1px solid #d4e1ed;border-radius:10px;background:#fff;color:#4d677a;padding:10px 12px;min-height:44px;font:inherit;font-weight:700;cursor:pointer}
+.ee-review-btn{appearance:none;-webkit-appearance:none;border:1px solid #d4e1ed;border-radius:10px;background:#fff;color:#17364b;padding:10px 14px;min-height:44px;cursor:pointer;font:inherit;font-size:14px;font-weight:800;line-height:1.2;color-scheme:light}
+.ee-review-btn:disabled{opacity:.6;cursor:wait}
+.ee-review-btn-approve{background:#1688e9;border-color:#1688e9;color:#fff}
+.ee-review-btn-reject{background:#fff;border-color:#f0b4b4;color:#b42318}
+.ee-review-btn-correct{background:#fff;border-color:#9bcbf4;color:#076ab5}
+.ee-review-btn-cancel,.ee-review-cancel{background:#edf4fa;border:1px solid #d4e1ed;border-radius:10px;color:#31536c;padding:10px 14px;min-height:44px;font:inherit;font-size:14px;font-weight:800;cursor:pointer;color-scheme:light}
+.ee-review-actions{display:flex;flex-wrap:wrap;gap:8px}
 .ee-activity-detail{margin:6px 0 0}
 .ee-activity-detail>summary{cursor:pointer;color:#0875c9;font-size:13px;font-weight:700;list-style:none}
 .ee-activity-detail>summary::-webkit-details-marker{display:none}

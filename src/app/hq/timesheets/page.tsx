@@ -199,16 +199,19 @@ export default async function TimesheetsPage({
 .ee-section-title h2{margin:5px 0 0;font-size:22px}
 .ee-compact-panel{padding:22px;margin-bottom:12px;overflow:hidden}
 .ee-timesheet-entries-table a,.ee-timesheet-staff{color:#0875c9;text-decoration:none;font-weight:700}
-.ee-timesheet-actions{display:flex;flex-wrap:wrap;gap:8px}
-.ee-timesheet-actions button{border:1px solid #d4e1ed;border-radius:8px;background:#fff;padding:10px 12px;cursor:pointer;font-weight:700}
-.ee-timesheet-actions button:disabled{opacity:.6;cursor:wait}
+.ee-timesheet-actions,.ee-review-actions{display:flex;flex-wrap:wrap;gap:8px}
+.ee-review-btn{appearance:none;-webkit-appearance:none;border:1px solid #d4e1ed;border-radius:10px;background:#fff;color:#17364b;padding:10px 14px;min-height:44px;cursor:pointer;font:inherit;font-size:14px;font-weight:800;line-height:1.2;color-scheme:light}
+.ee-review-btn:disabled{opacity:.6;cursor:wait}
+.ee-review-btn-approve{background:#1688e9;border-color:#1688e9;color:#fff}
+.ee-review-btn-reject{background:#fff;border-color:#f0b4b4;color:#b42318}
+.ee-review-btn-correct{background:#fff;border-color:#9bcbf4;color:#076ab5}
+.ee-review-btn-cancel{background:#edf4fa;border-color:#d4e1ed;color:#31536c}
 .ee-form-error{margin:0;color:#b42318;font-size:13px;font-weight:700}
 .ee-form-success{margin:0 0 10px;color:#0875c9;font-size:13px;font-weight:700}
 .ee-time-calc{display:grid;gap:4px}
 .ee-time-calc p{margin:0}
 .ee-billable-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:-6px}
 .ee-billable-manual{color:#9a3412;font-size:13px;font-weight:700}
-.ee-timesheet-actions button[value=approve]{background:#1688e9;border-color:#1688e9;color:#fff}
 .ee-timesheet-week-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
 .ee-timesheet-week-head h2{margin:4px 0 0;font-size:1.25rem}
 .ee-timesheet-week-nav{display:flex;gap:6px;align-items:center}
@@ -283,9 +286,15 @@ export default async function TimesheetsPage({
 .ee-edit-form.ee-time-inline-form,.ee-time-inline-form{display:grid;gap:12px}
 @media (max-width:900px){
   .ee-timesheet-week-table th:nth-child(n+2):nth-child(-n+8),.ee-timesheet-week-table td:nth-child(n+2):nth-child(-n+8){min-width:4.5rem}
-  .ee-timesheet-sticky-col{min-width:9.5rem;max-width:11rem}
+  .ee-timesheet-sticky-col{min-width:3.25rem;max-width:3.5rem;padding-left:8px;padding-right:8px;text-align:center}
+  .ee-timesheet-week-table thead .ee-timesheet-sticky-col{font-size:10px;letter-spacing:.02em}
+  .ee-timesheet-staff{justify-content:center;gap:0}
+  .ee-timesheet-staff-name{display:none}
+  .ee-timesheet-avatar{width:34px;height:34px}
   .ee-compact-panel{padding:16px}
   .ee-timesheet-mini-filter select{max-width:9.5rem}
+  .ee-timesheet-actions,.ee-review-actions{gap:8px}
+  .ee-review-btn{flex:1 1 calc(50% - 8px);min-width:8.5rem;text-align:center}
 }
 `}</style>
     </main>

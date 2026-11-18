@@ -355,6 +355,7 @@ export default function TimeEntryReviewForm({
             name="decision"
             value="approve"
             type="submit"
+            className="ee-review-btn ee-review-btn-approve"
             disabled={pending}
             aria-busy={pending}
             onClick={() => setChosenDecision('approve')}
@@ -367,6 +368,7 @@ export default function TimeEntryReviewForm({
             name="decision"
             value="reject"
             type="submit"
+            className="ee-review-btn ee-review-btn-reject"
             disabled={pending}
             aria-busy={pending}
             onClick={() => setChosenDecision('reject')}
@@ -379,6 +381,7 @@ export default function TimeEntryReviewForm({
             name="decision"
             value="correct"
             type="submit"
+            className="ee-review-btn ee-review-btn-correct"
             disabled={pending || !timingPreview.ok}
             aria-busy={pending}
             onClick={() => setChosenDecision('correct')}
@@ -387,7 +390,12 @@ export default function TimeEntryReviewForm({
           </button>
         ) : null}
         {onCancel ? (
-          <button type="button" className="ee-review-cancel" onClick={handleCancel} disabled={pending}>
+          <button
+            type="button"
+            className="ee-review-btn ee-review-btn-cancel"
+            onClick={handleCancel}
+            disabled={pending}
+          >
             Cancel
           </button>
         ) : null}

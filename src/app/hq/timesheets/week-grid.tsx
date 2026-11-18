@@ -121,6 +121,8 @@ export default function TimesheetWeekGrid({
                         status: statusFilter,
                       })}
                       className="ee-timesheet-staff"
+                      title={row.fullName}
+                      aria-label={row.fullName}
                     >
                       <span
                         className="ee-timesheet-avatar"
