@@ -818,10 +818,10 @@ html{scroll-padding-top:calc(var(--hq-shell-header-height,76px) + 16px);scroll-p
 @keyframes hq-wordmark-in{to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.hq-startup{display:none}}
 
-/* Field PWA startup: inverse of HQ (dark blue + white logo). */
+/* Field PWA startup: dark blue + true white logo asset (no CSS invert). */
 .field-startup{background:#071625;color:#fff}
-.field-startup .hq-startup-mark .hq-startup-outline{filter:brightness(0) invert(1);opacity:.22}
-.field-startup .hq-startup-fill img{filter:brightness(0) invert(1)}
+.field-startup .hq-startup-mark .hq-startup-outline{filter:none;opacity:.22}
+.field-startup .hq-startup-fill img{filter:none;animation:none;opacity:1}
 .field-startup .hq-startup-charge{background:#fff;box-shadow:0 0 12px #ffffff88}
 .field-startup .hq-startup-spark{color:#fff}
 .field-startup .hq-startup-brand>span{color:#9ec9e8}
