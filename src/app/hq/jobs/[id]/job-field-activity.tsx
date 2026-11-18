@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { staffColor } from '@/lib/staff-color';
 import {
   VISIT_OUTCOME_LABELS,
@@ -11,8 +12,7 @@ import {
   type JobDetailTechReport,
   type JobDetailTimeEntry,
 } from '@/lib/job-detail-summary';
-import { isFollowUpOutstanding, pickNextFollowUpAppointment } from '@/lib/job-follow-up';
-import FollowUpActions from './resolve-follow-up-form';
+import { pickNextFollowUpAppointment } from '@/lib/job-follow-up';
 import JobTimePanel from './job-time-panel';
 import JobUpdatesPanel from './job-updates-panel';
 
@@ -83,14 +83,6 @@ type FileView = {
 };
 
 export type JobFieldSection = 'attention' | 'visits' | 'time' | 'costs' | 'files';
-
-function perthWhen(iso: string): string {
-  return new Date(iso).toLocaleString('en-AU', {
-    timeZone: 'Australia/Perth',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
 
 function perthDayTime(startsAt: string, endsAt: string): string {
   const day = new Date(startsAt).toLocaleDateString('en-AU', {
@@ -194,8 +186,8 @@ export default function JobFieldActivity({
             const crewById = new Map(crew.map((member) => [member.id, member]));
             const crewByName = new Map(crew.map((member) => [member.name.toLowerCase(), member]));
             const primaryPill = visitPrimaryPill(appointment);
-            const furtherOutstanding = isFollowUpOutstanding(appointment);
-            const nextVisit = furtherOutstanding
+            const furtherFlagged = Boolean(appointment.followUp);
+            const nextVisit = furtherFlagged
               ? pickNextFollowUpAppointment({
                   sourceAppointmentId: appointment.id,
                   sourceStartsAt: appointment.startsAt,
@@ -209,9 +201,15 @@ export default function JobFieldActivity({
             const nextVisitFull = nextVisit
               ? appointments.find((candidate) => candidate.id === nextVisit.id)
               : null;
-            const linkedVisit = appointment.followUpLinkedAppointmentId
-              ? appointments.find((candidate) => candidate.id === appointment.followUpLinkedAppointmentId)
-              : null;
+            const nextVisitCrew = nextVisitFull
+              ? nextVisitFull.crew?.length
+                ? nextVisitFull.crew
+                : (nextVisitFull.electricianNames ?? []).map((name, index) => ({
+                    id: `${nextVisitFull.id}-name-${index}`,
+                    name,
+                    avatarColor: null as string | null,
+                  }))
+              : [];
             return (
               <details className="ee-expand ee-job-row" key={appointment.id}>
                 <summary>
@@ -224,7 +222,7 @@ export default function JobFieldActivity({
                   <span className="ee-visit-row-end">
                     <span className="ee-visit-pills">
                       <span className={`ee-visit-pill is-${primaryPill.tone}`}>{primaryPill.label}</span>
-                      {furtherOutstanding ? (
+                      {furtherFlagged ? (
                         <span className="ee-visit-pill is-followup">Further visit</span>
                       ) : null}
                     </span>
@@ -250,40 +248,32 @@ export default function JobFieldActivity({
                     !appointment.issues ? (
                       <p className="ee-muted">No visit summary yet.</p>
                     ) : null}
-                    {furtherOutstanding ? (
-                      <p className="ee-muted" style={{ marginBottom: 0 }}>
-                        Further visit required
-                      </p>
-                    ) : appointment.followUp ? (
-                      <p className="ee-muted" style={{ marginBottom: 0 }}>
-                        Further visit resolved
-                        {linkedVisit
-                          ? ` · linked to ${perthDayTime(linkedVisit.startsAt, linkedVisit.endsAt)}`
-                          : ''}
-                      </p>
-                    ) : null}
-                    {appointment.followUpResolvedAt ? (
-                      <p className="ee-muted">
-                        Resolved {perthWhen(appointment.followUpResolvedAt)}
-                        {appointment.followUpResolutionNote
-                          ? ` · ${appointment.followUpResolutionNote}`
-                          : ''}
-                      </p>
+                    {furtherFlagged ? (
+                      <div className="ee-further-visit-flag">
+                        <p className="ee-muted" style={{ marginBottom: 0 }}>
+                          Further visit flagged
+                        </p>
+                        {nextVisitFull ? (
+                          <div className="ee-further-visit-next">
+                            <span>
+                              Next visit · {perthDayTime(nextVisitFull.startsAt, nextVisitFull.endsAt)}
+                            </span>
+                            <VisitCrewAvatars crew={nextVisitCrew} />
+                          </div>
+                        ) : (
+                          <div className="ee-further-visit-next">
+                            <span className="ee-muted">No next visit scheduled yet</span>
+                            <Link
+                              className="hq-detail-action-secondary"
+                              href={`/hq/schedule?job=${encodeURIComponent(jobId)}`}
+                            >
+                              Schedule follow-up
+                            </Link>
+                          </div>
+                        )}
+                      </div>
                     ) : null}
                   </div>
-
-                  {furtherOutstanding ? (
-                    <FollowUpActions
-                      jobId={jobId}
-                      appointmentId={appointment.id}
-                      nextVisitId={nextVisit?.id ?? null}
-                      nextVisitLabel={
-                        nextVisitFull
-                          ? perthDayTime(nextVisitFull.startsAt, nextVisitFull.endsAt)
-                          : null
-                      }
-                    />
-                  ) : null}
 
                   <div className="ee-job-subblock">
                     <strong>Summaries</strong>

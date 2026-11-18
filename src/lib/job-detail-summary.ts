@@ -6,7 +6,7 @@ import {
   isTerminalVisitOutcome,
   type VisitOutcomeStatus,
 } from '@/lib/tech-visit-report';
-import { isFollowUpOutstanding } from '@/lib/job-follow-up';
+import { needsFollowUpAttention } from '@/lib/job-follow-up';
 
 export type JobDetailTimeEntry = {
   id: string;
@@ -191,13 +191,23 @@ export function buildJobAttentionItems(input: {
     });
   }
 
+  const appointmentCandidates = input.appointments.map((a) => ({
+    id: a.id,
+    startsAt: a.startsAt,
+    status: a.status,
+  }));
   for (const a of input.appointments) {
-    if (isFollowUpOutstanding(a)) {
+    if (
+      needsFollowUpAttention({
+        appointment: a,
+        candidates: appointmentCandidates,
+      })
+    ) {
       items.push({
         id: `follow-up-${a.id}`,
         kind: 'follow_up',
         label: 'Further visit flagged',
-        detail: `${perthDateLabel(a.startsAt)} · shared outcome ${FIELD_STATUS_LABELS[a.fieldStatus as FieldStatus] ?? a.fieldStatus} · resolve on Visits`,
+        detail: `${perthDateLabel(a.startsAt)} · no next visit scheduled yet`,
       });
     }
     if (!isTerminalVisitOutcome(a.fieldStatus) && a.fieldStatus !== 'scheduled') {
