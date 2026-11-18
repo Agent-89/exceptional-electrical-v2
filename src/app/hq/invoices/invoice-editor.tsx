@@ -856,7 +856,7 @@ export default function InvoiceEditor({
               <textarea disabled={locked} rows={5} value={draft.termsAndPayment} onChange={e=>set('termsAndPayment',e.target.value)}/>
               <span className="hq-quote-field-hint">Shown on the PDF. Edit per invoice if bank details or payment wording change.</span>
             </label>
-            <label>Customer-facing notes<textarea disabled={locked} rows={3} value={draft.notes} onChange={e=>set('notes',e.target.value)}/></label>
+            <label className="hq-qw-full">Customer-facing notes<textarea disabled={locked} rows={3} value={draft.notes} onChange={e=>set('notes',e.target.value)}/></label>
             <label className="hq-qw-full">Internal notes (staff only)<textarea disabled={locked} rows={2} value={draft.internalNotes} onChange={e=>set('internalNotes',e.target.value)}/></label>
           </div>
         </section>
