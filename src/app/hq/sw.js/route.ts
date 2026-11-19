@@ -1,5 +1,5 @@
 export function GET() {
-  const js = `const VERSION='exceptional-hq-v4';
+  const js = `const VERSION='exceptional-hq-v5';
 self.addEventListener('install',event=>{self.skipWaiting()});
 self.addEventListener('activate',event=>{event.waitUntil(self.clients.claim())});
 self.addEventListener('fetch',event=>{
@@ -49,7 +49,8 @@ self.addEventListener('notificationclick',event=>{
     headers: {
       'Content-Type': 'application/javascript; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Service-Worker-Allowed': '/hq/',
+      // Allow scope '/hq' so Home Screen start_url '/hq' is controlled (not only '/hq/...').
+      'Service-Worker-Allowed': '/hq',
     },
   });
 }
