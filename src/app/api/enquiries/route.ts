@@ -17,18 +17,15 @@ const schema = z.object({
   email: z.email().max(254),
   suburb: z.string().trim().max(120).optional().default(''),
   contact_preference: z.enum(['either', 'phone', 'email']).default('either'),
-  service: z.enum([
-    'residential',
-    'commercial',
-    'lighting',
-    'maintenance',
-    'switchboards',
-    'ev_chargers',
-    'other',
-  ]),
   message: z.string().trim().min(10).max(3000),
   website: z.string().optional().default(''),
 });
+
+function enquiryMessagePreview(message: string, maxLen = 90): string {
+  const collapsed = message.replace(/\s+/g, ' ').trim();
+  if (collapsed.length <= maxLen) return collapsed;
+  return `${collapsed.slice(0, maxLen - 1).trimEnd()}…`;
+}
 
 async function hasRecentDuplicateEnquiry(
   db: ReturnType<typeof dbAdmin>,
@@ -118,17 +115,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const newServiceLabel =
-    result.data.service === 'switchboards'
-      ? 'Switchboard upgrades'
-      : result.data.service === 'ev_chargers'
-        ? 'EV charger installation'
-        : null;
-  const storedService = newServiceLabel ? 'other' : result.data.service;
-  const storedMessage = newServiceLabel
-    ? `Service requested: ${newServiceLabel}\n\n${result.data.message}`
-    : result.data.message;
-
   const { data: enquiry, error } = await db
     .from('enquiries')
     .insert({
@@ -137,8 +123,8 @@ export async function POST(req: NextRequest) {
       email: normalizeEnquiryEmail(result.data.email),
       suburb: result.data.suburb || null,
       contact_preference: result.data.contact_preference,
-      service: storedService,
-      message: storedMessage,
+      service: 'other',
+      message: result.data.message,
       source: 'website',
       status: 'new',
     })
@@ -158,7 +144,7 @@ export async function POST(req: NextRequest) {
     id: enquiry.id,
     name: result.data.name,
     suburb: result.data.suburb || null,
-    service: storedService,
+    preview: enquiryMessagePreview(result.data.message),
     source: 'website',
   });
 
