@@ -12,6 +12,7 @@ const schema = z.object({
   name: z.string().trim().min(1).max(120),
   suburb: z.string().trim().max(120).optional().nullable(),
   service: z.string().trim().max(80).optional().nullable(),
+  preview: z.string().trim().max(160).optional().nullable(),
   source: z.string().trim().max(40).optional().nullable(),
 });
 

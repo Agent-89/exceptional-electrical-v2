@@ -11,6 +11,7 @@ export type EnquiryPushPayload = {
   name: string;
   suburb?: string | null;
   service?: string | null;
+  preview?: string | null;
   source?: EnquiryPushSource | null;
 };
 
@@ -51,8 +52,9 @@ function sourceLabel(source: EnquiryPushSource | null | undefined): string {
 
 function buildNotification(payload: EnquiryPushPayload) {
   const suburb = String(payload.suburb || '').trim();
+  const preview = String(payload.preview || '').trim();
   const service = String(payload.service || '').trim().replaceAll('_', ' ');
-  const detail = [suburb, service].filter(Boolean).join(' · ');
+  const detail = [suburb, preview || service].filter(Boolean).join(' · ');
   const title = `New enquiry · ${sourceLabel(payload.source)}`;
   const body = detail
     ? `${payload.name} — ${detail}`
