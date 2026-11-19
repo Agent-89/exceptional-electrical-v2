@@ -9,7 +9,7 @@ export function GET() {
       short_name: 'Electrical HQ',
       description: 'Exceptional Electrical staff operations',
       start_url: '/hq',
-      scope: '/hq/',
+      scope: '/hq',
       display: 'standalone',
       background_color: '#f2f6fb',
       theme_color: '#f2f6fb',

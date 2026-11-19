@@ -8,6 +8,9 @@ import {
   sendHqPushTestAlert,
 } from './push-actions';
 
+const HQ_SW_URL = '/hq/sw.js?v=hq-v5';
+const HQ_SW_SCOPE = '/hq';
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -25,9 +28,9 @@ function isStandaloneDisplay(): boolean {
   );
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    const timer = setTimeout(() => reject(new Error(label)), ms);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -41,7 +44,61 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-type Status = 'loading' | 'unsupported' | 'needs_install' | 'off' | 'on' | 'disabled';
+async function waitForActiveWorker(registration: ServiceWorkerRegistration): Promise<void> {
+  if (registration.active) return;
+  const worker = registration.installing || registration.waiting;
+  if (!worker) {
+    await withTimeout(navigator.serviceWorker.ready, 8000, 'worker-timeout');
+    return;
+  }
+  await withTimeout(
+    new Promise<void>((resolve, reject) => {
+      const onChange = () => {
+        if (worker.state === 'activated' || registration.active) {
+          worker.removeEventListener('statechange', onChange);
+          resolve();
+        } else if (worker.state === 'redundant') {
+          worker.removeEventListener('statechange', onChange);
+          reject(new Error('worker-redundant'));
+        }
+      };
+      worker.addEventListener('statechange', onChange);
+      onChange();
+    }),
+    8000,
+    'worker-timeout',
+  );
+}
+
+/** Register (or reuse) the HQ SW so `/hq` itself is controlled for push subscribe. */
+async function getHqPushRegistration(): Promise<ServiceWorkerRegistration> {
+  const existing = await navigator.serviceWorker.getRegistration(HQ_SW_SCOPE);
+  const registration =
+    existing ||
+    (await navigator.serviceWorker.register(HQ_SW_URL, { scope: HQ_SW_SCOPE }));
+  await waitForActiveWorker(registration);
+  return registration;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  if (error.message === 'worker-timeout') {
+    return 'Notification worker is not ready yet. Close HQ fully, reopen the Home Screen app, then try again.';
+  }
+  if (error.message === 'worker-redundant') {
+    return 'Notification worker failed to activate. Close HQ fully and reopen the Home Screen app.';
+  }
+  return fallback;
+}
+
+type Status =
+  | 'loading'
+  | 'unsupported'
+  | 'needs_install'
+  | 'off'
+  | 'on'
+  | 'disabled'
+  | 'worker_unavailable';
 
 /**
  * Office-only opt-in for enquiry Web Push on the installed HQ PWA.
@@ -75,11 +132,10 @@ export default function HqPushOptIn() {
           setStatus('needs_install');
           return;
         }
-        const registration = await withTimeout(navigator.serviceWorker.ready, 8000);
+        const registration = await getHqPushRegistration();
         const existing = await registration.pushManager.getSubscription();
         if (cancelled) return;
         // Only treat this device as on when PushManager still has a live subscription.
-        // A DB row alone can be a stale Apple endpoint that never reaches this install.
         if (existing) {
           setNeedsRebind(false);
           setStatus('on');
@@ -87,10 +143,12 @@ export default function HqPushOptIn() {
           setNeedsRebind(server.subscribed);
           setStatus('off');
         }
-      } catch {
+      } catch (error) {
+        console.warn('HQ push status check failed', error);
         if (!cancelled) {
           setNeedsRebind(false);
-          setStatus('off');
+          setStatus('worker_unavailable');
+          setMessage(errorMessage(error, 'Could not prepare notifications on this device.'));
         }
       }
     })();
@@ -103,12 +161,17 @@ export default function HqPushOptIn() {
     setMessage('');
     startTransition(async () => {
       try {
+        if (!isStandaloneDisplay() && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+          setStatus('needs_install');
+          setMessage('Open the installed Home Screen HQ app (not Safari) to enable push alerts.');
+          return;
+        }
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
           setMessage('Notifications were blocked for this device.');
           return;
         }
-        const registration = await withTimeout(navigator.serviceWorker.ready, 8000);
+        const registration = await getHqPushRegistration();
         const subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
@@ -132,7 +195,7 @@ export default function HqPushOptIn() {
         setMessage('Notifications enabled on this device. Lock the phone and tap Send test alert.');
       } catch (error) {
         console.warn('HQ push subscribe failed', error);
-        setMessage('Could not enable notifications on this device.');
+        setMessage(errorMessage(error, 'Could not enable notifications on this device.'));
       }
     });
   };
@@ -141,7 +204,7 @@ export default function HqPushOptIn() {
     setMessage('');
     startTransition(async () => {
       try {
-        const registration = await withTimeout(navigator.serviceWorker.ready, 8000);
+        const registration = await getHqPushRegistration();
         const subscription = await registration.pushManager.getSubscription();
         if (subscription) {
           await deleteHqPushSubscription(subscription.endpoint);
@@ -150,8 +213,8 @@ export default function HqPushOptIn() {
         setNeedsRebind(false);
         setStatus('off');
         setMessage('Notifications turned off on this device.');
-      } catch {
-        setMessage('Could not turn off notifications.');
+      } catch (error) {
+        setMessage(errorMessage(error, 'Could not turn off notifications.'));
       }
     });
   };
@@ -185,6 +248,16 @@ export default function HqPushOptIn() {
         <p>
           On iPhone/iPad, open the installed Home Screen HQ app (not Safari) to enable push alerts.
         </p>
+      ) : status === 'worker_unavailable' ? (
+        <>
+          <p>
+            Notification worker is not ready on this page yet. Close HQ fully, reopen the Home Screen
+            app, then try again.
+          </p>
+          <button type="button" disabled={pending} onClick={enable}>
+            Try again
+          </button>
+        </>
       ) : (
         <>
           <p>
